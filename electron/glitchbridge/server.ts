@@ -64,13 +64,16 @@ function broadcastChrome(msg: WsMsg) {
 }
 
 let liveEventCb: ((event: CaptureEvent) => void) | null = null;
+let eventsReadyCb: ((sessionId: string, count: number) => void) | null = null;
 
 export function startBridgeServer(callbacks: {
   onScriptReady: (sessionId: string, script: string) => void;
   onIssueCreated: (sessionId: string, issueUrl: string) => void;
   onLiveEvent?: (event: CaptureEvent) => void;
+  onEventsReady?: (sessionId: string, count: number) => void;
 }) {
   liveEventCb = callbacks.onLiveEvent ?? null;
+  eventsReadyCb = callbacks.onEventsReady ?? null;
   if (wss) return;
 
   refreshCurrentUserFromStorage(); // pick up stored login token
@@ -121,12 +124,19 @@ export function startBridgeServer(callbacks: {
         return;
       }
 
-      // Chrome ext uploads events
-      if (msg.type === "events:upload" && currentUser) {
+      // Chrome ext uploads events — always accept, auth only needed for issue creation
+      if (msg.type === "events:upload") {
         const session = sessions.get(msg.sessionId);
         if (!session) return;
         session.events.push(...(msg.events as CaptureEvent[]));
         persistSession(session);
+        eventsReadyCb?.(session.id, session.events.length);
+
+        // Skip DB upload + issue creation when not logged in
+        if (!currentUser) {
+          console.log(`[GlitchBridge] ${session.events.length} events saved locally (not logged in)`);
+          return;
+        }
 
         // 1. Persist events to a DB capture session (in-memory bridge id ≠ DB id)
         const dbSessionId = await uploadSession({
@@ -148,17 +158,19 @@ export function startBridgeServer(callbacks: {
           broadcastChrome({ type: "script:ready", sessionId: msg.sessionId, script });
           callbacks.onScriptReady(msg.sessionId, script);
 
-          // 3. Create GitHub issue in the selected repo
-          const issue = await createIssue({
-            token: currentUser.token,
-            repoId: session.repoId,
-            title: `[GlitchRecord] ${session.repoName} — ${new Date().toLocaleDateString()}`,
-            body: buildIssueBody(session),
-          });
-          if (issue) {
-            session.issueUrl = issue.url;
-            broadcastChrome({ type: "issue:created", sessionId: msg.sessionId, issueUrl: issue.url, issueNumber: issue.number });
-            callbacks.onIssueCreated(msg.sessionId, issue.url);
+          // 3. Create GitHub issue in the selected repo (skip if no repo selected)
+          if (session.repoId) {
+            const issue = await createIssue({
+              token: currentUser.token,
+              repoId: session.repoId,
+              title: `[GlitchRecord] ${session.repoName} — ${new Date().toLocaleDateString()}`,
+              body: buildIssueBody(session),
+            });
+            if (issue) {
+              session.issueUrl = issue.url;
+              broadcastChrome({ type: "issue:created", sessionId: msg.sessionId, issueUrl: issue.url, issueNumber: issue.number });
+              callbacks.onIssueCreated(msg.sessionId, issue.url);
+            }
           }
         }
       }
