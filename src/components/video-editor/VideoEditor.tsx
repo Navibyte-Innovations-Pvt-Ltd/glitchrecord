@@ -14,6 +14,7 @@ import {
 	Play,
 	Plus,
 	PuzzlePiece,
+	Record as RecordIcon,
 	ArrowClockwise as Redo2,
 	Scissors,
 	SkipBack,
@@ -5256,6 +5257,23 @@ export default function VideoEditor() {
 					className={`flex items-center gap-1.5 justify-self-start ${headerLeftControlsPaddingClass}`}
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => {
+							void (window.electronAPI as { openRecorder?: () => Promise<unknown> })
+								.openRecorder?.()
+								.catch(() => {});
+						}}
+						className="inline-flex h-8 items-center gap-1.5 rounded-[5px] border border-red-500/30 bg-red-500/10 px-2.5 text-[12px] font-medium text-red-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
+						title="Start a new recording"
+						aria-label="New recording"
+					>
+						<RecordIcon className="h-3.5 w-3.5" weight="fill" />
+						New Recording
+					</Button>
+					<div className="h-5 w-px bg-foreground/10" />
 					<Button
 						ref={projectBrowserTriggerRef}
 						type="button"
