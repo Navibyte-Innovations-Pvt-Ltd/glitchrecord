@@ -30,7 +30,7 @@ import {
 import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
-import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, loadPersistedSession } from "./glitchbridge/server";
+import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, loadPersistedSession, appendDebugLog } from "./glitchbridge/server";
 import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
 import { validateToken, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
 import type { UpdateToastPayload } from "./updater";
@@ -132,6 +132,17 @@ process.env.APP_ROOT = path.join(electronMainDir, "..");
 export const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 export const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
+
+// Global safety net: keep the main process alive on an unexpected throw so an
+// in-progress recording isn't silently killed. Log to the unified debug file.
+process.on("uncaughtException", (err) => {
+	console.error("[main] Uncaught exception:", err);
+	try { appendDebugLog("rec", `UNCAUGHT EXCEPTION: ${err?.stack ?? String(err)}`); } catch { /* ignore */ }
+});
+process.on("unhandledRejection", (reason) => {
+	console.error("[main] Unhandled rejection:", reason);
+	try { appendDebugLog("rec", `UNHANDLED REJECTION: ${reason instanceof Error ? reason.stack : String(reason)}`); } catch { /* ignore */ }
+});
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 	? path.join(process.env.APP_ROOT, "public")
