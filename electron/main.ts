@@ -925,6 +925,11 @@ app.whenReady().then(async () => {
 		onIssueCreated: (sessionId, issueUrl) => {
 			BrowserWindow.getAllWindows()[0]?.webContents.send("glitchbridge:issue-created", { sessionId, issueUrl });
 		},
+		onLiveEvent: (event) => {
+			for (const w of BrowserWindow.getAllWindows()) {
+				w.webContents.send("glitchbridge:live-event", event);
+			}
+		},
 	});
 
 	ipcMain.handle("glitchbridge:recording-start", () => {
