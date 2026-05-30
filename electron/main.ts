@@ -28,6 +28,7 @@ import {
 import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
+import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop } from "./glitchbridge/server";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -856,6 +857,7 @@ app.on("before-quit", () => {
 	showCursor();
 	cleanupNativeVideoExportSessions();
 	void cleanupAllExportStreams();
+	stopBridgeServer();
 });
 
 app.on("window-all-closed", () => {
@@ -877,8 +879,25 @@ app.on("second-instance", () => {
 // Register all IPC handlers when app is ready
 app.whenReady().then(async () => {
 	if (process.platform === "win32") {
-		app.setAppUserModelId("dev.recordly.app");
+		app.setAppUserModelId("dev.glitchrecord.app");
 	}
+
+	// Start GlitchBridge WebSocket server — Chrome extension connects here
+	startBridgeServer({
+		onScriptReady: (sessionId, script) => {
+			BrowserWindow.getAllWindows()[0]?.webContents.send("glitchbridge:script-ready", { sessionId, script });
+		},
+		onIssueCreated: (sessionId, issueUrl) => {
+			BrowserWindow.getAllWindows()[0]?.webContents.send("glitchbridge:issue-created", { sessionId, issueUrl });
+		},
+	});
+
+	ipcMain.handle("glitchbridge:recording-start", (_e, repoId: string, repoName: string) => {
+		return broadcastRecordingStart(repoId, repoName);
+	});
+	ipcMain.handle("glitchbridge:recording-stop", (_e, sessionId: string, meta: unknown) => {
+		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
+	});
 
 	session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
 		const allowed = ["media", "audioCapture", "microphone", "camera", "videoCapture"];
