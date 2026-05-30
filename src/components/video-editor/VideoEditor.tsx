@@ -8,6 +8,7 @@ import {
 	DownloadSimple as Download,
 	FolderOpen,
 	Gear,
+	ListBullets,
 	Pause,
 	Camera as PhCameraRegular,
 	Play,
@@ -113,6 +114,9 @@ const PhSparkle = (props: { className?: string; weight?: "fill" | "regular" }) =
 const PhSettings = (props: { className?: string; weight?: "fill" | "regular" }) => (
 	<Gear weight={props.weight ?? "regular"} className={props.className} />
 );
+const PhListBullets = (props: { className?: string; weight?: "fill" | "regular" }) => (
+	<ListBullets weight={props.weight ?? "regular"} className={props.className} />
+);
 
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { extensionHost } from "@/lib/extensions";
@@ -121,6 +125,7 @@ import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
+import { GlitchgrabLogPanel } from "./GlitchgrabLogPanel";
 import {
 	createEditorHistoryStack,
 	type EditorHistorySnapshot,
@@ -1561,6 +1566,11 @@ export default function VideoEditor() {
 				id: "captions" as const,
 				label: t("settings.sections.captions", "Captions"),
 				icon: PhCaptions,
+			},
+			{
+				id: "glitchgrab" as const,
+				label: "GlitchGrab Log",
+				icon: PhListBullets,
 			},
 			{
 				id: "settings" as const,
@@ -5776,6 +5786,8 @@ export default function VideoEditor() {
 						{/* Panel */}
 						{activeEffectSection === "extensions" ? (
 							<ExtensionManager />
+						) : activeEffectSection === "glitchgrab" ? (
+							<GlitchgrabLogPanel />
 						) : (
 							<SettingsPanel
 								panelMode="editor"
