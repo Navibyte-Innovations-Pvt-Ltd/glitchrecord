@@ -3,7 +3,9 @@ import {
 	ArrowClockwise,
 	ArrowRight,
 	ArrowsDownUp,
+	Check,
 	Clipboard,
+	ClipboardText,
 	Clock,
 	Copy,
 	CursorClick,
@@ -72,7 +74,24 @@ export function GlitchgrabLogPanel() {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [hasGetEvents, setHasGetEvents] = useState(true);
+	const [copied, setCopied] = useState(false);
 	const listRef = useRef<HTMLDivElement>(null);
+
+	const copyAll = useCallback(() => {
+		if (events.length === 0) return;
+		const text = events
+			.map((e, i) => {
+				const detail = e.preview ? `"${e.preview}"` : (e.label ?? e.url ?? "");
+				const extra = e.url && e.url !== detail ? `  (${e.url})` : "";
+				return `${String(i + 1).padStart(2, "0")}. [${formatMs(e.t)}] ${e.type.toUpperCase()}: ${detail}${extra}`;
+			})
+			.join("\n");
+		const header = `GlitchGrab event log — ${events.length} events\n${"-".repeat(40)}\n`;
+		void navigator.clipboard.writeText(header + text).then(() => {
+			setCopied(true);
+			setTimeout(() => setCopied(false), 1500);
+		});
+	}, [events]);
 
 	const loadEvents = useCallback(() => {
 		const api = gg();
@@ -121,10 +140,23 @@ export function GlitchgrabLogPanel() {
 			<div className="flex items-center gap-2">
 				<Sparkle className="h-4 w-4 text-blue-500 shrink-0" />
 				<span className="text-[13px] font-semibold">GlitchGrab Events</span>
-				<div className="ml-auto flex items-center gap-2">
+				<div className="ml-auto flex items-center gap-1.5">
 					{events.length > 0 && (
 						<span className="text-[10px] text-foreground/40 font-mono">{events.length}</span>
 					)}
+					<button
+						type="button"
+						onClick={copyAll}
+						disabled={events.length === 0}
+						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+						title="Copy all events to clipboard"
+					>
+						{copied ? (
+							<><Check className="h-3.5 w-3.5 text-green-500" /> Copied</>
+						) : (
+							<><ClipboardText className="h-3.5 w-3.5" /> Copy</>
+						)}
+					</button>
 					<button
 						type="button"
 						onClick={loadEvents}
