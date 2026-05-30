@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { SparkleIcon, CaretUpIcon, SignOutIcon, GitBranchIcon } from "@phosphor-icons/react";
+import { SparkleIcon, CaretUpIcon, GitBranchIcon } from "@phosphor-icons/react";
 import { Button } from "../ui/button";
 import styles from "./LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./popovers/LaunchPopoverCoordinator";
@@ -145,13 +145,6 @@ export function GlitchgrabPopover({ onOpen }: { onOpen?: () => void }) {
 									<div className="px-2 py-2 text-[11px] opacity-40">No repos match</div>
 								)}
 						</div>
-						<div className="my-1 h-px bg-[var(--launch-border)]" />
-						<DropdownItem
-							icon={<SignOutIcon size={16} />}
-							onClick={async () => { await gg()?.logout(); refresh(); }}
-						>
-							Logout
-						</DropdownItem>
 					</>
 				)}
 			</div>
