@@ -1,8 +1,11 @@
 // Glitchgrab API client — called from Electron main process
+import { app } from "electron";
 import type { GlitchUser, GlitchRepo } from "./types";
 
-const BASE = "https://glitchgrab.dev"; // prod
-// For dev: const BASE = "http://localhost:3000";
+// Dev (unpackaged) → localhost; packaged build → production
+export const BASE =
+	process.env.GLITCHGRAB_API_URL ??
+	(app.isPackaged ? "https://glitchgrab.dev" : "http://localhost:3000");
 
 export async function validateToken(token: string): Promise<GlitchUser | null> {
   try {
