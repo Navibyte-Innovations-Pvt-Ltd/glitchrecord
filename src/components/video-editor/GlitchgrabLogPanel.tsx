@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+	ArrowClockwise,
 	ArrowRight,
 	ArrowsDownUp,
 	Clipboard,
@@ -22,7 +23,7 @@ interface CaptureEvent {
 }
 
 interface GlitchgrabAPI {
-	getEvents: () => Promise<{ events: CaptureEvent[]; sessionId: string | null }>;
+	getEvents?: () => Promise<{ events: CaptureEvent[]; sessionId: string | null }>;
 	onLiveEvent: (cb: (event: CaptureEvent) => void) => () => void;
 }
 
@@ -69,17 +70,26 @@ function formatMs(ms: number): string {
 export function GlitchgrabLogPanel() {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [hasGetEvents, setHasGetEvents] = useState(true);
 	const listRef = useRef<HTMLDivElement>(null);
 
-	// Load existing events once
-	useEffect(() => {
+	const loadEvents = useCallback(() => {
 		const api = gg();
 		if (!api) { setLoading(false); return; }
-		api.getEvents().then(({ events: evts }) => {
-			setEvents(evts);
+		if (typeof api.getEvents !== "function") {
+			// Old preload — getEvents not available yet, restart app required
+			setHasGetEvents(false);
 			setLoading(false);
-		}).catch(() => setLoading(false));
+			return;
+		}
+		setLoading(true);
+		api.getEvents()
+			.then(({ events: evts }) => { setEvents(evts); setLoading(false); })
+			.catch(() => setLoading(false));
 	}, []);
+
+	// Load on mount
+	useEffect(() => { loadEvents(); }, [loadEvents]);
 
 	// Live-append new events during an active recording
 	useEffect(() => {
@@ -102,22 +112,43 @@ export function GlitchgrabLogPanel() {
 			<div className="flex items-center gap-2">
 				<Sparkle className="h-4 w-4 text-blue-500 shrink-0" />
 				<span className="text-[13px] font-semibold">GlitchGrab Events</span>
-				{events.length > 0 && (
-					<span className="ml-auto text-[10px] text-foreground/40 font-mono">
-						{events.length}
-					</span>
-				)}
+				<div className="ml-auto flex items-center gap-2">
+					{events.length > 0 && (
+						<span className="text-[10px] text-foreground/40 font-mono">{events.length}</span>
+					)}
+					<button
+						type="button"
+						onClick={loadEvents}
+						className="rounded p-0.5 text-foreground/30 hover:text-foreground/60 transition-colors"
+						title="Refresh"
+					>
+						<ArrowClockwise className="h-3.5 w-3.5" />
+					</button>
+				</div>
 			</div>
 
 			{/* Event list */}
 			{loading ? (
 				<div className="text-[12px] text-foreground/40">Loading…</div>
+			) : !hasGetEvents ? (
+				<div className="flex flex-col gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.03] p-3 text-[12px] text-foreground/50">
+					<p className="font-semibold text-foreground/70">Restart required</p>
+					<p>Quit and relaunch GlitchRecord to enable event tracking.</p>
+				</div>
 			) : events.length === 0 ? (
-				<div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
-					<CursorClick className="h-8 w-8 opacity-20" />
-					<p className="text-[12px] text-foreground/40">
-						No events yet. Start a recording with the GlitchGrab extension active.
-					</p>
+				<div className="flex flex-col gap-3 text-[12px] text-foreground/40">
+					<div className="flex flex-col items-center gap-2 py-6 text-center">
+						<CursorClick className="h-7 w-7 opacity-20" />
+						<p>No events captured yet.</p>
+					</div>
+					<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] p-3 text-[11px] leading-relaxed">
+						<p className="mb-1 font-semibold text-foreground/60">How to capture events:</p>
+						<ol className="list-decimal pl-4 space-y-1">
+							<li>Log in to GlitchGrab (top bar)</li>
+							<li>Select a GitHub repo</li>
+							<li>Press Record — extension captures automatically</li>
+						</ol>
+					</div>
 				</div>
 			) : (
 				<div
