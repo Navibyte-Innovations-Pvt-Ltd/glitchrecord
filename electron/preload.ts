@@ -517,6 +517,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openRecorder: () => {
 		return ipcRenderer.invoke("open-recorder");
 	},
+	writeClipboard: (text: string) => {
+		return ipcRenderer.invoke("clipboard-write-text", text);
+	},
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
