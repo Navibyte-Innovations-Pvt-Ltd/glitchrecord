@@ -31,7 +31,7 @@ import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
 import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos } from "./glitchbridge/server";
 import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
-import { validateToken } from "./glitchbridge/api";
+import { validateToken, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -940,8 +940,6 @@ app.whenReady().then(async () => {
 	});
 
 	// ── Glitchgrab auth IPC ──────────────────────────────────
-	const GLITCHGRAB_URL = process.env.GLITCHGRAB_API_URL ?? "https://glitchgrab.dev";
-
 	ipcMain.handle("glitchgrab:login", () => {
 		// Open browser to auth flow; deep link returns token to glitchrecord://auth
 		const redirect = encodeURIComponent("glitchrecord://auth");
