@@ -344,6 +344,16 @@ ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 	setHudOverlayMousePassthrough(Boolean(ignore));
 });
 
+// Glitchgrab: temporarily make the HUD focusable so its search input can type.
+ipcMain.on("hud-overlay-set-focusable", (_event, focusable: boolean) => {
+	if (!hudOverlayWindow) return;
+	hudOverlayWindow.setFocusable(Boolean(focusable));
+	if (focusable) {
+		hudOverlayWindow.setIgnoreMouseEvents(false);
+		hudOverlayWindow.focus();
+	}
+});
+
 ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) => {
 	hudOverlaySourceSelectionActive = Boolean(active);
 	if (hudOverlaySourceSelectionActive) {
