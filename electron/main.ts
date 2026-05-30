@@ -930,15 +930,20 @@ app.whenReady().then(async () => {
 				w.webContents.send("glitchbridge:live-event", event);
 			}
 		},
+		onEventsReady: (sessionId, count) => {
+			for (const w of BrowserWindow.getAllWindows()) {
+				w.webContents.send("glitchbridge:events-ready", { sessionId, count });
+			}
+		},
 	});
 
 	ipcMain.handle("glitchbridge:recording-start", () => {
+		// Capture events regardless of login state — auth only needed for issue creation
 		const auth = getAuthStatus();
-		if (!auth.loggedIn || !auth.selectedRepoId) {
-			console.warn("[GlitchBridge] Recording start ignored — not logged in or no repo selected");
-			return null;
-		}
-		return broadcastRecordingStart(auth.selectedRepoId, auth.selectedRepoName ?? "");
+		return broadcastRecordingStart(
+			auth.selectedRepoId ?? "",
+			auth.selectedRepoName ?? "",
+		);
 	});
 	ipcMain.handle("glitchbridge:recording-stop", (_e, sessionId: string, meta: unknown) => {
 		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
