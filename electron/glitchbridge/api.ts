@@ -24,8 +24,12 @@ export async function getRepos(token: string): Promise<GlitchRepo[]> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
-    const data = await res.json() as { success: boolean; data: GlitchRepo[] };
-    return data.success ? data.data : [];
+    const data = await res.json() as {
+      success: boolean;
+      data: { ownRepos: Array<{ id: string; fullName: string }> };
+    };
+    if (!data.success) return [];
+    return data.data.ownRepos.map((r) => ({ id: r.id, name: r.fullName, fullName: r.fullName }));
   } catch { return []; }
 }
 
