@@ -111,6 +111,7 @@ export type EditorEffectSection =
 	| "extensions"
 	| "clip"
 	| "audio"
+	| "glitchgrab"
 	| `ext:${string}`;
 
 export type ZoomTransitionEasing = "recordly" | "glide" | "smooth" | "snappy" | "linear";
