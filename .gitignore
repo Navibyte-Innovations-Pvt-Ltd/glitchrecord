@@ -41,6 +41,12 @@ electron/native/nvidia-cuda-compositor/build/
 electron/native/bin/*/whisper-*
 electron/native/bin/*/whisper-runtime.json
 
+# Platform-compiled native binaries (rebuilt per machine by npm postinstall)
+electron/native/bin/darwin-arm64/
+electron/native/bin/darwin-x64/
+electron/native/bin/linux-x64/
+electron/native/bin/win32-x64/
+
 # Local debug helpers
 tmp-*.ps1
 .tmp-*.ps1
