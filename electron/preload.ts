@@ -163,6 +163,33 @@ function settleNativeVideoExportPendingRequests(
 	}
 }
 
+contextBridge.exposeInMainWorld("glitchgrab", {
+	login: () => ipcRenderer.invoke("glitchgrab:login"),
+	status: () => ipcRenderer.invoke("glitchgrab:status"),
+	getRepos: () => ipcRenderer.invoke("glitchgrab:get-repos"),
+	setRepo: (repoId: string, repoName: string) =>
+		ipcRenderer.invoke("glitchgrab:set-repo", repoId, repoName),
+	logout: () => ipcRenderer.invoke("glitchgrab:logout"),
+	recordingStart: () => ipcRenderer.invoke("glitchbridge:recording-start"),
+	recordingStop: (sessionId: string, meta: unknown) =>
+		ipcRenderer.invoke("glitchbridge:recording-stop", sessionId, meta),
+	onAuthChanged: (cb: (status: unknown) => void) => {
+		const handler = (_e: unknown, status: unknown) => cb(status);
+		ipcRenderer.on("glitchgrab:auth-changed", handler);
+		return () => ipcRenderer.removeListener("glitchgrab:auth-changed", handler);
+	},
+	onScriptReady: (cb: (data: unknown) => void) => {
+		const handler = (_e: unknown, data: unknown) => cb(data);
+		ipcRenderer.on("glitchbridge:script-ready", handler);
+		return () => ipcRenderer.removeListener("glitchbridge:script-ready", handler);
+	},
+	onIssueCreated: (cb: (data: unknown) => void) => {
+		const handler = (_e: unknown, data: unknown) => cb(data);
+		ipcRenderer.on("glitchbridge:issue-created", handler);
+		return () => ipcRenderer.removeListener("glitchbridge:issue-created", handler);
+	},
+});
+
 contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlaySetIgnoreMouse: (ignore: boolean) => {
 		ipcRenderer.send("hud-overlay-set-ignore-mouse", ignore);
