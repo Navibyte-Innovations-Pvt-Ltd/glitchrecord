@@ -21,12 +21,13 @@ export interface Session {
 }
 
 export interface CaptureEvent {
-  type: "click" | "navigate" | "idle";
+  type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste";
   t: number;
   label?: string;
   tag?: string;
   url?: string;
   durationMs?: number;
+  preview?: string;
 }
 
 export type WsMsg =
