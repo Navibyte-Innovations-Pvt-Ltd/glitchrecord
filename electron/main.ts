@@ -29,7 +29,7 @@ import {
 import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
-import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession } from "./glitchbridge/server";
+import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, loadPersistedSession } from "./glitchbridge/server";
 import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
 import { validateToken, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
 import type { UpdateToastPayload } from "./updater";
@@ -945,7 +945,11 @@ app.whenReady().then(async () => {
 	});
 	ipcMain.handle("glitchbridge:get-events", () => {
 		const session = getCurrentSession();
-		return { events: session?.events ?? [], sessionId: session?.id ?? null };
+		if (session?.events?.length) {
+			return { events: session.events, sessionId: session.id };
+		}
+		// Fall back to last persisted session (survives app restart)
+		return loadPersistedSession();
 	});
 
 	// ── Glitchgrab auth IPC ──────────────────────────────────
