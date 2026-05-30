@@ -131,7 +131,6 @@ process.env.APP_ROOT = path.join(electronMainDir, "..");
 export const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 export const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
-const IS_DEV = Boolean(VITE_DEV_SERVER_URL);
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 	? path.join(process.env.APP_ROOT, "public")
@@ -149,10 +148,10 @@ let isCreatingMainWindow = false;
 let isCreatingEditorWindow = false;
 let activeUpdateNotification: Notification | null = null;
 let activeUpdateNotificationKey: string | null = null;
-const shouldEnforceSingleInstanceLock = !IS_DEV;
-const hasSingleInstanceLock = shouldEnforceSingleInstanceLock
-	? app.requestSingleInstanceLock()
-	: true;
+// Always enforce single instance — the app binds port 7337 for the GlitchGrab
+// bridge, so two instances can never coexist anyway. A second launch focuses the
+// existing window (see "second-instance" handler) instead of spawning a new app.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
 	app.quit();
