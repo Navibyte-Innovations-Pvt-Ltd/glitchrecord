@@ -25,6 +25,7 @@ interface CaptureEvent {
 interface GlitchgrabAPI {
 	getEvents?: () => Promise<{ events: CaptureEvent[]; sessionId: string | null }>;
 	onLiveEvent: (cb: (event: CaptureEvent) => void) => () => void;
+	onEventsReady?: (cb: (data: { sessionId: string; count: number }) => void) => () => void;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -98,6 +99,14 @@ export function GlitchgrabLogPanel() {
 		});
 		return () => unsub?.();
 	}, []);
+
+	// Auto-refresh when recording stops and events are uploaded
+	useEffect(() => {
+		const unsub = gg()?.onEventsReady?.(() => {
+			loadEvents();
+		});
+		return () => unsub?.();
+	}, [loadEvents]);
 
 	// Auto-scroll to bottom on new events
 	useEffect(() => {
