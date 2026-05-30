@@ -948,6 +948,11 @@ app.whenReady().then(async () => {
 	ipcMain.handle("glitchbridge:recording-stop", (_e, sessionId: string, meta: unknown) => {
 		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
 	});
+	// Bring back the recorder HUD from the editor ("New Recording" button)
+	ipcMain.handle("open-recorder", () => {
+		focusOrCreateMainWindow();
+		return { ok: true };
+	});
 	ipcMain.handle("glitchbridge:get-events", () => {
 		const session = getCurrentSession();
 		if (session?.events?.length) {
