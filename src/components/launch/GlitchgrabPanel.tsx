@@ -152,6 +152,8 @@ export function GlitchgrabPopover({ onOpen }: { onOpen?: () => void }) {
 									onClick={async () => {
 										await gg()?.setRepo(r.id, r.name);
 										setStatus((prev) => prev && { ...prev, selectedRepoId: r.id, selectedRepoName: r.name });
+										gg()?.setHudFocusable?.(false);
+										requestClose(POPOVER_ID);
 									}}
 								>
 									{r.name}
