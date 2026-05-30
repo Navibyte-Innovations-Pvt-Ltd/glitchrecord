@@ -1,4 +1,11 @@
 import { useEffect, useState } from "react";
+import { SparkleIcon, CaretUpIcon, SignOutIcon, GitBranchIcon } from "@phosphor-icons/react";
+import { Button } from "../ui/button";
+import styles from "./LaunchWindow.module.css";
+import { useLaunchPopoverCoordinator } from "./popovers/LaunchPopoverCoordinator";
+import { HudPopover, DropdownItem } from "./popovers/PopoverScaffold";
+
+const POPOVER_ID = "glitchgrab";
 
 interface AuthStatus {
 	loggedIn: boolean;
@@ -14,7 +21,6 @@ interface Repo {
 	fullName: string;
 }
 
-// Typed view of the preload-exposed API
 interface GlitchgrabAPI {
 	login: () => Promise<{ ok: boolean }>;
 	status: () => Promise<AuthStatus>;
@@ -28,18 +34,13 @@ function gg(): GlitchgrabAPI | null {
 	return (window as unknown as { glitchgrab?: GlitchgrabAPI }).glitchgrab ?? null;
 }
 
-export function GlitchgrabPanel() {
+export function GlitchgrabPopover({ onOpen }: { onOpen?: () => void }) {
+	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
+	const open = isOpen(POPOVER_ID);
+
 	const [status, setStatus] = useState<AuthStatus | null>(null);
 	const [repos, setRepos] = useState<Repo[]>([]);
 	const [loadingRepos, setLoadingRepos] = useState(false);
-
-	const refresh = async () => {
-		const api = gg();
-		if (!api) return;
-		const s = await api.status();
-		setStatus(s);
-		if (s.loggedIn) loadRepos();
-	};
 
 	const loadRepos = async () => {
 		const api = gg();
@@ -52,80 +53,92 @@ export function GlitchgrabPanel() {
 		}
 	};
 
+	const refresh = async () => {
+		const api = gg();
+		if (!api) return;
+		const s = await api.status();
+		setStatus(s);
+		if (s.loggedIn) loadRepos();
+	};
+
 	useEffect(() => {
 		refresh();
-		const api = gg();
-		const unsub = api?.onAuthChanged((s) => {
+		const unsub = gg()?.onAuthChanged((s) => {
 			setStatus(s);
 			if (s.loggedIn) loadRepos();
 		});
 		return () => unsub?.();
 	}, []);
 
-	if (!gg()) return null; // not running inside GlitchRecord
+	if (!gg()) return null; // not inside GlitchRecord
 
-	const cardClass =
-		"rounded-[11px] border border-[var(--launch-border)] bg-[var(--launch-surface)] text-[var(--launch-text)] p-3";
+	const loggedIn = status?.loggedIn ?? false;
+	const triggerLabel = loggedIn
+		? (status?.selectedRepoName ?? "Select repo")
+		: "Connect Glitchgrab";
 
-	if (!status?.loggedIn) {
-		return (
-			<div className={cardClass}>
-				<div className="mb-2 text-xs font-semibold opacity-70">Glitchgrab</div>
-				<button
-					type="button"
-					onClick={() => gg()?.login()}
-					className="w-full rounded-lg border border-[var(--launch-border)] bg-[var(--launch-hover)] px-3 py-2 text-sm font-medium hover:border-[var(--launch-border-strong)]"
-				>
-					Connect Glitchgrab
-				</button>
-				<p className="mt-2 text-[11px] opacity-50">
-					Login to pick a repo and auto-create issues from recordings.
-				</p>
-			</div>
-		);
-	}
+	const trigger = (
+		<Button
+			variant="outline"
+			size="lg"
+			className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] shrink-0 border-[var(--launch-border)] bg-[var(--launch-surface)] text-[var(--launch-text)] hover:border-[var(--launch-border-strong)] hover:bg-[var(--launch-hover)] transition-all ${open ? "border-[var(--launch-border-strong)] bg-[var(--launch-hover)]" : ""}`}
+			title={triggerLabel}
+		>
+			<SparkleIcon size={16} className="shrink-0" />
+			<div className="flex-1 min-w-0 overflow-hidden truncate">{triggerLabel}</div>
+			<CaretUpIcon
+				size={10}
+				className={`text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200 ${open ? "" : "rotate-180"}`}
+			/>
+		</Button>
+	);
 
 	return (
-		<div className={cardClass}>
-			<div className="mb-2 flex items-center justify-between">
-				<span className="text-xs font-semibold opacity-70">{status.name}</span>
-				<button
-					type="button"
-					onClick={async () => { await gg()?.logout(); refresh(); }}
-					className="text-[11px] opacity-40 hover:opacity-80"
-				>
-					Logout
-				</button>
+		<HudPopover
+			open={open}
+			onOpenChange={(next) => {
+				if (!next) { requestClose(POPOVER_ID); return; }
+				onOpen?.();
+				requestOpen(POPOVER_ID);
+				refresh();
+			}}
+			trigger={trigger}
+			align="center"
+		>
+			<div className="min-w-[220px] p-1">
+				{!loggedIn ? (
+					<DropdownItem icon={<SparkleIcon size={16} />} onClick={() => gg()?.login()}>
+						Connect Glitchgrab
+					</DropdownItem>
+				) : (
+					<>
+						<div className="px-2 py-1.5 text-[11px] opacity-50">{status?.name}</div>
+						<div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide opacity-40">
+							{loadingRepos ? "Loading repos..." : "Recording repo"}
+						</div>
+						{repos.map((r) => (
+							<DropdownItem
+								key={r.id}
+								icon={<GitBranchIcon size={16} />}
+								selected={status?.selectedRepoId === r.id}
+								onClick={async () => {
+									await gg()?.setRepo(r.id, r.name);
+									setStatus((prev) => prev && { ...prev, selectedRepoId: r.id, selectedRepoName: r.name });
+								}}
+							>
+								{r.name}
+							</DropdownItem>
+						))}
+						<div className="my-1 h-px bg-[var(--launch-border)]" />
+						<DropdownItem
+							icon={<SignOutIcon size={16} />}
+							onClick={async () => { await gg()?.logout(); refresh(); }}
+						>
+							Logout
+						</DropdownItem>
+					</>
+				)}
 			</div>
-
-			<label className="mb-1 block text-[11px] opacity-50">Recording repo</label>
-			<select
-				value={status.selectedRepoId ?? ""}
-				disabled={loadingRepos}
-				onChange={async (e) => {
-					const repo = repos.find((r) => r.id === e.target.value);
-					if (repo) {
-						await gg()?.setRepo(repo.id, repo.name);
-						setStatus({ ...status, selectedRepoId: repo.id, selectedRepoName: repo.name });
-					}
-				}}
-				className="w-full rounded-lg border border-[var(--launch-border)] bg-[var(--launch-hover)] px-2 py-1.5 text-sm text-[var(--launch-text)]"
-			>
-				<option value="" disabled>
-					{loadingRepos ? "Loading repos..." : "Select a repo"}
-				</option>
-				{repos.map((r) => (
-					<option key={r.id} value={r.id}>
-						{r.name}
-					</option>
-				))}
-			</select>
-
-			{status.selectedRepoName && (
-				<p className="mt-2 text-[11px] opacity-70">
-					Recording → {status.selectedRepoName}
-				</p>
-			)}
-		</div>
+		</HudPopover>
 	);
 }
