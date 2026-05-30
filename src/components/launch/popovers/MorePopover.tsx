@@ -8,8 +8,9 @@ import {
 	SunIcon,
 	MoonIcon,
 	DesktopIcon,
+	SignOutIcon,
 } from "@phosphor-icons/react";
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { useI18n } from "@/contexts/I18nContext";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -62,6 +63,22 @@ export function MorePopover({
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
 
+	// Glitchgrab login state — show logout when connected
+	const ggApi = (window as unknown as {
+		glitchgrab?: {
+			status: () => Promise<{ loggedIn: boolean; name: string | null }>;
+			logout: () => Promise<{ ok: boolean }>;
+			onAuthChanged: (cb: (s: { loggedIn: boolean; name: string | null }) => void) => () => void;
+		};
+	}).glitchgrab;
+	const [ggName, setGgName] = useState<string | null>(null);
+	useEffect(() => {
+		if (!ggApi) return;
+		ggApi.status().then((s) => setGgName(s.loggedIn ? s.name : null));
+		const unsub = ggApi.onAuthChanged((s) => setGgName(s.loggedIn ? s.name : null));
+		return () => unsub();
+	}, [ggApi]);
+
 	return (
 		<HudPopover
 			open={open}
@@ -75,6 +92,20 @@ export function MorePopover({
 			trigger={trigger}
 			align="end"
 		>
+			{ggName && (
+				<>
+					<DropdownItem
+						icon={<SignOutIcon size={16} />}
+						onClick={() => {
+							requestClose(POPOVER_ID);
+							ggApi?.logout();
+						}}
+					>
+						{`Logout Glitchgrab (${ggName})`}
+					</DropdownItem>
+					<div className="my-1 h-px bg-[var(--launch-border)]" />
+				</>
+			)}
 			{supportsHudCaptureProtection && (
 				<DropdownItem
 					icon={hideHudFromCapture ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
