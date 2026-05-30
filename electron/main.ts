@@ -960,10 +960,13 @@ app.whenReady().then(async () => {
 	});
 	ipcMain.handle("glitchbridge:get-events", () => {
 		const session = getCurrentSession();
-		if (session?.events?.length) {
+		// If a session exists for THIS run, always show its events — even if empty.
+		// Returning the old persisted session here would display stale events from a
+		// completely different recording (e.g. a previous YouTube test).
+		if (session) {
 			return { events: session.events, sessionId: session.id };
 		}
-		// Fall back to last persisted session (survives app restart)
+		// No session this run (fresh app start) → fall back to last persisted.
 		return loadPersistedSession();
 	});
 
