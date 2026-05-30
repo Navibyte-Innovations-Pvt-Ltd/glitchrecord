@@ -170,6 +170,8 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 	setRepo: (repoId: string, repoName: string) =>
 		ipcRenderer.invoke("glitchgrab:set-repo", repoId, repoName),
 	logout: () => ipcRenderer.invoke("glitchgrab:logout"),
+	setHudFocusable: (focusable: boolean) =>
+		ipcRenderer.send("hud-overlay-set-focusable", focusable),
 	recordingStart: () => ipcRenderer.invoke("glitchbridge:recording-start"),
 	recordingStop: (sessionId: string, meta: unknown) =>
 		ipcRenderer.invoke("glitchbridge:recording-stop", sessionId, meta),
