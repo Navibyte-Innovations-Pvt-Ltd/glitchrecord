@@ -71,6 +71,32 @@ function formatMs(ms: number): string {
 	return `${s}s`;
 }
 
+// Clipboard fallback for non-Electron / when native IPC is unavailable.
+function fallbackCopy(text: string, onDone: () => void) {
+	if (navigator.clipboard?.writeText) {
+		navigator.clipboard.writeText(text).then(onDone).catch(() => execCommandCopy(text, onDone));
+		return;
+	}
+	execCommandCopy(text, onDone);
+}
+
+function execCommandCopy(text: string, onDone: () => void) {
+	try {
+		const ta = document.createElement("textarea");
+		ta.value = text;
+		ta.style.position = "fixed";
+		ta.style.opacity = "0";
+		document.body.appendChild(ta);
+		ta.focus();
+		ta.select();
+		document.execCommand("copy");
+		document.body.removeChild(ta);
+		onDone();
+	} catch {
+		/* give up silently */
+	}
+}
+
 export function GlitchgrabLogPanel() {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -100,10 +126,22 @@ export function GlitchgrabLogPanel() {
 			`page: ${events.find((e) => e.url)?.url ?? "unknown"}\n` +
 			`events: ${events.length}\n` +
 			`${"=".repeat(50)}\n`;
-		void navigator.clipboard.writeText(header + text).then(() => {
+		const payload = header + text;
+
+		const markCopied = () => {
 			setCopied(true);
 			setTimeout(() => setCopied(false), 1500);
-		});
+		};
+
+		// 1. Electron native clipboard (most reliable in the desktop app)
+		const api = (window as unknown as {
+			electronAPI?: { writeClipboard?: (t: string) => Promise<unknown> };
+		}).electronAPI;
+		if (api?.writeClipboard) {
+			void api.writeClipboard(payload).then(markCopied).catch(() => fallbackCopy(payload, markCopied));
+			return;
+		}
+		fallbackCopy(payload, markCopied);
 	}, [events]);
 
 	const loadEvents = useCallback(() => {
