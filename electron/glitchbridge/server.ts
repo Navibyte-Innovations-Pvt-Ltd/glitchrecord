@@ -3,6 +3,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Session, WsMsg, RecordingMeta, CaptureEvent } from "./types";
 import { validateToken, getRepos, createIssue, generateScript } from "./api";
+import { loadAuth } from "./auth";
 
 const PORT = 7337;
 
@@ -12,6 +13,17 @@ const chromeClients = new Set<WebSocket>();
 let wss: WebSocketServer | null = null;
 let currentUser: { id: string; name: string; token: string } | null = null;
 let currentSession: Session | null = null;
+
+// Load token from disk (set during GlitchRecord login) so the bridge is
+// authenticated without needing a WS auth handshake.
+export function refreshCurrentUserFromStorage() {
+  const auth = loadAuth();
+  if (auth) {
+    currentUser = { id: auth.userId, name: auth.name, token: auth.token };
+  } else {
+    currentUser = null;
+  }
+}
 
 function send(ws: WebSocket, msg: WsMsg) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -30,8 +42,24 @@ export function startBridgeServer(callbacks: {
 }) {
   if (wss) return;
 
+  refreshCurrentUserFromStorage(); // pick up stored login token
+
   wss = new WebSocketServer({ port: PORT });
   console.log(`[GlitchBridge] WS server on ws://localhost:${PORT}`);
+
+  // EADDRINUSE = stale instance from a previous dev reload still holds the port.
+  // Retry binding a few times before giving up.
+  let retries = 0;
+  wss.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE" && retries < 5) {
+      retries++;
+      console.warn(`[GlitchBridge] Port ${PORT} busy, retry ${retries}/5 in 1s...`);
+      wss = null;
+      setTimeout(() => startBridgeServer(callbacks), 1000);
+      return;
+    }
+    console.error("[GlitchBridge] Error:", err);
+  });
 
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", `http://localhost`);
@@ -92,8 +120,6 @@ export function startBridgeServer(callbacks: {
       console.log(`[GlitchBridge] Disconnected: ${role}`);
     });
   });
-
-  wss.on("error", (err) => console.error("[GlitchBridge] Error:", err));
 }
 
 export function stopBridgeServer() {
@@ -128,6 +154,24 @@ export function broadcastRecordingStop(sessionId: string, meta: RecordingMeta) {
 
 export function getCurrentUser() { return currentUser; }
 export function getCurrentSession() { return currentSession; }
+
+// ── IPC-callable helpers (used by main process handlers) ─────
+export function getAuthStatus() {
+  const auth = loadAuth();
+  return {
+    loggedIn: !!auth,
+    name: auth?.name ?? null,
+    userId: auth?.userId ?? null,
+    selectedRepoId: auth?.selectedRepoId ?? null,
+    selectedRepoName: auth?.selectedRepoName ?? null,
+  };
+}
+
+export async function fetchUserRepos() {
+  refreshCurrentUserFromStorage();
+  if (!currentUser) return [];
+  return getRepos(currentUser.token);
+}
 
 function buildIssueBody(session: Session): string {
   const duration = session.meta
