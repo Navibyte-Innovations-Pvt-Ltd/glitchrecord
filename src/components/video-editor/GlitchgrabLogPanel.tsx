@@ -22,6 +22,7 @@ interface CaptureEvent {
 	url?: string;
 	durationMs?: number;
 	preview?: string;
+	meta?: Record<string, string>;
 }
 
 interface GlitchgrabAPI {
@@ -81,12 +82,24 @@ export function GlitchgrabLogPanel() {
 		if (events.length === 0) return;
 		const text = events
 			.map((e, i) => {
-				const detail = e.preview ? `"${e.preview}"` : (e.label ?? e.url ?? "");
-				const extra = e.url && e.url !== detail ? `  (${e.url})` : "";
-				return `${String(i + 1).padStart(2, "0")}. [${formatMs(e.t)}] ${e.type.toUpperCase()}: ${detail}${extra}`;
+				const detail = e.preview ? `"${e.preview}"` : (e.label ?? "");
+				const head = `${String(i + 1).padStart(2, "0")}. [${formatMs(e.t)}] ${e.type.toUpperCase()}${detail ? `: ${detail}` : ""}`;
+				const lines: string[] = [head];
+				if (e.durationMs != null) lines.push(`      duration: ${Math.round(e.durationMs / 1000)}s`);
+				if (e.url) lines.push(`      url: ${e.url}`);
+				if (e.meta) {
+					for (const [k, v] of Object.entries(e.meta)) {
+						if (v) lines.push(`      ${k}: ${v}`);
+					}
+				}
+				return lines.join("\n");
 			})
 			.join("\n");
-		const header = `GlitchGrab event log — ${events.length} events\n${"-".repeat(40)}\n`;
+		const header =
+			`GlitchGrab event log\n` +
+			`page: ${events.find((e) => e.url)?.url ?? "unknown"}\n` +
+			`events: ${events.length}\n` +
+			`${"=".repeat(50)}\n`;
 		void navigator.clipboard.writeText(header + text).then(() => {
 			setCopied(true);
 			setTimeout(() => setCopied(false), 1500);
