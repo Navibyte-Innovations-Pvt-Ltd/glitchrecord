@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
 	app,
 	BrowserWindow,
+	clipboard,
 	desktopCapturer,
 	dialog,
 	ipcMain,
@@ -950,6 +951,11 @@ app.whenReady().then(async () => {
 	// Bring back the recorder HUD from the editor ("New Recording" button)
 	ipcMain.handle("open-recorder", () => {
 		focusOrCreateMainWindow();
+		return { ok: true };
+	});
+	// Native clipboard write — reliable in Electron where navigator.clipboard can fail
+	ipcMain.handle("clipboard-write-text", (_e, text: string) => {
+		clipboard.writeText(typeof text === "string" ? text : String(text));
 		return { ok: true };
 	});
 	ipcMain.handle("glitchbridge:get-events", () => {
