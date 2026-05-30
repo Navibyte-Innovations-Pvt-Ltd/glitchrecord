@@ -120,7 +120,11 @@ export function GlitchgrabPopover({ onOpen }: { onOpen?: () => void }) {
 						<input
 							type="text"
 							value={query}
+							autoFocus
 							onChange={(e) => setQuery(e.target.value)}
+							onKeyDown={(e) => e.stopPropagation()}
+							onKeyDownCapture={(e) => e.stopPropagation()}
+							onKeyUp={(e) => e.stopPropagation()}
 							placeholder="Search repos..."
 							className="mx-2 mb-1 w-[calc(100%-1rem)] rounded-lg border border-[var(--launch-border)] bg-[var(--launch-hover)] px-2 py-1.5 text-[12px] text-[var(--launch-text)] outline-none placeholder:opacity-40 focus:border-[var(--launch-border-strong)]"
 						/>
