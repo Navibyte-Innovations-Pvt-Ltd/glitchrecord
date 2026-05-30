@@ -1081,6 +1081,12 @@ app.whenReady().then(async () => {
 			}
 			if (!recording) {
 				restoreWindowSafely(mainWindow);
+				// Universal stop hook: tell the GlitchGrab extension to stop capturing,
+				// no matter HOW recording ended (HUD button, tray, shortcut, auto-stop).
+				const ggSession = getCurrentSession();
+				if (ggSession) {
+					broadcastRecordingStop(ggSession.id, ggSession.meta ?? ({} as never));
+				}
 			}
 		},
 	);
