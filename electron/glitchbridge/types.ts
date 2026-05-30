@@ -37,6 +37,7 @@ export type WsMsg =
   | { type: "recording:start"; sessionId: string; repoId: string; repoName: string }
   | { type: "recording:stop"; sessionId: string; meta: RecordingMeta }
   | { type: "events:upload"; sessionId: string; events: CaptureEvent[] }
+  | { type: "event:live"; event: CaptureEvent }
   | { type: "script:ready"; sessionId: string; script: string }
   | { type: "issue:created"; sessionId: string; issueUrl: string; issueNumber: number }
   | { type: "error"; message: string };
