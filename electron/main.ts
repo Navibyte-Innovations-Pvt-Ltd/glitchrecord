@@ -11,6 +11,7 @@ import {
 	Notification,
 	nativeImage,
 	session,
+	shell,
 	systemPreferences,
 	Tray,
 } from "electron";
@@ -28,7 +29,9 @@ import {
 import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
-import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop } from "./glitchbridge/server";
+import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos } from "./glitchbridge/server";
+import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
+import { validateToken } from "./glitchbridge/api";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -872,8 +875,40 @@ app.on("activate", () => {
 	focusOrCreateMainWindow();
 });
 
-app.on("second-instance", () => {
+// ── Glitchgrab deep-link token handler ───────────────────────
+async function handleGlitchgrabDeepLink(url: string) {
+	if (!url.startsWith("glitchrecord://")) return;
+	try {
+		const parsed = new URL(url);
+		const token = parsed.searchParams.get("token");
+		const userId = parsed.searchParams.get("userId");
+		if (!token || !userId) return;
+
+		// Validate token to get the display name
+		const user = await validateToken(token);
+		saveAuth({ token, userId, name: user?.name ?? "Glitchgrab User" });
+		refreshCurrentUserFromStorage();
+
+		const win = BrowserWindow.getAllWindows()[0];
+		win?.webContents.send("glitchgrab:auth-changed", getAuthStatus());
+		win?.focus();
+		console.log("[GlitchBridge] Logged in:", user?.name ?? userId);
+	} catch (err) {
+		console.error("[GlitchBridge] Deep link parse failed:", err);
+	}
+}
+
+// macOS delivers deep links via open-url
+app.on("open-url", (event, url) => {
+	event.preventDefault();
+	void handleGlitchgrabDeepLink(url);
+});
+
+app.on("second-instance", (_event, argv) => {
 	focusOrCreateMainWindow();
+	// Windows/Linux deliver deep link as a CLI arg
+	const link = argv.find((a) => a.startsWith("glitchrecord://"));
+	if (link) void handleGlitchgrabDeepLink(link);
 });
 
 // Register all IPC handlers when app is ready
@@ -892,12 +927,48 @@ app.whenReady().then(async () => {
 		},
 	});
 
-	ipcMain.handle("glitchbridge:recording-start", (_e, repoId: string, repoName: string) => {
-		return broadcastRecordingStart(repoId, repoName);
+	ipcMain.handle("glitchbridge:recording-start", () => {
+		const auth = getAuthStatus();
+		if (!auth.loggedIn || !auth.selectedRepoId) {
+			console.warn("[GlitchBridge] Recording start ignored — not logged in or no repo selected");
+			return null;
+		}
+		return broadcastRecordingStart(auth.selectedRepoId, auth.selectedRepoName ?? "");
 	});
 	ipcMain.handle("glitchbridge:recording-stop", (_e, sessionId: string, meta: unknown) => {
 		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
 	});
+
+	// ── Glitchgrab auth IPC ──────────────────────────────────
+	const GLITCHGRAB_URL = process.env.GLITCHGRAB_API_URL ?? "https://glitchgrab.dev";
+
+	ipcMain.handle("glitchgrab:login", () => {
+		// Open browser to auth flow; deep link returns token to glitchrecord://auth
+		const redirect = encodeURIComponent("glitchrecord://auth");
+		shell.openExternal(`${GLITCHGRAB_URL}/api/auth/glitchrecord?redirect=${redirect}`);
+		return { ok: true };
+	});
+
+	ipcMain.handle("glitchgrab:status", () => getAuthStatus());
+
+	ipcMain.handle("glitchgrab:get-repos", () => fetchUserRepos());
+
+	ipcMain.handle("glitchgrab:set-repo", (_e, repoId: string, repoName: string) => {
+		setSelectedRepo(repoId, repoName);
+		return { ok: true };
+	});
+
+	ipcMain.handle("glitchgrab:logout", () => {
+		clearAuth();
+		refreshCurrentUserFromStorage();
+		BrowserWindow.getAllWindows()[0]?.webContents.send("glitchgrab:auth-changed", getAuthStatus());
+		return { ok: true };
+	});
+
+	// Register deep-link protocol so glitchrecord://auth?token=... reaches us
+	if (!app.isDefaultProtocolClient("glitchrecord")) {
+		app.setAsDefaultProtocolClient("glitchrecord");
+	}
 
 	session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
 		const allowed = ["media", "audioCapture", "microphone", "camera", "videoCapture"];
