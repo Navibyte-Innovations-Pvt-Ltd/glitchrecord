@@ -35,25 +35,43 @@ export async function getRepos(token: string): Promise<GlitchRepo[]> {
 
 export async function createIssue(params: {
   token: string;
+  repoId: string;
   title: string;
   body: string;
 }): Promise<{ url: string; number: number } | null> {
   try {
-    const res = await fetch(`${BASE}/api/v1/reports`, {
+    const res = await fetch(`${BASE}/api/v1/glitchrecord/issue`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${params.token}`,
       },
       body: JSON.stringify({
+        repoId: params.repoId,
         title: params.title,
-        description: params.body,
-        source: "DASHBOARD_UPLOAD",
+        body: params.body,
       }),
     });
     if (!res.ok) return null;
     const data = await res.json() as { success: boolean; data: { issueUrl: string; issueNumber: number } };
     return data.success ? { url: data.data.issueUrl, number: data.data.issueNumber } : null;
+  } catch { return null; }
+}
+
+// Create a DB capture session with the events, returns its id (cuid)
+export async function uploadSession(params: {
+  events: unknown[];
+  meta: unknown;
+}): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/api/v1/capture-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ events: params.events, meta: params.meta }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { success: boolean; data?: { sessionId: string } };
+    return data.success ? (data.data?.sessionId ?? null) : null;
   } catch { return null; }
 }
 
