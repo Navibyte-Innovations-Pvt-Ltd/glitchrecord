@@ -36,10 +36,14 @@ function broadcastChrome(msg: WsMsg) {
   }
 }
 
+let liveEventCb: ((event: CaptureEvent) => void) | null = null;
+
 export function startBridgeServer(callbacks: {
   onScriptReady: (sessionId: string, script: string) => void;
   onIssueCreated: (sessionId: string, issueUrl: string) => void;
+  onLiveEvent?: (event: CaptureEvent) => void;
 }) {
+  liveEventCb = callbacks.onLiveEvent ?? null;
   if (wss) return;
 
   refreshCurrentUserFromStorage(); // pick up stored login token
@@ -71,6 +75,12 @@ export function startBridgeServer(callbacks: {
     ws.on("message", async (raw) => {
       let msg: WsMsg;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
+
+      // Live event stream from Chrome ext → forward to renderer feed
+      if (msg.type === "event:live") {
+        liveEventCb?.(msg.event);
+        return;
+      }
 
       // Auth
       if (msg.type === "auth") {
