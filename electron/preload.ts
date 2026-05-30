@@ -195,6 +195,7 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		ipcRenderer.on("glitchbridge:live-event", handler);
 		return () => ipcRenderer.removeListener("glitchbridge:live-event", handler);
 	},
+	getEvents: () => ipcRenderer.invoke("glitchbridge:get-events"),
 });
 
 contextBridge.exposeInMainWorld("electronAPI", {
