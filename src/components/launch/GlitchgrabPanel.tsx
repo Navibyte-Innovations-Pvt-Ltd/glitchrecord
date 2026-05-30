@@ -64,18 +64,21 @@ export function GlitchgrabPanel() {
 
 	if (!gg()) return null; // not running inside GlitchRecord
 
+	const cardClass =
+		"rounded-[11px] border border-[var(--launch-border)] bg-[var(--launch-surface)] text-[var(--launch-text)] p-3";
+
 	if (!status?.loggedIn) {
 		return (
-			<div className="rounded-xl border border-foreground/10 bg-foreground/5 p-3">
-				<div className="mb-2 text-xs font-semibold text-foreground/70">Glitchgrab</div>
+			<div className={cardClass}>
+				<div className="mb-2 text-xs font-semibold opacity-70">Glitchgrab</div>
 				<button
 					type="button"
 					onClick={() => gg()?.login()}
-					className="w-full rounded-lg bg-[#7c3aed] px-3 py-2 text-sm font-semibold text-white hover:opacity-90"
+					className="w-full rounded-lg border border-[var(--launch-border)] bg-[var(--launch-hover)] px-3 py-2 text-sm font-medium hover:border-[var(--launch-border-strong)]"
 				>
 					Connect Glitchgrab
 				</button>
-				<p className="mt-2 text-[11px] text-foreground/50">
+				<p className="mt-2 text-[11px] opacity-50">
 					Login to pick a repo and auto-create issues from recordings.
 				</p>
 			</div>
@@ -83,21 +86,19 @@ export function GlitchgrabPanel() {
 	}
 
 	return (
-		<div className="rounded-xl border border-foreground/10 bg-foreground/5 p-3">
+		<div className={cardClass}>
 			<div className="mb-2 flex items-center justify-between">
-				<span className="text-xs font-semibold text-foreground/70">
-					{status.name}
-				</span>
+				<span className="text-xs font-semibold opacity-70">{status.name}</span>
 				<button
 					type="button"
 					onClick={async () => { await gg()?.logout(); refresh(); }}
-					className="text-[11px] text-foreground/40 hover:text-foreground/70"
+					className="text-[11px] opacity-40 hover:opacity-80"
 				>
 					Logout
 				</button>
 			</div>
 
-			<label className="mb-1 block text-[11px] text-foreground/50">Recording repo</label>
+			<label className="mb-1 block text-[11px] opacity-50">Recording repo</label>
 			<select
 				value={status.selectedRepoId ?? ""}
 				disabled={loadingRepos}
@@ -108,7 +109,7 @@ export function GlitchgrabPanel() {
 						setStatus({ ...status, selectedRepoId: repo.id, selectedRepoName: repo.name });
 					}
 				}}
-				className="w-full rounded-lg border border-foreground/10 bg-foreground/[0.06] px-2 py-1.5 text-sm text-foreground"
+				className="w-full rounded-lg border border-[var(--launch-border)] bg-[var(--launch-hover)] px-2 py-1.5 text-sm text-[var(--launch-text)]"
 			>
 				<option value="" disabled>
 					{loadingRepos ? "Loading repos..." : "Select a repo"}
@@ -121,7 +122,7 @@ export function GlitchgrabPanel() {
 			</select>
 
 			{status.selectedRepoName && (
-				<p className="mt-2 text-[11px] text-[#4ade80]">
+				<p className="mt-2 text-[11px] opacity-70">
 					Recording → {status.selectedRepoName}
 				</p>
 			)}
