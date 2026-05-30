@@ -40,7 +40,7 @@ import { ProjectPopover } from "./popovers/ProjectPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
-import { GlitchgrabPanel } from "./GlitchgrabPanel";
+import { GlitchgrabPopover } from "./GlitchgrabPanel";
 import { MarqueeText } from "./SourceSelector";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
@@ -274,6 +274,10 @@ function LaunchWindowContent() {
 				</>
 			)}
 
+			<GlitchgrabPopover onOpen={beginInteractiveHudAction} />
+
+			<Separator orientation="vertical" className="mx-[5px] h-6" />
+
 			<MicPopover
 				disabled={recording}
 				systemAudioEnabled={systemAudioEnabled}
@@ -477,11 +481,6 @@ function LaunchWindowContent() {
 						onMouseEnter={handleHudMouseEnter}
 						onMouseLeave={handleHudMouseLeave}
 					>
-						{!recording && (
-							<div className="mb-2 w-[260px] launch-theme">
-								<GlitchgrabPanel />
-							</div>
-						)}
 						<div
 							ref={hudBarTransformRef}
 							style={{
