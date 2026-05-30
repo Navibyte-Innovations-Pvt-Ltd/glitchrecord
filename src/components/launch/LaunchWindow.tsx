@@ -40,6 +40,7 @@ import { ProjectPopover } from "./popovers/ProjectPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
+import { GlitchgrabPanel } from "./GlitchgrabPanel";
 import { MarqueeText } from "./SourceSelector";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
@@ -83,6 +84,26 @@ function LaunchWindowContent() {
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
+
+	// Glitchgrab: fire recording-start/stop to the bridge (instant, no latency)
+	const ggSessionRef = useRef<string | null>(null);
+	const handleToggleRecording = () => {
+		const ggApi = (window as unknown as {
+			glitchgrab?: {
+				recordingStart: () => Promise<string | null>;
+				recordingStop: (id: string, meta: unknown) => void;
+			};
+		}).glitchgrab;
+		if (ggApi) {
+			if (!recording) {
+				void ggApi.recordingStart().then((id) => { ggSessionRef.current = id; });
+			} else if (ggSessionRef.current) {
+				ggApi.recordingStop(ggSessionRef.current, {});
+				ggSessionRef.current = null;
+			}
+		}
+		toggleRecording();
+	};
 
 	const {
 		selectedSource,
@@ -349,7 +370,7 @@ function LaunchWindowContent() {
 				className={`${styles.recBtn} ${styles.electronNoDrag}`}
 				onClick={
 					hasSelectedSource || platform === "linux"
-						? toggleRecording
+						? handleToggleRecording
 						: () => {
 								beginInteractiveHudAction();
 								requestOpen("sources");
@@ -456,6 +477,11 @@ function LaunchWindowContent() {
 						onMouseEnter={handleHudMouseEnter}
 						onMouseLeave={handleHudMouseLeave}
 					>
+						{!recording && (
+							<div className="mb-2 w-[260px] launch-theme">
+								<GlitchgrabPanel />
+							</div>
+						)}
 						<div
 							ref={hudBarTransformRef}
 							style={{
