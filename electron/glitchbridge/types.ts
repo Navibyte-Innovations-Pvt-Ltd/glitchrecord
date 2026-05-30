@@ -18,6 +18,7 @@ export interface Session {
   script: string | null;
   issueUrl: string | null;
   createdAt: number;
+  finalized?: boolean; // true once upload/script/issue ran — prevents duplicates
 }
 
 export interface CaptureEvent {
@@ -42,6 +43,7 @@ export type WsMsg =
   | { type: "event:live"; event: CaptureEvent }
   | { type: "script:ready"; sessionId: string; script: string }
   | { type: "issue:created"; sessionId: string; issueUrl: string; issueNumber: number }
+  | { type: "log"; text: string }
   | { type: "error"; message: string };
 
 export interface GlitchUser { id: string; name: string; email: string; image?: string }
