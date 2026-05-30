@@ -196,6 +196,11 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		return () => ipcRenderer.removeListener("glitchbridge:live-event", handler);
 	},
 	getEvents: () => ipcRenderer.invoke("glitchbridge:get-events"),
+	onEventsReady: (cb: (data: { sessionId: string; count: number }) => void) => {
+		const handler = (_e: unknown, data: unknown) => cb(data as { sessionId: string; count: number });
+		ipcRenderer.on("glitchbridge:events-ready", handler);
+		return () => ipcRenderer.removeListener("glitchbridge:events-ready", handler);
+	},
 });
 
 contextBridge.exposeInMainWorld("electronAPI", {
