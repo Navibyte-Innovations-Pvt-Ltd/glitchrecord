@@ -28,6 +28,7 @@ interface GlitchgrabAPI {
 	setRepo: (repoId: string, repoName: string) => Promise<{ ok: boolean }>;
 	logout: () => Promise<{ ok: boolean }>;
 	onAuthChanged: (cb: (status: AuthStatus) => void) => () => void;
+	setHudFocusable?: (focusable: boolean) => void;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -98,8 +99,13 @@ export function GlitchgrabPopover({ onOpen }: { onOpen?: () => void }) {
 		<HudPopover
 			open={open}
 			onOpenChange={(next) => {
-				if (!next) { requestClose(POPOVER_ID); return; }
+				if (!next) {
+					gg()?.setHudFocusable?.(false);
+					requestClose(POPOVER_ID);
+					return;
+				}
 				onOpen?.();
+				gg()?.setHudFocusable?.(true); // let the search input receive keyboard
 				requestOpen(POPOVER_ID);
 				refresh();
 			}}
