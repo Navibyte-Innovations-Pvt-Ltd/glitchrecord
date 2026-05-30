@@ -2,7 +2,7 @@
 // Chrome extension connects here for real-time recording sync.
 import { WebSocketServer, WebSocket } from "ws";
 import type { Session, WsMsg, RecordingMeta, CaptureEvent } from "./types";
-import { validateToken, getRepos, createIssue, generateScript } from "./api";
+import { validateToken, getRepos, createIssue, generateScript, uploadSession } from "./api";
 import { loadAuth } from "./auth";
 
 const PORT = 7337;
@@ -100,19 +100,30 @@ export function startBridgeServer(callbacks: {
         if (!session) return;
         session.events.push(...(msg.events as CaptureEvent[]));
 
-        // Upload to Glitchgrab + generate script
+        // 1. Persist events to a DB capture session (in-memory bridge id ≠ DB id)
+        const dbSessionId = await uploadSession({
+          events: session.events,
+          meta: session.meta,
+        });
+        if (!dbSessionId) {
+          broadcastChrome({ type: "error", message: "Failed to save capture session" });
+          return;
+        }
+
+        // 2. Generate script from the DB session
         const script = await generateScript({
           token: currentUser.token,
-          sessionId: msg.sessionId,
+          sessionId: dbSessionId,
         });
         if (script) {
           session.script = script;
           broadcastChrome({ type: "script:ready", sessionId: msg.sessionId, script });
           callbacks.onScriptReady(msg.sessionId, script);
 
-          // Create GitHub issue
+          // 3. Create GitHub issue in the selected repo
           const issue = await createIssue({
             token: currentUser.token,
+            repoId: session.repoId,
             title: `[GlitchRecord] ${session.repoName} — ${new Date().toLocaleDateString()}`,
             body: buildIssueBody(session),
           });
