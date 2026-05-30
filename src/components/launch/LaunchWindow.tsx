@@ -41,6 +41,7 @@ import { SourcePopover } from "./popovers/SourcePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
 import { GlitchgrabPopover } from "./GlitchgrabPanel";
+import { GlitchgrabEventFeed } from "./GlitchgrabEventFeed";
 import { MarqueeText } from "./SourceSelector";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
@@ -481,6 +482,11 @@ function LaunchWindowContent() {
 						onMouseEnter={handleHudMouseEnter}
 						onMouseLeave={handleHudMouseLeave}
 					>
+						{recording && (
+							<div className="mb-2 launch-theme">
+								<GlitchgrabEventFeed />
+							</div>
+						)}
 						<div
 							ref={hudBarTransformRef}
 							style={{
