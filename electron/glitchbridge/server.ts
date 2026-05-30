@@ -12,6 +12,30 @@ function getSessionCachePath() {
   return path.join(app.getPath("userData"), "glitchgrab-last-session.json");
 }
 
+// ── Unified debug log ─────────────────────────────────────────
+// Both the Chrome extension (via WS "log" messages) and GlitchRecord itself
+// append here, so the whole capture pipeline is inspectable in one file:
+//   <userData>/glitchgrab-debug.log
+// Dev userData is ~/Library/Application Support/Recordly-dev on macOS.
+function getDebugLogPath() {
+  return path.join(app.getPath("userData"), "glitchgrab-debug.log");
+}
+
+let debugLogResetDone = false;
+export function appendDebugLog(source: "ext" | "rec", text: string) {
+  try {
+    const ts = new Date().toISOString();
+    const line = `[${ts}] [${source}] ${text}\n`;
+    const file = getDebugLogPath();
+    // Truncate once per app launch so the file doesn't grow forever.
+    if (!debugLogResetDone) {
+      fs.writeFileSync(file, `=== GlitchGrab debug log — session opened ${ts} ===\n`, "utf8");
+      debugLogResetDone = true;
+    }
+    fs.appendFileSync(file, line, "utf8");
+  } catch { /* logging must never throw */ }
+}
+
 function persistSession(session: Session) {
   try {
     fs.writeFileSync(
@@ -40,6 +64,7 @@ const chromeClients = new Set<WebSocket>();
 let wss: WebSocketServer | null = null;
 let currentUser: { id: string; name: string; token: string } | null = null;
 let currentSession: Session | null = null;
+let recordingActive = false; // true between recording start and stop
 
 // Load token from disk (set during GlitchRecord login) so the bridge is
 // authenticated without needing a WS auth handshake.
@@ -99,12 +124,32 @@ export function startBridgeServer(callbacks: {
     const url = new URL(req.url ?? "/", `http://localhost`);
     const role = url.searchParams.get("role") ?? "unknown";
     console.log(`[GlitchBridge] Connected: ${role}`);
+    appendDebugLog("rec", `WS client connected: ${role}`);
 
-    if (role === "chrome") chromeClients.add(ws);
+    if (role === "chrome") {
+      chromeClients.add(ws);
+      // Start-before-connect resync: if a recording is already active when the
+      // extension (re)connects, replay recording:start so it begins capturing.
+      if (currentSession && recordingActive) {
+        send(ws, {
+          type: "recording:start",
+          sessionId: currentSession.id,
+          repoId: currentSession.repoId,
+          repoName: currentSession.repoName,
+        });
+        appendDebugLog("rec", `Resynced recording:start to reconnected chrome (${currentSession.id})`);
+      }
+    }
 
     ws.on("message", async (raw) => {
       let msg: WsMsg;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
+
+      // Debug log line forwarded from the Chrome extension
+      if (msg.type === "log") {
+        appendDebugLog("ext", msg.text);
+        return;
+      }
 
       // Live event stream from Chrome ext → forward to renderer feed
       if (msg.type === "event:live") {
@@ -126,15 +171,36 @@ export function startBridgeServer(callbacks: {
 
       // Chrome ext uploads events — always accept, auth only needed for issue creation
       if (msg.type === "events:upload") {
-        const session = sessions.get(msg.sessionId);
-        if (!session) return;
+        // Fall back to the current session if the id doesn't match (bridge restart,
+        // HTTP-signal start, etc.) so events are never silently dropped.
+        let session = sessions.get(msg.sessionId);
+        if (!session && currentSession) {
+          appendDebugLog("rec", `events:upload unknown id ${msg.sessionId} → using current session ${currentSession.id}`);
+          session = currentSession;
+        }
+        if (!session) {
+          appendDebugLog("rec", `events:upload DROPPED — no session for ${msg.sessionId}`);
+          send(ws, { type: "error", message: "Unknown session — events dropped" });
+          return;
+        }
         session.events.push(...(msg.events as CaptureEvent[]));
         persistSession(session);
         eventsReadyCb?.(session.id, session.events.length);
+        appendDebugLog("rec", `events:upload received ${msg.events.length} (total ${session.events.length}) for ${session.id}`);
+
+        // Idempotency: a session is finalized once. Double-stop (HUD + universal
+        // hook both fire recording:stop) must not re-run upload/script/issue,
+        // which would create duplicate GitHub issues.
+        if (session.finalized) {
+          appendDebugLog("rec", `events:upload ignored — session ${session.id} already finalized`);
+          return;
+        }
+        session.finalized = true;
 
         // Skip DB upload + issue creation when not logged in
         if (!currentUser) {
           console.log(`[GlitchBridge] ${session.events.length} events saved locally (not logged in)`);
+          appendDebugLog("rec", `${session.events.length} events saved locally (not logged in)`);
           return;
         }
 
@@ -200,17 +266,26 @@ export function broadcastRecordingStart(repoId: string, repoName: string): strin
   };
   sessions.set(sessionId, session);
   currentSession = session;
+  recordingActive = true;
   broadcastChrome({ type: "recording:start", sessionId, repoId, repoName });
   console.log(`[GlitchBridge] Recording started: ${sessionId} → ${repoName}`);
+  appendDebugLog("rec", `Recording started: ${sessionId} → ${repoName} (chromeClients=${chromeClients.size})`);
   return sessionId;
 }
 
-// Called when user presses Stop + edit cuts are collected
+// Called when user presses Stop + edit cuts are collected.
+// Idempotent: the second of a double-stop (HUD + universal hook) is a no-op.
 export function broadcastRecordingStop(sessionId: string, meta: RecordingMeta) {
-  const session = sessions.get(sessionId);
-  if (session) session.meta = meta;
+  if (!recordingActive) return;
+  recordingActive = false;
+  const session = sessions.get(sessionId) ?? currentSession ?? undefined;
+  // Only set meta if it has real content — empty {} would overwrite good cut data.
+  if (session && meta && Array.isArray((meta as RecordingMeta).cutRanges)) {
+    session.meta = meta;
+  }
   broadcastChrome({ type: "recording:stop", sessionId, meta });
   console.log(`[GlitchBridge] Recording stopped: ${sessionId}`);
+  appendDebugLog("rec", `Recording stopped: ${sessionId} (events=${session?.events.length ?? 0})`);
 }
 
 export function getCurrentUser() { return currentUser; }
@@ -235,8 +310,12 @@ export async function fetchUserRepos() {
 }
 
 function buildIssueBody(session: Session): string {
-  const duration = session.meta
-    ? `${Math.round(session.meta.finalDurationMs / 1000)}s (${session.meta.cutRanges.length} cuts)`
-    : "unknown";
+  // Guard on SHAPE, not truthiness — an empty {} meta is truthy but has no
+  // finalDurationMs/cutRanges, which would throw and abort issue creation.
+  const m = session.meta;
+  const duration =
+    m && typeof m.finalDurationMs === "number" && Array.isArray(m.cutRanges)
+      ? `${Math.round(m.finalDurationMs / 1000)}s (${m.cutRanges.length} cuts)`
+      : "unknown";
   return `## GlitchRecord Session\n\n**Repo:** ${session.repoName}\n**Duration:** ${duration}\n**Events:** ${session.events.length}\n\n## Script\n\n${session.script ?? "Not generated."}\n\n## Events\n\n<details><summary>Raw events (${session.events.length})</summary>\n\n\`\`\`json\n${JSON.stringify(session.events, null, 2)}\n\`\`\`\n\n</details>\n\n---\n*Generated by [GlitchRecord](https://github.com/Navibyte-Innovations-Pvt-Ltd/glitchrecord)*`;
 }
