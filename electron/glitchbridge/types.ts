@@ -28,6 +28,7 @@ export interface CaptureEvent {
   url?: string;
   durationMs?: number;
   preview?: string;
+  meta?: Record<string, string>;
 }
 
 export type WsMsg =
