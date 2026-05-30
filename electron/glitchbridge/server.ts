@@ -1,9 +1,36 @@
 // WebSocket server running inside GlitchRecord Electron main process.
 // Chrome extension connects here for real-time recording sync.
+import fs from "node:fs";
+import path from "node:path";
+import { app } from "electron";
 import { WebSocketServer, WebSocket } from "ws";
 import type { Session, WsMsg, RecordingMeta, CaptureEvent } from "./types";
 import { validateToken, getRepos, createIssue, generateScript, uploadSession } from "./api";
 import { loadAuth } from "./auth";
+
+function getSessionCachePath() {
+  return path.join(app.getPath("userData"), "glitchgrab-last-session.json");
+}
+
+function persistSession(session: Session) {
+  try {
+    fs.writeFileSync(
+      getSessionCachePath(),
+      JSON.stringify({ events: session.events, sessionId: session.id }),
+      "utf8",
+    );
+  } catch { /* non-critical */ }
+}
+
+export function loadPersistedSession(): { events: CaptureEvent[]; sessionId: string | null } {
+  try {
+    const raw = fs.readFileSync(getSessionCachePath(), "utf8");
+    const data = JSON.parse(raw) as { events?: CaptureEvent[]; sessionId?: string };
+    return { events: Array.isArray(data.events) ? data.events : [], sessionId: data.sessionId ?? null };
+  } catch {
+    return { events: [], sessionId: null };
+  }
+}
 
 const PORT = 7337;
 
@@ -99,6 +126,7 @@ export function startBridgeServer(callbacks: {
         const session = sessions.get(msg.sessionId);
         if (!session) return;
         session.events.push(...(msg.events as CaptureEvent[]));
+        persistSession(session);
 
         // 1. Persist events to a DB capture session (in-memory bridge id ≠ DB id)
         const dbSessionId = await uploadSession({
