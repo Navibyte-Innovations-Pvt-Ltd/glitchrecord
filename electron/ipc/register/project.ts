@@ -506,6 +506,33 @@ export function registerProjectHandlers() {
     }
   })
 
+  // List raw screen recordings (the .mp4 files) so the launcher can show a
+  // "Recent Recordings" gallery — recordings aren't saved projects, so the
+  // project library never shows them and the user can't find their footage.
+  ipcMain.handle('list-recordings', async () => {
+    try {
+      const names = await fs.readdir(RECORDINGS_DIR).catch(() => [] as string[])
+      const mp4s = names.filter((n) => n.endsWith('.mp4') && !n.includes('.tmp'))
+      const entries = await Promise.all(
+        mp4s.map(async (name) => {
+          const filePath = path.join(RECORDINGS_DIR, name)
+          try {
+            const st = await fs.stat(filePath)
+            return { path: filePath, name, sizeBytes: st.size, mtimeMs: st.mtimeMs }
+          } catch {
+            return null
+          }
+        }),
+      )
+      const list = entries
+        .filter((e): e is NonNullable<typeof e> => e !== null && e.sizeBytes > 0)
+        .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      return { success: true, recordingsDir: RECORDINGS_DIR, entries: list }
+    } catch (error) {
+      return { success: false, recordingsDir: RECORDINGS_DIR, entries: [], error: String(error) }
+    }
+  })
+
   ipcMain.handle('open-project-file-at-path', async (_, filePath: string) => {
     try {
       return await loadProjectFromPath(filePath)
