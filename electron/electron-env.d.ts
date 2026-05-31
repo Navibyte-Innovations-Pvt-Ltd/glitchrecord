@@ -779,6 +779,10 @@ interface Window {
 			entries: Array<{ path: string; name: string; sizeBytes: number; mtimeMs: number }>;
 			error?: string;
 		}>;
+		getRecordingThumbnail: (
+			filePath: string,
+		) => Promise<{ success: boolean; thumbnailPath?: string }>;
+		deleteRecording: (filePath: string) => Promise<{ success: boolean; error?: string }>;
 		openProjectFileAtPath: (filePath: string) => Promise<{
 			success: boolean;
 			path?: string;
