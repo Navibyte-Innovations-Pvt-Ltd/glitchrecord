@@ -1013,6 +1013,21 @@ app.whenReady().then(async () => {
 		return { ok: true };
 	});
 
+	// Whether a Sarvam key is already saved in tts/.env (so the UI need not ask for it).
+	ipcMain.handle("narration-key-status", async () => {
+		try {
+			const envPath = path.join(process.env.APP_ROOT ?? process.cwd(), "tts", ".env");
+			if (!fssync.existsSync(envPath)) return { hasSarvamKey: false };
+			const body = await fs.readFile(envPath, "utf8");
+			const hasSarvamKey = body
+				.split("\n")
+				.some((line) => /^\s*SARVAM_API_KEY\s*=\s*\S+/.test(line));
+			return { hasSarvamKey };
+		} catch {
+			return { hasSarvamKey: false };
+		}
+	});
+
 	// Generate narration audio from a script via the local TTS (apps/glitchrecord/tts).
 	ipcMain.handle(
 		"generate-narration",
