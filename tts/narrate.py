@@ -186,11 +186,13 @@ def generate_sarvam(text, args, device):
     sr = None
     for i, ch in enumerate(chunks, 1):
         print(f"[narrate] chunk {i}/{n}", file=sys.stderr, flush=True)
+        pace = max(0.3, min(3.0, float(getattr(args, "pace", 1.0) or 1.0)))
         body = json.dumps({
             "text": ch,
             "target_language_code": tlc,
             "model": "bulbul:v3",
             "speaker": speaker,
+            "pace": pace,
             "output_audio_codec": "wav",
         }).encode()
         req = urllib.request.Request(
@@ -286,6 +288,7 @@ def main() -> int:
     p.add_argument("--lang", default="en", help="[xtts] language code (en recommended for Roman Hinglish)")
     p.add_argument("--speaker", default=None, help="[xtts] built-in speaker name")
     p.add_argument("--speaker-wav", default=None, help="[xtts] path to a voice sample to clone")
+    p.add_argument("--pace", type=float, default=1.0, help="[sarvam] speaking speed 0.3–3.0 (1.0 = normal, higher = faster/shorter)")
     p.add_argument("--device", default=None, help="cuda | mps | cpu (auto if omitted)")
     p.add_argument("--check", action="store_true", help="Validate setup without generating")
     args = p.parse_args()
