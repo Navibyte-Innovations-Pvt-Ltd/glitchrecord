@@ -29,6 +29,7 @@ interface GlitchgrabAPI {
 	getEvents?: () => Promise<{ events: CaptureEvent[]; sessionId: string | null }>;
 	onLiveEvent: (cb: (event: CaptureEvent) => void) => () => void;
 	onEventsReady?: (cb: (data: { sessionId: string; count: number }) => void) => () => void;
+	onSessionReset?: (cb: () => void) => () => void;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -177,6 +178,15 @@ export function GlitchgrabLogPanel() {
 		});
 		return () => unsub?.();
 	}, [loadEvents]);
+
+	// "New Recording" pressed → clear the panel immediately
+	useEffect(() => {
+		const unsub = gg()?.onSessionReset?.(() => {
+			setEvents([]);
+			setLoading(false);
+		});
+		return () => unsub?.();
+	}, []);
 
 	// Auto-scroll to bottom on new events
 	useEffect(() => {
