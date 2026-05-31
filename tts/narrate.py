@@ -93,19 +93,55 @@ def generate_indic_parler(text, args, device):
     return out
 
 
+def chunk_text(text, maxlen=220):
+    """Split into sentence-ish chunks so we can synthesize incrementally and
+    report real progress (chunk i/N)."""
+    sents = re.split(r"(?<=[.!?।])\s+", text)
+    chunks, cur = [], ""
+    for s in sents:
+        s = s.strip()
+        if not s:
+            continue
+        if len(cur) + len(s) + 1 <= maxlen:
+            cur = (cur + " " + s).strip()
+        else:
+            if cur:
+                chunks.append(cur)
+            cur = s
+    if cur:
+        chunks.append(cur)
+    return chunks or [text]
+
+
 def generate_xtts(text, args, device):
-    """Coqui XTTS-v2 — better cloning, but CPML NON-COMMERCIAL. Opt-in only."""
+    """Coqui XTTS-v2 — better cloning, but CPML NON-COMMERCIAL. Opt-in only.
+    Synthesizes chunk-by-chunk and prints `[narrate] chunk i/N` so the UI can
+    show real progress instead of an open-ended timer."""
+    import numpy as np
+    import soundfile as sf
     from TTS.api import TTS
+
     print("[narrate] XTTS-v2 — NON-COMMERCIAL license (your responsibility)", file=sys.stderr)
     tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
-    print("[narrate] generating…", file=sys.stderr, flush=True)
+    sr = getattr(tts.synthesizer, "output_sample_rate", 24000)
+
+    chunks = chunk_text(text)
+    n = len(chunks)
+    parts = []
+    gap = np.zeros(int(sr * 0.25), dtype=np.float32)  # 250ms between chunks
+    for i, ch in enumerate(chunks, 1):
+        print(f"[narrate] chunk {i}/{n}", file=sys.stderr, flush=True)
+        kwargs = {"text": ch, "language": args.lang}
+        if args.speaker_wav:
+            kwargs["speaker_wav"] = args.speaker_wav
+        else:
+            kwargs["speaker"] = args.speaker or "Ana Florence"
+        wav = np.asarray(tts.tts(**kwargs), dtype=np.float32)
+        parts.append(wav)
+        parts.append(gap)
+
     out = os.path.abspath(args.out)
-    kwargs = {"text": text, "language": args.lang, "file_path": out}
-    if args.speaker_wav:
-        kwargs["speaker_wav"] = args.speaker_wav  # clone from a sample
-    else:
-        kwargs["speaker"] = args.speaker or "Ana Florence"  # built-in preset
-    tts.tts_to_file(**kwargs)
+    sf.write(out, np.concatenate(parts), sr)
     return out
 
 
