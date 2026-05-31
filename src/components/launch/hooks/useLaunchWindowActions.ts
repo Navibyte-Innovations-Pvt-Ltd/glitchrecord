@@ -6,6 +6,28 @@ export function useLaunchWindowActions() {
 	const [selectedSource, setSelectedSource] = useState("Screen");
 	const [hasSelectedSource, setHasSelectedSource] = useState(false);
 	const [projectLibraryEntries, setProjectLibraryEntries] = useState<ProjectLibraryEntry[]>([]);
+	const [recentRecordings, setRecentRecordings] = useState<
+		Array<{ path: string; name: string; sizeBytes: number; mtimeMs: number }>
+	>([]);
+
+	const refreshRecordings = useCallback(async () => {
+		try {
+			const result = await window.electronAPI.listRecordings();
+			if (result.success) setRecentRecordings(result.entries);
+		} catch (error) {
+			console.error("Failed to list recordings:", error);
+		}
+	}, []);
+
+	// Open a raw recording (.mp4) straight into the editor.
+	const openRecording = useCallback(async (recordingPath: string) => {
+		try {
+			await window.electronAPI.setCurrentVideoPath(recordingPath);
+			await window.electronAPI.switchToEditor();
+		} catch (error) {
+			console.error("Failed to open recording:", error);
+		}
+	}, []);
 
 	const handleSourceSelect = useCallback(async (source: DesktopSource) => {
 		await window.electronAPI.selectSource(source);
@@ -64,10 +86,13 @@ export function useLaunchWindowActions() {
 		selectedSource,
 		hasSelectedSource,
 		projectLibraryEntries,
+		recentRecordings,
 		handleSourceSelect,
 		openVideoFile,
+		openRecording,
 		openProjectFromLibrary,
 		syncSelectedSource,
 		refreshProjectLibrary,
+		refreshRecordings,
 	};
 }
