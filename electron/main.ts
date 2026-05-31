@@ -961,6 +961,34 @@ app.whenReady().then(async () => {
 	ipcMain.handle("glitchbridge:recording-stop", (_e, sessionId: string, meta: unknown) => {
 		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
 	});
+
+	// Standalone Narration Tester — paste a script → generate audio, no recording.
+	let narrationTesterWindow: BrowserWindow | null = null;
+	ipcMain.handle("open-narration-tester", () => {
+		if (narrationTesterWindow && !narrationTesterWindow.isDestroyed()) {
+			narrationTesterWindow.show();
+			narrationTesterWindow.focus();
+			return { ok: true };
+		}
+		const win = new BrowserWindow({
+			width: 460,
+			height: 580,
+			title: "Narration Tester",
+			backgroundColor: "#0f0f12",
+			webPreferences: {
+				preload: path.join(MAIN_DIST, "preload.mjs"),
+				contextIsolation: true,
+				nodeIntegration: false,
+			},
+		});
+		void win.loadFile(path.join(process.env.APP_ROOT ?? process.cwd(), "tts", "narration-tester.html"));
+		narrationTesterWindow = win;
+		win.on("closed", () => {
+			if (narrationTesterWindow === win) narrationTesterWindow = null;
+		});
+		return { ok: true };
+	});
+
 	// Bring back the recorder HUD from the editor ("New Recording" button).
 	ipcMain.handle("open-recorder", () => {
 		// After the editor opens, `mainWindow` points at the EDITOR, so
