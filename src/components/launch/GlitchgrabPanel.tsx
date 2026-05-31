@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import styles from "./LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./popovers/LaunchPopoverCoordinator";
 import { HudPopover, DropdownItem } from "./popovers/PopoverScaffold";
+import { bareName, orgName } from "./repoName";
 
 const POPOVER_ID = "glitchgrab";
 
@@ -85,10 +86,6 @@ export function GlitchgrabPopover({ onOpen }: { onOpen?: () => void }) {
 
 	const loggedIn = status?.loggedIn ?? false;
 	// fullName is "org/repo" — show just the repo for a clean, readable label.
-	const bareName = (full?: string | null) =>
-		full && full.includes("/") ? full.split("/").pop()! : (full ?? "");
-	const orgName = (full?: string | null) =>
-		full && full.includes("/") ? full.slice(0, full.lastIndexOf("/")) : "";
 	const triggerLabel = loggedIn
 		? (status?.selectedRepoName ? bareName(status.selectedRepoName) : "Select repo")
 		: "Connect Glitchgrab";
