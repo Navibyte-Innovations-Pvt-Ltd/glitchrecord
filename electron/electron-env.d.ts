@@ -223,6 +223,10 @@ interface Window {
 		switchToEditor: () => Promise<void>;
 		openRecorder: () => Promise<{ ok: boolean }>;
 		writeClipboard: (text: string) => Promise<{ ok: boolean }>;
+		generateNarration: (
+			text: string,
+			opts?: { engine?: string; lang?: string; speaker?: string },
+		) => Promise<{ ok: boolean; path?: string; error?: string }>;
 		openSourceSelector: () => Promise<void>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
 		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;
