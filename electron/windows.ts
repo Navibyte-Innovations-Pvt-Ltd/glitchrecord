@@ -960,6 +960,75 @@ export function createEditorWindow(): BrowserWindow {
 	return win;
 }
 
+// ── Home window ──────────────────────────────────────────────────────────────
+// A NORMAL window (titlebar, dock entry, resizable) shown on launch so the user
+// always has a findable surface — unlike the transparent always-on-top HUD bar,
+// which is easy to lose. Lists recordings/projects + a New Recording button.
+let homeWindow: BrowserWindow | null = null;
+
+export function getHomeWindow(): BrowserWindow | null {
+	return homeWindow && !homeWindow.isDestroyed() ? homeWindow : null;
+}
+
+export function createHomeWindow(): BrowserWindow {
+	const existing = getHomeWindow();
+	if (existing) {
+		if (existing.isMinimized()) existing.restore();
+		existing.show();
+		existing.focus();
+		return existing;
+	}
+
+	const isMac = process.platform === "darwin";
+	const { workAreaSize } = getScreen().getPrimaryDisplay();
+	const width = Math.min(1040, Math.round(workAreaSize.width * 0.7));
+	const height = Math.min(720, Math.round(workAreaSize.height * 0.78));
+
+	const win = new BrowserWindow({
+		width,
+		height,
+		minWidth: 720,
+		minHeight: 480,
+		...(process.platform !== "darwin" && { icon: WINDOW_ICON_PATH }),
+		...(isMac && {
+			titleBarStyle: "hiddenInset",
+			trafficLightPosition: { x: 12, y: 14 },
+		}),
+		autoHideMenuBar: !isMac,
+		transparent: false,
+		resizable: true,
+		alwaysOnTop: false,
+		skipTaskbar: false,
+		title: "GlitchRecord",
+		show: false,
+		backgroundColor: "#0b0b0d",
+		webPreferences: {
+			preload: path.join(electronWindowsDir, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true,
+			webSecurity: false,
+			backgroundThrottling: false,
+		},
+	});
+	homeWindow = win;
+
+	win.once("ready-to-show", () => win.show());
+	win.webContents.on("did-finish-load", () => {
+		if (!win.isDestroyed() && !win.isVisible()) win.show();
+	});
+	win.on("closed", () => {
+		if (homeWindow === win) homeWindow = null;
+	});
+
+	if (VITE_DEV_SERVER_URL) {
+		win.loadURL(`${VITE_DEV_SERVER_URL}?windowType=home`);
+	} else {
+		win.loadFile(path.join(RENDERER_DIST, "index.html"), { query: { windowType: "home" } });
+	}
+
+	return win;
+}
+
 export function createSourceSelectorWindow(): BrowserWindow {
 	const { width, height } = getScreen().getPrimaryDisplay().workAreaSize;
 
