@@ -839,6 +839,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	listProjectFiles: () => {
 		return ipcRenderer.invoke("list-project-files");
 	},
+	listRecordings: () =>
+		ipcRenderer.invoke("list-recordings") as Promise<{
+			success: boolean;
+			recordingsDir: string;
+			entries: Array<{ path: string; name: string; sizeBytes: number; mtimeMs: number }>;
+			error?: string;
+		}>,
 	openProjectFileAtPath: (filePath: string) => {
 		return ipcRenderer.invoke("open-project-file-at-path", filePath);
 	},
