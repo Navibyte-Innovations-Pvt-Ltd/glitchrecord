@@ -1016,7 +1016,7 @@ app.whenReady().then(async () => {
 	// Generate narration audio from a script via the local TTS (apps/glitchrecord/tts).
 	ipcMain.handle(
 		"generate-narration",
-		async (_e, text: string, opts?: { engine?: string; lang?: string; speaker?: string }) => {
+		async (_e, text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string }) => {
 			try {
 				if (!text || !text.trim()) return { ok: false, error: "Empty script" };
 				const ttsDir = path.join(process.env.APP_ROOT ?? process.cwd(), "tts");
@@ -1032,11 +1032,15 @@ app.whenReady().then(async () => {
 				const tmpTxt = path.join(outDir, `script-${stamp}.txt`);
 				const outWav = path.join(outDir, `narration-${stamp}.wav`);
 				await fs.writeFile(tmpTxt, text, "utf8");
+				// One "voice" value from the UI; narrate.py reads --voice (supertonic)
+				// or --speaker (xtts), so pass it to both — each engine uses its own.
+				const voice = opts?.voice ?? opts?.speaker ?? "M1";
 				const args = [
 					script,
-					"--engine", opts?.engine ?? "xtts",
-					"--lang", opts?.lang ?? "en", // en reads Roman Hinglish cleanly; hi crashes XTTS
-					"--speaker", opts?.speaker ?? "Ana Florence",
+					"--engine", opts?.engine ?? "supertonic",
+					"--lang", opts?.lang ?? "hi",
+					"--voice", voice,
+					"--speaker", voice,
 					"--text-file", tmpTxt,
 					"--out", outWav,
 				];
