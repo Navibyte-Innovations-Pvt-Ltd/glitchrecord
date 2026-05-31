@@ -2944,6 +2944,45 @@ export default function VideoEditor() {
 		};
 	}, [clearPendingProjectAutosave, currentProjectPath, hasUnsavedChanges, saveProject]);
 
+	// ── Crash-recovery draft (localStorage, renderer-only) ────────────────────
+	// A fresh recording has no project file, so the project autosave above never
+	// runs and any edits vanish on a reload/restart. Persist the working snapshot
+	// to localStorage keyed by the video path (debounced) and restore it when the
+	// same recording reopens — so edits survive HMR remounts AND full restarts.
+	const draftRestoredPathRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		// Only for fresh recordings (no project file — the real autosave owns those).
+		if (currentProjectPath || !currentSourcePath || !currentProjectSnapshot) return;
+		if (!hasUnsavedChanges) return;
+		const key = `gg.draft.v1:${currentSourcePath}`;
+		const id = window.setTimeout(() => {
+			try {
+				localStorage.setItem(key, JSON.stringify(currentProjectSnapshot));
+			} catch {
+				/* quota / serialization — best effort */
+			}
+		}, 1200);
+		return () => window.clearTimeout(id);
+	}, [currentProjectPath, currentSourcePath, currentProjectSnapshot, hasUnsavedChanges]);
+
+	useEffect(() => {
+		// Restore a draft once per fresh recording, after it has loaded.
+		if (currentProjectPath || !currentSourcePath) return;
+		if (draftRestoredPathRef.current === currentSourcePath) return;
+		draftRestoredPathRef.current = currentSourcePath;
+		try {
+			const raw = localStorage.getItem(`gg.draft.v1:${currentSourcePath}`);
+			if (!raw) return;
+			const draft = JSON.parse(raw);
+			if (draft && typeof draft === "object") {
+				void applyLoadedProject(draft, null);
+			}
+		} catch {
+			/* corrupt draft — ignore */
+		}
+	}, [currentProjectPath, currentSourcePath, applyLoadedProject]);
+
 	/**
 	 * Saves the current project directly into the projects library under a chosen name.
 	 */
