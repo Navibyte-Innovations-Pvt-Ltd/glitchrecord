@@ -11,11 +11,13 @@ export function useLaunchWindowActions() {
 		await window.electronAPI.selectSource(source);
 		setSelectedSource(source.name);
 		setHasSelectedSource(true);
-		window.electronAPI.showSourceHighlight?.({
-			...source,
-			name: source.appName ? `${source.appName} — ${source.name}` : source.name,
-			appName: source.appName,
-		});
+		// DIAGNOSTIC (multi-display window-shuffle bug): highlight overlay disabled
+		// to test whether it is what drags windows to the primary display.
+		// window.electronAPI.showSourceHighlight?.({
+		// 	...source,
+		// 	name: source.appName ? `${source.appName} — ${source.name}` : source.name,
+		// 	appName: source.appName,
+		// });
 	}, []);
 
 	const openVideoFile = useCallback(async () => {
