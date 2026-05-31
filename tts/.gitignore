@@ -1,0 +1,7 @@
+# Local TTS artifacts — never commit
+.venv/
+__pycache__/
+*.wav
+*.log
+*.txt
+!requirements.txt
