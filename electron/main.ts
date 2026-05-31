@@ -1055,8 +1055,13 @@ app.whenReady().then(async () => {
 						err += s;
 						// Surface meaningful stages to the UI.
 						for (const line of s.split("\n")) {
-							if (line.includes("loading") || line.includes("downloads")) sendProgress("Loading model…");
-							else if (line.includes("[narrate] generating") || line.includes("Processing")) sendProgress("Synthesizing voice…");
+							const chunk = line.match(/\[narrate\] chunk (\d+)\/(\d+)/);
+							if (chunk) {
+								const [, i, n] = chunk;
+								sendProgress(`Synthesizing ${i}/${n}`);
+							} else if (line.includes("loading") || line.includes("downloads")) {
+								sendProgress("Loading model…");
+							}
 						}
 					});
 					child.on("error", (e) => resolve({ ok: false, error: String(e) }));
