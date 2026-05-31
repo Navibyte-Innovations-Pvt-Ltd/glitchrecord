@@ -9,6 +9,7 @@ import {
 	TimerIcon,
 	VideoCameraIcon,
 	VideoCameraSlashIcon,
+	WaveformIcon,
 	XIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
@@ -276,6 +277,19 @@ function LaunchWindowContent() {
 			)}
 
 			<GlitchgrabPopover onOpen={beginInteractiveHudAction} />
+
+			<Button
+				variant="ghost"
+				size="icon"
+				className={`${styles.electronNoDrag} h-9 w-9 shrink-0 rounded-[11px] text-[var(--launch-text)] hover:bg-[var(--launch-hover)]`}
+				title="Narration tester — script → audio"
+				onClick={() =>
+					(window as unknown as { electronAPI?: { openNarrationTester?: () => void } })
+						.electronAPI?.openNarrationTester?.()
+				}
+			>
+				<WaveformIcon size={18} />
+			</Button>
 
 			<Separator orientation="vertical" className="mx-[5px] h-6" />
 
