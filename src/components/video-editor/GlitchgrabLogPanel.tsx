@@ -137,6 +137,7 @@ export function GlitchgrabLogPanel() {
 	const [narrationError, setNarrationError] = useState<string | null>(null);
 	const [narrationStage, setNarrationStage] = useState("");
 	const [narrationElapsed, setNarrationElapsed] = useState(0);
+	const [tab, setTab] = useState<"events" | "narration">("events");
 	// TTS model/voice settings — restored from localStorage so the user picks once.
 	const [engine, setEngine] = useState(() => localStorage.getItem("gg.tts.engine") || "sarvam");
 	const [lang, setLang] = useState(() => localStorage.getItem("gg.tts.lang") || "hi");
@@ -305,36 +306,66 @@ export function GlitchgrabLogPanel() {
 
 	return (
 		<div className="flex h-full w-[260px] flex-col gap-3 p-4">
-			{/* Header */}
+			{/* Title */}
 			<div className="flex items-center gap-2">
 				<Sparkle className="h-4 w-4 text-blue-500 shrink-0" />
-				<span className="text-[13px] font-semibold">GlitchGrab Events</span>
-				<div className="ml-auto flex items-center gap-1.5">
+				<span className="text-[13px] font-semibold">GlitchGrab</span>
+			</div>
+
+			{/* Tab bar */}
+			<div className="flex shrink-0 gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+				<button
+					type="button"
+					onClick={() => setTab("events")}
+					className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+						tab === "events"
+							? "bg-foreground/10 text-foreground"
+							: "text-foreground/50 hover:text-foreground/80"
+					}`}
+				>
+					<CursorClick className="h-3.5 w-3.5" /> Events
 					{events.length > 0 && (
-						<span className="text-[10px] text-foreground/40 font-mono">{events.length}</span>
+						<span className="font-mono text-[9px] text-foreground/40">{events.length}</span>
 					)}
-					<button
-						type="button"
-						onClick={copyAll}
-						disabled={events.length === 0}
-						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-						title="Copy all events to clipboard"
-					>
-						{copied ? (
-							<><Check className="h-3.5 w-3.5 text-green-500" /> Copied</>
-						) : (
-							<><ClipboardText className="h-3.5 w-3.5" /> Copy</>
-						)}
-					</button>
-					<button
-						type="button"
-						onClick={loadEvents}
-						className="rounded p-0.5 text-foreground/30 hover:text-foreground/60 transition-colors"
-						title="Refresh"
-					>
-						<ArrowClockwise className="h-3.5 w-3.5" />
-					</button>
-				</div>
+				</button>
+				<button
+					type="button"
+					onClick={() => setTab("narration")}
+					className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+						tab === "narration"
+							? "bg-foreground/10 text-foreground"
+							: "text-foreground/50 hover:text-foreground/80"
+					}`}
+				>
+					<Sparkle className="h-3.5 w-3.5" /> Narration
+				</button>
+			</div>
+
+			{tab === "events" && (
+			<>
+			{/* Events tab actions */}
+			<div className="flex items-center justify-end gap-1.5">
+				<button
+					type="button"
+					onClick={copyAll}
+					disabled={events.length === 0}
+					className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+					title="Copy all events to clipboard"
+				>
+					{copied ? (
+						<><Check className="h-3.5 w-3.5 text-green-500" /> Copied</>
+					) : (
+						<><ClipboardText className="h-3.5 w-3.5" /> Copy</>
+					)}
+				</button>
+				<button
+					type="button"
+					onClick={loadEvents}
+					className="rounded p-0.5 text-foreground/30 hover:text-foreground/60 transition-colors"
+					title="Refresh"
+				>
+					<ArrowClockwise className="h-3.5 w-3.5" />
+				</button>
 			</div>
 
 			{/* Event list */}
@@ -382,14 +413,15 @@ export function GlitchgrabLogPanel() {
 					))}
 				</div>
 			)}
+			</>
+			)}
 
 			{/* ── Narration generator ─────────────────────────────── */}
-			<div className="mt-auto shrink-0 border-t border-foreground/10 pt-3 flex flex-col gap-2">
+			{tab === "narration" && (
+			<div className="flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
 				<div className="flex items-center gap-2">
-					<Sparkle className="h-3.5 w-3.5 text-blue-500" />
-					<span className="text-[12px] font-semibold">Narration</span>
-					<span className="ml-auto text-[9px] font-mono uppercase tracking-wide text-foreground/30">
-						{engine}
+					<span className="text-[9px] font-mono uppercase tracking-wide text-foreground/30">
+						model: {engine}
 					</span>
 				</div>
 
@@ -489,6 +521,7 @@ export function GlitchgrabLogPanel() {
 					</div>
 				)}
 			</div>
+			)}
 		</div>
 	);
 }
