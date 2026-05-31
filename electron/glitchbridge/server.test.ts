@@ -3,6 +3,7 @@
 // events:upload), so the lost/duplicate/stale-event bugs are caught repeatably
 // without needing a live browser + Electron + recording.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { WebSocket } from "ws";
@@ -46,6 +47,8 @@ import {
 	broadcastRecordingStart,
 	broadcastRecordingStop,
 	getCurrentSession,
+	resetBridgeSession,
+	loadPersistedSession,
 } from "./server";
 
 const PORT = 7345;
@@ -99,6 +102,9 @@ const SAMPLE_EVENTS = [
 ];
 
 beforeAll(async () => {
+	// The mocked app.getPath("userData") points here — ensure it exists so
+	// persistSession()/appendDebugLog() can actually write.
+	fs.mkdirSync(path.join(os.tmpdir(), "gg-bridge-test"), { recursive: true });
 	startBridgeServer({
 		onScriptReady: () => {},
 		onIssueCreated: () => {},
@@ -194,6 +200,36 @@ describe("GlitchGrab bridge protocol", () => {
 		expect(getCurrentSession()?.id).toBe(sessionId);
 		expect(getCurrentSession()?.events).toHaveLength(3);
 
+		chrome.close();
+		broadcastRecordingStop(sessionId, {} as never);
+	});
+
+	it("resetBridgeSession (New Recording) clears the session + persisted cache", async () => {
+		const chrome = await connectChrome();
+		const startP = chrome.waitFor("recording:start");
+		const sessionId = broadcastRecordingStart("repoR", "Repo R");
+		await startP;
+		chrome.ws.send(JSON.stringify({ type: "events:upload", sessionId, events: SAMPLE_EVENTS }));
+		await tick();
+		expect(getCurrentSession()?.events).toHaveLength(3);
+		expect(loadPersistedSession().events.length).toBeGreaterThan(0);
+
+		resetBridgeSession();
+
+		expect(getCurrentSession()).toBeNull();
+		expect(loadPersistedSession().events).toHaveLength(0); // persisted cache wiped
+		chrome.close();
+	});
+
+	it("a fresh recording after reset starts with zero events", async () => {
+		resetBridgeSession();
+		const chrome = await connectChrome();
+		const startP = chrome.waitFor("recording:start");
+		const sessionId = broadcastRecordingStart("repoN", "Repo New");
+		await startP;
+		const s = getCurrentSession();
+		expect(s?.id).toBe(sessionId);
+		expect(s?.events).toHaveLength(0); // clean slate
 		chrome.close();
 		broadcastRecordingStop(sessionId, {} as never);
 	});
