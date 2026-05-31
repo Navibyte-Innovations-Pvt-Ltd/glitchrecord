@@ -76,6 +76,30 @@ function formatMs(ms: number): string {
 	return `${s}s`;
 }
 
+// TTS engines + voices — mirror the standalone Narration Tester window so the
+// editor panel exposes the same model/voice choices.
+const ENGINES: Array<[string, string]> = [
+	["sarvam", "Sarvam AI · cloud · native Hinglish"],
+	["supertonic", "Supertonic · local · Hindi"],
+	["xtts", "XTTS · local · Western"],
+];
+const VOICES: Record<string, Array<[string, string]>> = {
+	sarvam: [
+		["ritu", "Ritu (F)"], ["priya", "Priya (F)"], ["neha", "Neha (F)"],
+		["pooja", "Pooja (F)"], ["simran", "Simran (F)"], ["kavya", "Kavya (F)"],
+		["aditya", "Aditya (M)"], ["rahul", "Rahul (M)"], ["rohan", "Rohan (M)"],
+		["shubh", "Shubh (M)"], ["varun", "Varun (M)"], ["kabir", "Kabir (M)"],
+	],
+	supertonic: [
+		["F1", "F1 (female)"], ["F2", "F2 (female)"], ["F3", "F3 (female)"],
+		["M1", "M1 (male)"], ["M2", "M2 (male)"], ["M3", "M3 (male)"],
+	],
+	xtts: [
+		["Ana Florence", "Ana (F)"], ["Daisy Studious", "Daisy (F)"],
+		["Andrew Chipper", "Andrew (M)"], ["Damien Black", "Damien (M)"],
+	],
+};
+
 // Clipboard fallback for non-Electron / when native IPC is unavailable.
 function fallbackCopy(text: string, onDone: () => void) {
 	if (navigator.clipboard?.writeText) {
@@ -113,12 +137,30 @@ export function GlitchgrabLogPanel() {
 	const [narrationError, setNarrationError] = useState<string | null>(null);
 	const [narrationStage, setNarrationStage] = useState("");
 	const [narrationElapsed, setNarrationElapsed] = useState(0);
+	// TTS model/voice settings — restored from localStorage so the user picks once.
+	const [engine, setEngine] = useState(() => localStorage.getItem("gg.tts.engine") || "sarvam");
+	const [lang, setLang] = useState(() => localStorage.getItem("gg.tts.lang") || "hi");
+	const [voice, setVoice] = useState(() => localStorage.getItem("gg.tts.voice") || "ritu");
+	const [apiKey, setApiKey] = useState(() => localStorage.getItem("gg.tts.apiKey") || "");
 	const listRef = useRef<HTMLDivElement>(null);
+
+	// Keep voice valid for the selected engine; persist all choices.
+	useEffect(() => {
+		localStorage.setItem("gg.tts.engine", engine);
+		const valid = VOICES[engine] ?? [];
+		if (!valid.some(([v]) => v === voice)) setVoice(valid[0]?.[0] ?? "");
+	}, [engine, voice]);
+	useEffect(() => { localStorage.setItem("gg.tts.lang", lang); }, [lang]);
+	useEffect(() => { localStorage.setItem("gg.tts.voice", voice); }, [voice]);
+	useEffect(() => { localStorage.setItem("gg.tts.apiKey", apiKey); }, [apiKey]);
 
 	const electronAPI = () =>
 		(window as unknown as {
 			electronAPI?: {
-				generateNarration?: (t: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+				generateNarration?: (
+					t: string,
+					opts?: { engine?: string; lang?: string; voice?: string; apiKey?: string },
+				) => Promise<{ ok: boolean; path?: string; error?: string }>;
 				getLocalMediaUrl?: (p: string) => Promise<{ success: boolean; url?: string }>;
 				revealInFolder?: (p: string) => void;
 				onNarrationProgress?: (cb: (stage: string) => void) => () => void;
@@ -142,12 +184,21 @@ export function GlitchgrabLogPanel() {
 	const generateNarration = useCallback(async () => {
 		const api = electronAPI();
 		if (!api?.generateNarration || !narrationText.trim()) return;
+		if (engine === "sarvam" && !apiKey.trim()) {
+			setNarrationError("Sarvam needs an API key (get from dashboard.sarvam.ai).");
+			return;
+		}
 		setNarrating(true);
 		setNarrationError(null);
 		setNarrationUrl(null);
 		setNarrationStage("Starting…");
 		try {
-			const res = await api.generateNarration(narrationText);
+			const res = await api.generateNarration(narrationText, {
+				engine,
+				lang,
+				voice,
+				apiKey: apiKey.trim(),
+			});
 			if (res.ok && res.path) {
 				const media = await api.getLocalMediaUrl?.(res.path);
 				setNarrationUrl(media?.success ? (media.url ?? null) : null);
@@ -160,7 +211,7 @@ export function GlitchgrabLogPanel() {
 		} finally {
 			setNarrating(false);
 		}
-	}, [narrationText]);
+	}, [narrationText, engine, lang, voice, apiKey]);
 
 	const copyAll = useCallback(() => {
 		if (events.length === 0) return;
@@ -337,7 +388,61 @@ export function GlitchgrabLogPanel() {
 				<div className="flex items-center gap-2">
 					<Sparkle className="h-3.5 w-3.5 text-blue-500" />
 					<span className="text-[12px] font-semibold">Narration</span>
+					<span className="ml-auto text-[9px] font-mono uppercase tracking-wide text-foreground/30">
+						{engine}
+					</span>
 				</div>
+
+				{/* Model + voice pickers (mirror the Narration Tester window) */}
+				<div className="flex flex-col gap-1.5">
+					<label className="flex flex-col gap-0.5">
+						<span className="text-[9px] uppercase tracking-wide text-foreground/40">Model</span>
+						<select
+							value={engine}
+							onChange={(e) => setEngine(e.target.value)}
+							className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+						>
+							{ENGINES.map(([v, l]) => (
+								<option key={v} value={v}>{l}</option>
+							))}
+						</select>
+					</label>
+					<div className="flex gap-1.5">
+						<label className="flex flex-1 flex-col gap-0.5 min-w-0">
+							<span className="text-[9px] uppercase tracking-wide text-foreground/40">Voice</span>
+							<select
+								value={voice}
+								onChange={(e) => setVoice(e.target.value)}
+								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+							>
+								{(VOICES[engine] ?? []).map(([v, l]) => (
+									<option key={v} value={v}>{l}</option>
+								))}
+							</select>
+						</label>
+						<label className="flex flex-col gap-0.5 w-[72px] shrink-0">
+							<span className="text-[9px] uppercase tracking-wide text-foreground/40">Lang</span>
+							<select
+								value={lang}
+								onChange={(e) => setLang(e.target.value)}
+								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+							>
+								<option value="hi">Hindi</option>
+								<option value="en">Hinglish</option>
+							</select>
+						</label>
+					</div>
+					{engine === "sarvam" && (
+						<input
+							type="password"
+							value={apiKey}
+							onChange={(e) => setApiKey(e.target.value)}
+							placeholder="Sarvam API key (dashboard.sarvam.ai)"
+							className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+						/>
+					)}
+				</div>
+
 				<textarea
 					value={narrationText}
 					onChange={(e) => setNarrationText(e.target.value)}
