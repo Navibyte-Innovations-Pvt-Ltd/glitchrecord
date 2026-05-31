@@ -111,6 +111,8 @@ export function GlitchgrabLogPanel() {
 	const [narrating, setNarrating] = useState(false);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
 	const [narrationError, setNarrationError] = useState<string | null>(null);
+	const [narrationStage, setNarrationStage] = useState("");
+	const [narrationElapsed, setNarrationElapsed] = useState(0);
 	const listRef = useRef<HTMLDivElement>(null);
 
 	const electronAPI = () =>
@@ -119,8 +121,23 @@ export function GlitchgrabLogPanel() {
 				generateNarration?: (t: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
 				getLocalMediaUrl?: (p: string) => Promise<{ success: boolean; url?: string }>;
 				revealInFolder?: (p: string) => void;
+				onNarrationProgress?: (cb: (stage: string) => void) => () => void;
 			};
 		}).electronAPI;
+
+	// Live stage updates from the TTS process.
+	useEffect(() => {
+		const unsub = electronAPI()?.onNarrationProgress?.((stage) => setNarrationStage(stage));
+		return () => unsub?.();
+	}, []);
+
+	// Elapsed-seconds ticker while generating (XTTS has no clean %, so show time).
+	useEffect(() => {
+		if (!narrating) return;
+		setNarrationElapsed(0);
+		const id = setInterval(() => setNarrationElapsed((s) => s + 1), 1000);
+		return () => clearInterval(id);
+	}, [narrating]);
 
 	const generateNarration = useCallback(async () => {
 		const api = electronAPI();
@@ -128,6 +145,7 @@ export function GlitchgrabLogPanel() {
 		setNarrating(true);
 		setNarrationError(null);
 		setNarrationUrl(null);
+		setNarrationStage("Starting…");
 		try {
 			const res = await api.generateNarration(narrationText);
 			if (res.ok && res.path) {
@@ -334,11 +352,16 @@ export function GlitchgrabLogPanel() {
 					className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40"
 				>
 					{narrating ? (
-						<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+						<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> {narrationStage || "Generating…"} {narrationElapsed}s</>
 					) : (
 						<><Sparkle className="h-3.5 w-3.5" /> Generate narration</>
 					)}
 				</button>
+				{narrating && (
+					<p className="text-[10px] text-foreground/40 text-center">
+						First run loads the model (~20–40s). Later runs are faster.
+					</p>
+				)}
 				{narrationError && (
 					<div className="rounded-md bg-red-500/10 px-2 py-1.5 text-[10px] text-red-400 max-h-[60px] overflow-y-auto">
 						{narrationError}
