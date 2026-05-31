@@ -525,6 +525,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	writeClipboard: (text: string) => {
 		return ipcRenderer.invoke("clipboard-write-text", text);
 	},
+	generateNarration: (text: string, opts?: { engine?: string; lang?: string; speaker?: string }) => {
+		return ipcRenderer.invoke("generate-narration", text, opts) as Promise<{
+			ok: boolean;
+			path?: string;
+			error?: string;
+		}>;
+	},
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
