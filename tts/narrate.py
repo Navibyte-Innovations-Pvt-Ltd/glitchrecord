@@ -93,8 +93,15 @@ def clean_script(text: str, lang: str = "en", convert_numbers: bool = True) -> s
             continue
         s = re.sub(r"^#{1,6}\s*", "", s)     # ### headings
         s = re.sub(r"^[-*+]\s+", "", s)      # bullet markers
+        # Drop unspeakable strings (URLs, multi-segment paths, code in backticks).
+        s = re.sub(r"https?://\S+", "", s)               # URLs
+        s = re.sub(r"`[^`]*`", "", s)                     # `code` spans
+        s = re.sub(r"\S*/\S+/\S+", "", s)                 # /org/foo/bar paths
+        s = re.sub(r"\bgg_[A-Za-z0-9]+\b", "a token", s)  # gg_ tokens
         s = s.replace("**", "").replace("`", "")
-        lines.append(s)
+        s = re.sub(r"\s{2,}", " ", s).strip()            # collapse gaps left behind
+        if s:
+            lines.append(s)
     joined = " ".join(lines).strip()
     return numbers_to_words(joined, lang) if convert_numbers else joined
 
