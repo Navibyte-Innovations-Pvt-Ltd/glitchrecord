@@ -60,10 +60,10 @@ def numbers_to_words(text: str, lang: str = "en") -> str:
     return re.sub(r"\b\d{1,9}\b", repl, text)
 
 
-def clean_script(text: str, lang: str = "en") -> str:
+def clean_script(text: str, lang: str = "en", convert_numbers: bool = True) -> str:
     """Strip things that shouldn't be SPOKEN: [SECTION] headers, markdown
-    headings/rules/bullets, leftover markdown emphasis. Convert numbers to words.
-    Keep the prose."""
+    headings/rules/bullets, leftover markdown emphasis. Optionally convert
+    numbers to words. Keep the prose."""
     lines = []
     for raw in text.splitlines():
         s = raw.strip()
@@ -78,7 +78,7 @@ def clean_script(text: str, lang: str = "en") -> str:
         s = s.replace("**", "").replace("`", "")
         lines.append(s)
     joined = " ".join(lines).strip()
-    return numbers_to_words(joined, lang)
+    return numbers_to_words(joined, lang) if convert_numbers else joined
 
 
 def read_text(args) -> str:
@@ -87,7 +87,10 @@ def read_text(args) -> str:
             raw = f.read()
     else:
         raw = args.text or ""
-    return clean_script(raw, getattr(args, "lang", "en"))
+    # Sarvam reads digits + code-mix natively — keep numbers as-is. Local engines
+    # need digits converted to words to avoid mispronunciation/crashes.
+    convert = getattr(args, "engine", "") != "sarvam"
+    return clean_script(raw, getattr(args, "lang", "en"), convert)
 
 
 def generate_indic_parler(text, args, device):
@@ -133,6 +136,56 @@ def chunk_text(text, maxlen=220):
     if cur:
         chunks.append(cur)
     return chunks or [text]
+
+
+def generate_sarvam(text, args, device):
+    """Sarvam AI bulbul — cloud, native Hindi/Hinglish code-mix, commercial.
+    Needs SARVAM_API_KEY env. Chunks under the 2500-char limit."""
+    import base64
+    import io
+    import json
+    import os
+    import urllib.request
+    import numpy as np
+    import soundfile as sf
+
+    key = os.environ.get("SARVAM_API_KEY")
+    if not key:
+        raise RuntimeError("SARVAM_API_KEY not set — paste your Sarvam key in the tester")
+
+    tlc = {"hi": "hi-IN", "en": "en-IN"}.get(args.lang, args.lang if "-" in args.lang else "hi-IN")
+    speaker = args.voice or "shubh"
+    chunks = chunk_text(text, 2000)
+    n = len(chunks)
+    parts = []
+    sr = None
+    for i, ch in enumerate(chunks, 1):
+        print(f"[narrate] chunk {i}/{n}", file=sys.stderr, flush=True)
+        body = json.dumps({
+            "text": ch,
+            "target_language_code": tlc,
+            "model": "bulbul:v3",
+            "speaker": speaker,
+            "output_audio_codec": "wav",
+        }).encode()
+        req = urllib.request.Request(
+            "https://api.sarvam.ai/text-to-speech",
+            data=body,
+            headers={"api-subscription-key": key, "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r:
+                data = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"Sarvam API {e.code}: {e.read().decode()[:300]}")
+        arr, sr = sf.read(io.BytesIO(base64.b64decode(data["audios"][0])), dtype="float32")
+        if getattr(arr, "ndim", 1) > 1:
+            arr = arr[:, 0]
+        parts.append(arr)
+        parts.append(np.zeros(int(sr * 0.15), dtype=np.float32))
+    out = os.path.abspath(args.out)
+    sf.write(out, np.concatenate(parts), sr or 24000)
+    return out
 
 
 def generate_supertonic(text, args, device):
@@ -198,8 +251,8 @@ def main() -> int:
     p.add_argument("--text", help="Script text to narrate")
     p.add_argument("--text-file", help="Path to a .txt file with the script")
     p.add_argument("--out", default="narration.wav", help="Output .wav path")
-    p.add_argument("--engine", default="supertonic", choices=["supertonic", "indic-parler", "xtts"],
-                   help="supertonic = OpenRAIL-M commercial-safe, fast, Hindi (default); indic-parler = Apache (gated); xtts = non-commercial")
+    p.add_argument("--engine", default="supertonic", choices=["sarvam", "supertonic", "indic-parler", "xtts"],
+                   help="sarvam = cloud native Hinglish (needs key); supertonic = local commercial-safe (default); indic-parler = Apache (gated); xtts = non-commercial")
     p.add_argument("--voice", default="M1", help="[supertonic] preset voice name (M1, F1, …)")
     p.add_argument("--description", default=DEFAULT_DESCRIPTION, help="[indic-parler] preset voice description")
     p.add_argument("--model", default=None, help="[indic-parler] HF model id override")
@@ -236,8 +289,10 @@ def main() -> int:
         print("error: no text (use --text or --text-file)", file=sys.stderr)
         return 2
 
-    print(f"[narrate] engine={args.engine} on {device} (first run downloads the model)…", file=sys.stderr)
-    if args.engine == "supertonic":
+    print(f"[narrate] engine={args.engine} on {device}…", file=sys.stderr)
+    if args.engine == "sarvam":
+        out = generate_sarvam(text, args, device)
+    elif args.engine == "supertonic":
         out = generate_supertonic(text, args, device)
     elif args.engine == "xtts":
         out = generate_xtts(text, args, device)
