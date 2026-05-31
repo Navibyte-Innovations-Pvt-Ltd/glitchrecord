@@ -1036,7 +1036,7 @@ app.whenReady().then(async () => {
 	// Generate narration audio from a script via the local TTS (apps/glitchrecord/tts).
 	ipcMain.handle(
 		"generate-narration",
-		async (_e, text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string; apiKey?: string }) => {
+		async (_e, text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string; apiKey?: string; pace?: number }) => {
 			try {
 				if (!text || !text.trim()) return { ok: false, error: "Empty script" };
 				const ttsDir = path.join(process.env.APP_ROOT ?? process.cwd(), "tts");
@@ -1061,6 +1061,7 @@ app.whenReady().then(async () => {
 					"--lang", opts?.lang ?? "hi",
 					"--voice", voice,
 					"--speaker", voice,
+					"--pace", String(opts?.pace ?? 1.0),
 					"--text-file", tmpTxt,
 					"--out", outWav,
 				];
