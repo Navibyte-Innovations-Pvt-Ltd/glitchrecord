@@ -111,11 +111,14 @@ function LaunchWindowContent() {
 		selectedSource,
 		hasSelectedSource,
 		projectLibraryEntries,
+		recentRecordings,
 		handleSourceSelect,
 		openVideoFile,
+		openRecording,
 		openProjectFromLibrary,
 		syncSelectedSource,
 		refreshProjectLibrary,
+		refreshRecordings,
 	} = useLaunchWindowActions();
 
 	const showWebcamControls = webcamEnabled && !recording;
@@ -407,6 +410,12 @@ function LaunchWindowContent() {
 				<ProjectPopover
 					entries={projectLibraryEntries}
 					onOpenProject={openProjectFromLibrary}
+					recordings={recentRecordings}
+					onOpenRecording={openRecording}
+					onOpen={() => {
+						void refreshProjectLibrary();
+						void refreshRecordings();
+					}}
 					trigger={<div className="absolute inset-0 pointer-events-none opacity-0" />}
 				/>
 			</div>
@@ -424,6 +433,7 @@ function LaunchWindowContent() {
 					void openVideoFile();
 				}}
 				onOpenProjectBrowser={() => {
+					void refreshRecordings();
 					refreshProjectLibrary().then(() => {
 						requestOpen("projects");
 					});
