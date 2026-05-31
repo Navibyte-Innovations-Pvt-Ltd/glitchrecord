@@ -10,21 +10,38 @@ export type ProjectLibraryEntry = {
 	isInProjectsDirectory: boolean;
 };
 
+export type RecordingEntry = {
+	path: string;
+	name: string;
+	sizeBytes: number;
+	mtimeMs: number;
+};
+
 type ProjectBrowserDialogProps = {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	entries: ProjectLibraryEntry[];
 	onOpenProject: (projectPath: string) => void;
+	recordings?: RecordingEntry[];
+	onOpenRecording?: (recordingPath: string) => void;
 	anchorRef?: React.RefObject<HTMLElement | null>;
 	preferredDirection?: "up" | "down" | "auto";
 	onPanelHeightChange?: (height: number) => void;
 	renderMode?: "floating" | "inline";
 };
+
+function formatRecordingMeta(rec: RecordingEntry): string {
+	const mb = rec.sizeBytes / (1024 * 1024);
+	return mb >= 1 ? `${mb.toFixed(0)} MB` : `${Math.max(1, Math.round(rec.sizeBytes / 1024))} KB`;
+}
+
 export default function ProjectBrowserDialog({
 	open,
 	onOpenChange,
 	entries,
 	onOpenProject,
+	recordings = [],
+	onOpenRecording,
 	anchorRef,
 	preferredDirection = "auto",
 	onPanelHeightChange,
@@ -225,6 +242,40 @@ export default function ProjectBrowserDialog({
 						<div className="flex min-h-[140px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-foreground/10 bg-editor-bg px-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
 							<div className="text-sm font-semibold text-foreground">
 								No saved projects yet
+							</div>
+						</div>
+					)}
+
+					{/* Raw recordings — footage that isn't yet a saved project */}
+					{onOpenRecording && recordings.length > 0 && (
+						<div className="mt-3 border-t border-foreground/10 pt-2.5">
+							<div className="mb-1.5 px-0.5 text-[11px] font-semibold tracking-tight text-foreground/70">
+								Recent Recordings
+							</div>
+							<div className="flex flex-col gap-1">
+								{recordings.slice(0, 30).map((rec) => (
+									<button
+										key={rec.path}
+										type="button"
+										onClick={() => onOpenRecording(rec.path)}
+										className="group flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-foreground/[0.06]"
+									>
+										<span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[linear-gradient(180deg,_rgba(37,99,235,0.22),_rgba(13,17,23,0.92))] text-[9px] font-semibold text-white/70">
+											▶
+										</span>
+										<span className="flex min-w-0 flex-1 flex-col">
+											<span className="truncate text-[11px] font-medium tracking-tight text-foreground">
+												{rec.name.replace(/^recording-/, "").replace(/\.mp4$/, "")}
+											</span>
+											<span className="text-[9px] text-foreground/40">
+												{formatRecordingMeta(rec)}
+											</span>
+										</span>
+										<span className="text-[9px] text-foreground/30 opacity-0 transition group-hover:opacity-100">
+											open →
+										</span>
+									</button>
+								))}
 							</div>
 						</div>
 					)}
