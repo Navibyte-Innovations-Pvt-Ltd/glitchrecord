@@ -40,9 +40,30 @@ def pick_device() -> str:
 import re
 
 
-def clean_script(text: str) -> str:
+def numbers_to_words(text: str, lang: str = "en") -> str:
+    """Convert standalone digit-numbers to spoken words BEFORE synthesis. XTTS's
+    own Hindi number-expansion crashes; doing it here (and removing the digits)
+    avoids that path entirely. Hinglish speakers usually say English numbers, so
+    default to English words even for lang=hi."""
+    try:
+        from num2words import num2words
+    except Exception:
+        return text
+    n2w_lang = "en" if lang != "hi_native" else "hi"
+
+    def repl(m):
+        try:
+            return num2words(int(m.group(0)), lang=n2w_lang)
+        except Exception:
+            return m.group(0)
+
+    return re.sub(r"\b\d{1,9}\b", repl, text)
+
+
+def clean_script(text: str, lang: str = "en") -> str:
     """Strip things that shouldn't be SPOKEN: [SECTION] headers, markdown
-    headings/rules/bullets, leftover markdown emphasis. Keep the prose."""
+    headings/rules/bullets, leftover markdown emphasis. Convert numbers to words.
+    Keep the prose."""
     lines = []
     for raw in text.splitlines():
         s = raw.strip()
@@ -56,7 +77,8 @@ def clean_script(text: str) -> str:
         s = re.sub(r"^[-*+]\s+", "", s)      # bullet markers
         s = s.replace("**", "").replace("`", "")
         lines.append(s)
-    return " ".join(lines).strip()
+    joined = " ".join(lines).strip()
+    return numbers_to_words(joined, lang)
 
 
 def read_text(args) -> str:
@@ -65,7 +87,7 @@ def read_text(args) -> str:
             raw = f.read()
     else:
         raw = args.text or ""
-    return clean_script(raw)
+    return clean_script(raw, getattr(args, "lang", "en"))
 
 
 def generate_indic_parler(text, args, device):
@@ -113,6 +135,32 @@ def chunk_text(text, maxlen=220):
     return chunks or [text]
 
 
+def generate_supertonic(text, args, device):
+    """Supertone Supertonic-3 — OpenRAIL-M (commercial OK), 31 langs incl Hindi,
+    tiny 99M ONNX model (fast). Preset voices (M1, F1, …)."""
+    from supertonic import TTS  # type: ignore
+    print(f"[narrate] supertonic voice={args.voice} lang={args.lang}", file=sys.stderr, flush=True)
+    tts = TTS(auto_download=True)
+    style = tts.get_voice_style(voice_name=args.voice or "M1")
+    chunks = chunk_text(text)
+    n = len(chunks)
+    import numpy as np
+    import soundfile as sf
+    parts = []
+    sr = None
+    for i, ch in enumerate(chunks, 1):
+        print(f"[narrate] chunk {i}/{n}", file=sys.stderr, flush=True)
+        wav, _dur = tts.synthesize(ch, voice_style=style, lang=args.lang)
+        arr = np.asarray(wav, dtype=np.float32).squeeze()
+        parts.append(arr)
+        if sr is None:
+            sr = getattr(tts, "sample_rate", 44100)
+        parts.append(np.zeros(int((sr or 44100) * 0.2), dtype=np.float32))
+    out = os.path.abspath(args.out)
+    sf.write(out, np.concatenate(parts), sr or 44100)
+    return out
+
+
 def generate_xtts(text, args, device):
     """Coqui XTTS-v2 — better cloning, but CPML NON-COMMERCIAL. Opt-in only.
     Synthesizes chunk-by-chunk and prints `[narrate] chunk i/N` so the UI can
@@ -150,8 +198,9 @@ def main() -> int:
     p.add_argument("--text", help="Script text to narrate")
     p.add_argument("--text-file", help="Path to a .txt file with the script")
     p.add_argument("--out", default="narration.wav", help="Output .wav path")
-    p.add_argument("--engine", default="indic-parler", choices=["indic-parler", "xtts"],
-                   help="indic-parler = Apache/commercial-safe (default); xtts = non-commercial")
+    p.add_argument("--engine", default="supertonic", choices=["supertonic", "indic-parler", "xtts"],
+                   help="supertonic = OpenRAIL-M commercial-safe, fast, Hindi (default); indic-parler = Apache (gated); xtts = non-commercial")
+    p.add_argument("--voice", default="M1", help="[supertonic] preset voice name (M1, F1, …)")
     p.add_argument("--description", default=DEFAULT_DESCRIPTION, help="[indic-parler] preset voice description")
     p.add_argument("--model", default=None, help="[indic-parler] HF model id override")
     # en handles Roman Hinglish + numbers cleanly; "hi" crashes XTTS number-expansion.
@@ -188,7 +237,9 @@ def main() -> int:
         return 2
 
     print(f"[narrate] engine={args.engine} on {device} (first run downloads the model)…", file=sys.stderr)
-    if args.engine == "xtts":
+    if args.engine == "supertonic":
+        out = generate_supertonic(text, args, device)
+    elif args.engine == "xtts":
         out = generate_xtts(text, args, device)
     else:
         out = generate_indic_parler(text, args, device)
