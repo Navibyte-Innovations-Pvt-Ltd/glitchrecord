@@ -122,7 +122,6 @@ export function HomeWindow() {
 										>
 											<div className="relative aspect-[16/10] overflow-hidden rounded-lg bg-editor-dialog-alt shadow-[0_8px_18px_rgba(0,0,0,0.28)] transition group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_28px_rgba(0,0,0,0.4)]">
 												{p.thumbnailPath ? (
-													// eslint-disable-next-line @next/next/no-img-element
 													<img
 														src={toFileUrl(p.thumbnailPath)}
 														alt=""
