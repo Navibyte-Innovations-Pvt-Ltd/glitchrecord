@@ -574,6 +574,13 @@ export default function VideoEditor() {
 	const [exportError, setExportError] = useState<string | null>(null);
 	const [showExportDropdown, setShowExportDropdown] = useState(false);
 	const [previewVolume, setPreviewVolume] = useState(1);
+	// Narration sync-preview: live playhead (TIMELINE time, sec) the GlitchgrabLogPanel
+	// reads via rAF to keep its narration audio aligned — ref avoids per-frame re-render.
+	const narrationPlaybackRef = useRef({ timelineTime: 0, isPlaying: false });
+	// While the narration sync-preview is armed, mute the screen-recording audio so
+	// the user judges the narration track alone (two tracks at once is confusing).
+	// The panel flips this on/off when arming/disarming the preview.
+	const [narrationPreviewMuted, setNarrationPreviewMuted] = useState(false);
 	const applySessionPresentation = useCallback(
 		(
 			session:
@@ -3384,6 +3391,20 @@ export default function VideoEditor() {
 		[getActivePlayback, mapTimelineTimeToSourceTime],
 	);
 
+	// Mirror playhead (in TIMELINE time) + play state into a ref so the narration
+	// sync-preview can read them in a rAF loop without re-rendering per frame.
+	const handlePlaybackTimeUpdate = useCallback(
+		(t: number) => {
+			setCurrentTime(t);
+			narrationPlaybackRef.current.timelineTime = mapSourceTimeToTimelineTime(t * 1000) / 1000;
+		},
+		[mapSourceTimeToTimelineTime],
+	);
+	const handlePlaybackPlayStateChange = useCallback((p: boolean) => {
+		setIsPlaying(p);
+		narrationPlaybackRef.current.isPlaying = p;
+	}, []);
+
 	const handleTimelineSeek = useCallback(
 		(time: number) => {
 			handleSeek(time, { pause: true });
@@ -5173,9 +5194,9 @@ export default function VideoEditor() {
 			videoPath={videoPath || ""}
 			onDurationChange={setDuration}
 			onPreviewReadyChange={setIsPreviewReady}
-			onTimeUpdate={setCurrentTime}
+			onTimeUpdate={handlePlaybackTimeUpdate}
 			currentTime={currentTime}
-			onPlayStateChange={setIsPlaying}
+			onPlayStateChange={handlePlaybackPlayStateChange}
 			onError={setError}
 			wallpaper={wallpaper}
 			zoomRegions={effectiveZoomRegions}
@@ -5235,7 +5256,7 @@ export default function VideoEditor() {
 			cursorClickBounceDuration={cursorClickBounceDuration}
 			cursorSway={cursorSway}
 			volume={
-				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
+				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted || narrationPreviewMuted
 					? 0
 					: Math.max(
 							0,
@@ -5875,7 +5896,13 @@ export default function VideoEditor() {
 						{activeEffectSection === "extensions" ? (
 							<ExtensionManager />
 						) : activeEffectSection === "glitchgrab" ? (
-							<GlitchgrabLogPanel />
+							<GlitchgrabLogPanel
+							playbackRef={narrationPlaybackRef}
+							timelineDurationSec={timelineDuration}
+							onSeekTimeline={handleSeek}
+							onTogglePlay={togglePlayPause}
+							onSetRecordingMuted={setNarrationPreviewMuted}
+						/>
 						) : (
 							<SettingsPanel
 								panelMode="editor"
