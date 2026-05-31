@@ -7,17 +7,19 @@ import {
 	Copy,
 	CursorClick,
 	Keyboard,
+	NoteBlank,
 	TextT,
 } from "@phosphor-icons/react";
 
 interface LiveEvent {
-	type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste";
+	type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste" | "note";
 	t: number;
 	label?: string;
 	tag?: string;
 	url?: string;
 	durationMs?: number;
 	preview?: string;
+	note?: string;
 }
 
 interface GlitchgrabAPI {
@@ -39,6 +41,7 @@ function EventIcon({ type }: { type: LiveEvent["type"] }) {
 		case "scroll":   return <ArrowsDownUp className={cls} />;
 		case "copy":     return <Copy className={cls} />;
 		case "paste":    return <Clipboard className={cls} />;
+		case "note":     return <NoteBlank className="h-3.5 w-3.5 shrink-0 text-amber-400" weight="fill" />;
 		default:         return <CursorClick className={cls} />;
 	}
 }
@@ -53,6 +56,7 @@ function eventLabel(type: LiveEvent["type"]): string {
 		case "scroll":   return "Scroll";
 		case "copy":     return "Copy";
 		case "paste":    return "Paste";
+		case "note":     return "Explain";
 		default:         return "Click";
 	}
 }
@@ -67,6 +71,7 @@ function eventDetail(e: LiveEvent): string {
 		case "scroll":   return "";
 		case "copy":     return e.label ? `"${e.label.slice(0, 50)}"` : "";
 		case "paste":    return "";
+		case "note":     return e.label ?? "this";
 		default:         return e.label ?? "element";
 	}
 }
