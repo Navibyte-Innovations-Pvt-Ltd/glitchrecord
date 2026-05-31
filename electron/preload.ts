@@ -846,6 +846,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			entries: Array<{ path: string; name: string; sizeBytes: number; mtimeMs: number }>;
 			error?: string;
 		}>,
+	getRecordingThumbnail: (filePath: string) =>
+		ipcRenderer.invoke("get-recording-thumbnail", filePath) as Promise<{
+			success: boolean;
+			thumbnailPath?: string;
+		}>,
+	deleteRecording: (filePath: string) =>
+		ipcRenderer.invoke("delete-recording", filePath) as Promise<{
+			success: boolean;
+			error?: string;
+		}>,
 	openProjectFileAtPath: (filePath: string) => {
 		return ipcRenderer.invoke("open-project-file-at-path", filePath);
 	},
