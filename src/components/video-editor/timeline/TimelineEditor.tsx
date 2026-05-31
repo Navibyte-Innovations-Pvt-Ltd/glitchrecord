@@ -50,6 +50,8 @@ export interface TimelineEditorProps {
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	clipRegions?: ClipRegion[];
 	onClipSplit?: (splitMs: number) => void;
+	onShiftMarker?: (ms: number) => void;
+	pendingMarkerMs?: number | null;
 	onClipSpanChange?: (id: string, span: Span) => void;
 	onClipDelete?: (id: string) => void;
 	selectedClipId?: string | null;
@@ -124,6 +126,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onTrimSpanChange,
 			clipRegions = [],
 			onClipSplit,
+			onShiftMarker,
+			pendingMarkerMs,
 			onClipSpanChange,
 			onClipDelete,
 			selectedClipId,
@@ -447,6 +451,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							videoDurationMs={totalMs}
 							currentTimeMs={currentTimeMs}
 							onSeek={onSeek}
+							onShiftMarker={onShiftMarker}
+							pendingMarkerMs={pendingMarkerMs}
 							onAddZoomAtMs={addZoomAtMs}
 							canPlaceZoomAtMs={canPlaceZoomAtMs}
 							onSelectZoom={handleSelectZoom}
