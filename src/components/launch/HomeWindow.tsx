@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { VideoCamera, FilmSlate, ArrowClockwise } from "@phosphor-icons/react";
+import { VideoCamera, Sparkle, ArrowClockwise } from "@phosphor-icons/react";
+
+const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 import { toFileUrl } from "../video-editor/projectPersistence";
 import type { ProjectLibraryEntry } from "../video-editor/ProjectBrowserDialog";
 
@@ -61,16 +63,23 @@ export function HomeWindow() {
 
 	return (
 		<div className="flex h-screen w-screen flex-col bg-editor-bg text-foreground">
-			{/* Header */}
-			<div className="flex items-center gap-3 border-b border-foreground/10 px-6 py-4">
-				<FilmSlate className="h-6 w-6 text-blue-500" weight="duotone" />
+			{/* Header — draggable title bar; left padding clears the macOS traffic lights */}
+			<div
+				className="flex items-center gap-3 border-b border-foreground/10 py-4 pr-5"
+				style={{
+					WebkitAppRegion: "drag",
+					paddingLeft: IS_MAC ? 88 : 20,
+				} as React.CSSProperties}
+			>
+				<Sparkle className="h-5 w-5 shrink-0 text-blue-500" weight="fill" />
 				<div className="flex flex-col">
-					<span className="text-[15px] font-semibold tracking-tight">GlitchRecord</span>
+					<span className="text-[15px] font-semibold tracking-tight">GlitchGrab</span>
 					<span className="text-[11px] text-foreground/45">Record · edit · narrate</span>
 				</div>
 				<button
 					type="button"
 					onClick={startNewRecording}
+					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 					className="ml-auto flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)] transition hover:bg-blue-500"
 				>
 					<VideoCamera className="h-4 w-4" weight="fill" /> New Recording
@@ -78,6 +87,7 @@ export function HomeWindow() {
 				<button
 					type="button"
 					onClick={() => void refresh()}
+					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 					className="rounded-lg p-2 text-foreground/40 transition hover:bg-foreground/5 hover:text-foreground/70"
 					title="Refresh"
 				>
