@@ -175,6 +175,8 @@ export function GlitchgrabLogPanel({
 	const [lang, setLang] = useState(() => localStorage.getItem("gg.tts.lang") || "hi");
 	const [voice, setVoice] = useState(() => localStorage.getItem("gg.tts.voice") || "ritu");
 	const [apiKey, setApiKey] = useState(() => localStorage.getItem("gg.tts.apiKey") || "");
+	// Speaking pace (Sarvam): 1.0 normal, higher = faster + shorter audio.
+	const [pace, setPace] = useState(() => Number(localStorage.getItem("gg.tts.pace")) || 1.0);
 	// True when tts/.env already holds a Sarvam key → no need to paste one.
 	const [hasSavedKey, setHasSavedKey] = useState(false);
 	const listRef = useRef<HTMLDivElement>(null);
@@ -192,13 +194,14 @@ export function GlitchgrabLogPanel({
 	useEffect(() => { localStorage.setItem("gg.tts.lang", lang); }, [lang]);
 	useEffect(() => { localStorage.setItem("gg.tts.voice", voice); }, [voice]);
 	useEffect(() => { localStorage.setItem("gg.tts.apiKey", apiKey); }, [apiKey]);
+	useEffect(() => { localStorage.setItem("gg.tts.pace", String(pace)); }, [pace]);
 
 	const electronAPI = () =>
 		(window as unknown as {
 			electronAPI?: {
 				generateNarration?: (
 					t: string,
-					opts?: { engine?: string; lang?: string; voice?: string; apiKey?: string },
+					opts?: { engine?: string; lang?: string; voice?: string; apiKey?: string; pace?: number },
 				) => Promise<{ ok: boolean; path?: string; error?: string }>;
 				getLocalMediaUrl?: (p: string) => Promise<{ success: boolean; url?: string }>;
 				revealInFolder?: (p: string) => void;
@@ -238,6 +241,7 @@ export function GlitchgrabLogPanel({
 				lang,
 				voice,
 				apiKey: apiKey.trim(),
+				pace,
 			});
 			if (res.ok && res.path) {
 				const media = await api.getLocalMediaUrl?.(res.path);
@@ -253,7 +257,7 @@ export function GlitchgrabLogPanel({
 		} finally {
 			setNarrating(false);
 		}
-	}, [narrationText, engine, lang, voice, apiKey, hasSavedKey]);
+	}, [narrationText, engine, lang, voice, apiKey, pace, hasSavedKey]);
 
 	const copyAll = useCallback(() => {
 		if (events.length === 0) return;
@@ -563,6 +567,21 @@ export function GlitchgrabLogPanel({
 							>
 								<option value="hi">Hindi</option>
 								<option value="en">Hinglish</option>
+							</select>
+						</label>
+						<label className="flex flex-col gap-0.5 w-[78px] shrink-0">
+							<span className="text-[9px] uppercase tracking-wide text-foreground/40">Speed</span>
+							<select
+								value={String(pace)}
+								onChange={(e) => setPace(Number(e.target.value))}
+								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+								title="Speaking pace — higher = faster + shorter audio (fits a short video)"
+							>
+								<option value="1">1.0×</option>
+								<option value="1.1">1.1×</option>
+								<option value="1.2">1.2×</option>
+								<option value="1.3">1.3×</option>
+								<option value="1.5">1.5×</option>
 							</select>
 						</label>
 					</div>
