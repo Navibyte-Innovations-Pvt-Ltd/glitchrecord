@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { VideoCamera, Sparkle, ArrowClockwise, Trash, Check, X } from "@phosphor-icons/react";
+import { VideoCamera, ArrowClockwise, Trash, Check, X } from "@phosphor-icons/react";
 import { toFileUrl } from "../video-editor/projectPersistence";
 import type { ProjectLibraryEntry } from "../video-editor/ProjectBrowserDialog";
 
@@ -113,7 +113,12 @@ export function HomeWindow() {
 					paddingLeft: IS_MAC ? 88 : 20,
 				} as React.CSSProperties}
 			>
-				<Sparkle className="h-5 w-5 shrink-0 text-blue-500" weight="fill" />
+				<img
+					src="/glitchgrab-logo.png"
+					alt="GlitchGrab"
+					className="h-7 w-7 shrink-0 rounded-md"
+					draggable={false}
+				/>
 				<div className="flex flex-col">
 					<span className="text-[15px] font-semibold tracking-tight">GlitchGrab</span>
 					<span className="text-[11px] text-foreground/45">Record · edit · narrate</span>
