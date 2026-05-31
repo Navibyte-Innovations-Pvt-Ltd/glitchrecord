@@ -227,6 +227,7 @@ interface Window {
 			text: string,
 			opts?: { engine?: string; lang?: string; speaker?: string },
 		) => Promise<{ ok: boolean; path?: string; error?: string }>;
+		onNarrationProgress: (cb: (stage: string) => void) => () => void;
 		openSourceSelector: () => Promise<void>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
 		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;
