@@ -22,7 +22,7 @@ export interface Session {
 }
 
 export interface CaptureEvent {
-  type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste";
+  type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste" | "note";
   t: number;
   label?: string;
   tag?: string;
@@ -30,6 +30,7 @@ export interface CaptureEvent {
   durationMs?: number;
   preview?: string;
   meta?: Record<string, string>;
+  note?: string;
 }
 
 export type WsMsg =
