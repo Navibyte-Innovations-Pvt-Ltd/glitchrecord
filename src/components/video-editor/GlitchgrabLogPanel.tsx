@@ -143,7 +143,13 @@ export function GlitchgrabLogPanel() {
 	const [lang, setLang] = useState(() => localStorage.getItem("gg.tts.lang") || "hi");
 	const [voice, setVoice] = useState(() => localStorage.getItem("gg.tts.voice") || "ritu");
 	const [apiKey, setApiKey] = useState(() => localStorage.getItem("gg.tts.apiKey") || "");
+	// True when tts/.env already holds a Sarvam key → no need to paste one.
+	const [hasSavedKey, setHasSavedKey] = useState(false);
 	const listRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		electronAPI()?.narrationKeyStatus?.().then((s) => setHasSavedKey(!!s?.hasSarvamKey)).catch(() => {});
+	}, []);
 
 	// Keep voice valid for the selected engine; persist all choices.
 	useEffect(() => {
@@ -165,6 +171,7 @@ export function GlitchgrabLogPanel() {
 				getLocalMediaUrl?: (p: string) => Promise<{ success: boolean; url?: string }>;
 				revealInFolder?: (p: string) => void;
 				onNarrationProgress?: (cb: (stage: string) => void) => () => void;
+				narrationKeyStatus?: () => Promise<{ hasSarvamKey: boolean }>;
 			};
 		}).electronAPI;
 
@@ -185,8 +192,8 @@ export function GlitchgrabLogPanel() {
 	const generateNarration = useCallback(async () => {
 		const api = electronAPI();
 		if (!api?.generateNarration || !narrationText.trim()) return;
-		if (engine === "sarvam" && !apiKey.trim()) {
-			setNarrationError("Sarvam needs an API key (get from dashboard.sarvam.ai).");
+		if (engine === "sarvam" && !apiKey.trim() && !hasSavedKey) {
+			setNarrationError("Sarvam needs an API key — paste one, or save it in tts/.env.");
 			return;
 		}
 		setNarrating(true);
@@ -212,7 +219,7 @@ export function GlitchgrabLogPanel() {
 		} finally {
 			setNarrating(false);
 		}
-	}, [narrationText, engine, lang, voice, apiKey]);
+	}, [narrationText, engine, lang, voice, apiKey, hasSavedKey]);
 
 	const copyAll = useCallback(() => {
 		if (events.length === 0) return;
@@ -464,15 +471,20 @@ export function GlitchgrabLogPanel() {
 							</select>
 						</label>
 					</div>
-					{engine === "sarvam" && (
-						<input
-							type="password"
-							value={apiKey}
-							onChange={(e) => setApiKey(e.target.value)}
-							placeholder="Sarvam API key (dashboard.sarvam.ai)"
-							className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
-						/>
-					)}
+					{engine === "sarvam" &&
+						(hasSavedKey ? (
+							<div className="flex items-center gap-1.5 text-[10px] text-green-400/80">
+								<Check className="h-3 w-3" /> Sarvam key loaded from tts/.env
+							</div>
+						) : (
+							<input
+								type="password"
+								value={apiKey}
+								onChange={(e) => setApiKey(e.target.value)}
+								placeholder="Sarvam API key (dashboard.sarvam.ai)"
+								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+							/>
+						))}
 				</div>
 
 				<textarea
