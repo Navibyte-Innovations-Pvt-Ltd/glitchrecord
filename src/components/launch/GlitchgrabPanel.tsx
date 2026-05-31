@@ -161,7 +161,12 @@ export function GlitchgrabPopover({ onOpen }: { onOpen?: () => void }) {
 										requestClose(POPOVER_ID);
 									}}
 								>
-									{r.name}
+									<div className="flex flex-col min-w-0">
+										<span className="truncate font-medium">{bareName(r.name)}</span>
+										{orgName(r.name) && (
+											<span className="truncate text-[10px] opacity-40">{orgName(r.name)}</span>
+										)}
+									</div>
 								</DropdownItem>
 							))}
 							{!loadingRepos && filteredRepos.length === 0 && (
