@@ -30,7 +30,7 @@ import {
 import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
-import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, loadPersistedSession, appendDebugLog } from "./glitchbridge/server";
+import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, loadPersistedSession, appendDebugLog, resetBridgeSession } from "./glitchbridge/server";
 import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
 import { validateToken, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
 import type { UpdateToastPayload } from "./updater";
@@ -959,9 +959,18 @@ app.whenReady().then(async () => {
 	ipcMain.handle("glitchbridge:recording-stop", (_e, sessionId: string, meta: unknown) => {
 		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
 	});
-	// Bring back the recorder HUD from the editor ("New Recording" button)
+	// Bring back the recorder HUD from the editor ("New Recording" button).
 	ipcMain.handle("open-recorder", () => {
+		// After the editor opens, `mainWindow` points at the EDITOR, so
+		// focusOrCreateMainWindow would just re-focus the editor. Detach it so the
+		// call targets (and shows) the HUD recorder instead.
+		if (mainWindow && isEditorWindow(mainWindow)) mainWindow = null;
 		focusOrCreateMainWindow();
+		// Clear the previous recording's captured events so the new session starts clean.
+		resetBridgeSession();
+		for (const w of BrowserWindow.getAllWindows()) {
+			if (!w.isDestroyed()) w.webContents.send("glitchbridge:session-reset");
+		}
 		return { ok: true };
 	});
 	// Native clipboard write — reliable in Electron where navigator.clipboard can fail
