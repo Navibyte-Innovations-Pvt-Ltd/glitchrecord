@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { VideoCamera, Sparkle, ArrowClockwise } from "@phosphor-icons/react";
-
-const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+import { VideoCamera, Sparkle, ArrowClockwise, Trash, Check, X } from "@phosphor-icons/react";
 import { toFileUrl } from "../video-editor/projectPersistence";
 import type { ProjectLibraryEntry } from "../video-editor/ProjectBrowserDialog";
+
+const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
 type RecordingEntry = { path: string; name: string; sizeBytes: number; mtimeMs: number };
 
@@ -21,6 +21,8 @@ export function HomeWindow() {
 	const [projects, setProjects] = useState<ProjectLibraryEntry[]>([]);
 	const [recordings, setRecordings] = useState<RecordingEntry[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [thumbs, setThumbs] = useState<Record<string, string>>({});
+	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
 	const refresh = useCallback(async () => {
 		setLoading(true);
@@ -60,6 +62,46 @@ export function HomeWindow() {
 		await a?.openProjectFileAtPath?.(path);
 		await a?.switchToEditor?.();
 	}, []);
+
+	// Lazily fetch first-frame thumbnails (sequential so we don't spawn 20 ffmpegs at once).
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			const a = api();
+			if (!a?.getRecordingThumbnail) return;
+			for (const r of recordings) {
+				if (cancelled) return;
+				if (thumbs[r.path]) continue;
+				try {
+					const res = (await a.getRecordingThumbnail(r.path)) as {
+						success: boolean;
+						thumbnailPath?: string;
+					};
+					if (!cancelled && res?.success && res.thumbnailPath) {
+						setThumbs((prev) => ({ ...prev, [r.path]: res.thumbnailPath as string }));
+					}
+				} catch {
+					/* skip */
+				}
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [recordings]);
+
+	const deleteRecording = useCallback(
+		async (path: string) => {
+			const a = api();
+			const res = (await a?.deleteRecording?.(path)) as { success: boolean } | undefined;
+			if (res?.success) {
+				setRecordings((prev) => prev.filter((r) => r.path !== path));
+				setConfirmDelete(null);
+			}
+		},
+		[],
+	);
 
 	return (
 		<div className="flex h-screen w-screen flex-col bg-editor-bg text-foreground">
@@ -160,23 +202,76 @@ export function HomeWindow() {
 								</h2>
 								<div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
 									{recordings.map((r) => (
-										<button
-											key={r.path}
-											type="button"
-											onClick={() => void openRecording(r.path)}
-											className="group flex flex-col gap-1.5 text-left"
-										>
-											<div className="relative flex aspect-[16/10] items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(180deg,_rgba(37,99,235,0.18),_rgba(13,17,23,0.94))] shadow-[0_8px_18px_rgba(0,0,0,0.28)] transition group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_28px_rgba(0,0,0,0.4)]">
-												<VideoCamera
-													className="h-7 w-7 text-white/35 transition group-hover:text-white/60"
-													weight="fill"
-												/>
+										<div key={r.path} className="group flex flex-col gap-1.5">
+											<div
+												role="button"
+												tabIndex={0}
+												onClick={() => void openRecording(r.path)}
+												onKeyDown={(e) => {
+													if (e.key === "Enter") void openRecording(r.path);
+												}}
+												className="relative flex aspect-[16/10] cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(180deg,_rgba(37,99,235,0.18),_rgba(13,17,23,0.94))] shadow-[0_8px_18px_rgba(0,0,0,0.28)] transition group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_28px_rgba(0,0,0,0.4)]"
+											>
+												{thumbs[r.path] ? (
+													<img
+														src={toFileUrl(thumbs[r.path])}
+														alt=""
+														className="h-full w-full object-cover"
+														draggable={false}
+													/>
+												) : (
+													<VideoCamera
+														className="h-7 w-7 text-white/35 transition group-hover:text-white/60"
+														weight="fill"
+													/>
+												)}
+
+												{/* Delete control (hover) with inline confirm */}
+												{confirmDelete === r.path ? (
+													<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 backdrop-blur-[2px]">
+														<span className="text-[11px] font-medium text-white">Delete this recording?</span>
+														<div className="flex gap-2">
+															<button
+																type="button"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	void deleteRecording(r.path);
+																}}
+																className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-500"
+															>
+																<Check className="h-3 w-3" /> Delete
+															</button>
+															<button
+																type="button"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	setConfirmDelete(null);
+																}}
+																className="flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-white/20"
+															>
+																<X className="h-3 w-3" /> Cancel
+															</button>
+														</div>
+													</div>
+												) : (
+													<button
+														type="button"
+														onClick={(e) => {
+															e.stopPropagation();
+															setConfirmDelete(r.path);
+														}}
+														title="Delete recording"
+														className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/55 text-white/70 opacity-0 transition hover:bg-red-600 hover:text-white group-hover:opacity-100"
+													>
+														<Trash className="h-3.5 w-3.5" />
+													</button>
+												)}
 											</div>
 											<span className="truncate text-[12px] font-medium tracking-tight">
 												{r.name.replace(/^recording-/, "").replace(/\.mp4$/, "")}
 											</span>
 											<span className="text-[10px] text-foreground/40">{fmtSize(r.sizeBytes)}</span>
-										</button>
+										</div>
 									))}
 								</div>
 							</section>
