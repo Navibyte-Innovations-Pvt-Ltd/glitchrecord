@@ -3923,6 +3923,16 @@ export default function VideoEditor() {
 		setActiveEffectSection("audio");
 	}, []);
 
+	// Insert the generated narration as an audio region at the chosen start (timeline
+	// seconds) so the export bakes it into the video. Returns once placed.
+	const handleAddNarrationToTimeline = useCallback(
+		(audioPath: string, startSec: number, durationSec: number) => {
+			const startMs = Math.max(0, Math.round(startSec * 1000));
+			handleAudioAdded({ start: startMs, end: startMs + Math.round(durationSec * 1000) }, audioPath, 0);
+		},
+		[handleAudioAdded],
+	);
+
 	const handleAudioSpanChange = useCallback((id: string, span: Span, trackIndex?: number) => {
 		const normalizedTrackIndex =
 			typeof trackIndex === "number" && Number.isFinite(trackIndex)
@@ -5902,6 +5912,7 @@ export default function VideoEditor() {
 							onSeekTimeline={handleSeek}
 							onTogglePlay={togglePlayPause}
 							onSetRecordingMuted={setNarrationPreviewMuted}
+							onAddNarrationToTimeline={handleAddNarrationToTimeline}
 						/>
 						) : (
 							<SettingsPanel
