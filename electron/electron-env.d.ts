@@ -773,6 +773,12 @@ interface Window {
 			}>;
 			error?: string;
 		}>;
+		listRecordings: () => Promise<{
+			success: boolean;
+			recordingsDir: string;
+			entries: Array<{ path: string; name: string; sizeBytes: number; mtimeMs: number }>;
+			error?: string;
+		}>;
 		openProjectFileAtPath: (filePath: string) => Promise<{
 			success: boolean;
 			path?: string;
