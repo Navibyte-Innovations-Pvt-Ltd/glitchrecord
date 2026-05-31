@@ -30,6 +30,7 @@ import {
 	registerIpcHandlers,
 } from "./ipc/handlers";
 import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
+import { restoreLastSession, currentVideoPath } from "./ipc/state";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
 import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, loadPersistedSession, appendDebugLog, resetBridgeSession } from "./glitchbridge/server";
@@ -930,6 +931,10 @@ app.whenReady().then(async () => {
 		app.setAppUserModelId("dev.glitchrecord.app");
 	}
 
+	// Dev-only: restore the last recording/video so a vite main-process restart
+	// (triggered by editing electron/*.ts) doesn't lose the user's footage.
+	restoreLastSession();
+
 	// Start GlitchBridge WebSocket server — Chrome extension connects here
 	startBridgeServer({
 		onScriptReady: (sessionId, script) => {
@@ -1261,7 +1266,15 @@ app.whenReady().then(async () => {
 		return;
 	}
 
-	createWindow();
+	// Dev-only: if restoreLastSession() recovered a recording (e.g. after a vite
+	// main-process restart from editing electron/*.ts), boot straight into the
+	// editor with that footage instead of the launcher — so testing isn't lost.
+	if (!app.isPackaged && currentVideoPath) {
+		console.log("[dev-restore] Reopening last recording in editor:", currentVideoPath);
+		createEditorWindowWrapper();
+	} else {
+		createWindow();
+	}
 	setupAutoUpdates(getUpdateDialogWindow, sendUpdateToastToWindows);
 
 	// Register the display media handler so that renderer's getDisplayMedia()
