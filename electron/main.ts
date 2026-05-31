@@ -51,6 +51,8 @@ import {
 } from "./updater";
 import {
 	createEditorWindow,
+	createHomeWindow,
+	getHomeWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
 	getHudOverlayWindow,
@@ -884,18 +886,21 @@ app.on("window-all-closed", () => {
 		return;
 	}
 	// DEV self-heal: a vite main-process restart (from editing electron/*.ts) or a
-	// closed editor can leave the app alive with ZERO windows and no visible dock
+	// closed window can leave the app alive with ZERO windows and no visible dock
 	// entry — the user sees "the app vanished." In dev, immediately recreate the
-	// launcher so there's always a window. Prod keeps macOS's stay-alive behavior.
+	// HOME window so there's always a findable surface. Prod keeps macOS's
+	// stay-alive behavior.
 	if (!app.isPackaged && !isAppQuitting) {
-		focusOrCreateMainWindow();
+		createHomeWindow();
 	}
 });
 
 app.on("activate", () => {
-	// On OS X it's common to re-create a window in the app when the
-	// dock icon is clicked and there are no other windows open.
-	focusOrCreateMainWindow();
+	// Dock-icon click: if nothing is open, bring up the Home window (a normal,
+	// findable window — not the easy-to-lose HUD overlay).
+	if (BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length === 0) {
+		createHomeWindow();
+	}
 });
 
 // ── Glitchgrab deep-link token handler ───────────────────────
@@ -928,7 +933,16 @@ app.on("open-url", (event, url) => {
 });
 
 app.on("second-instance", (_event, argv) => {
-	focusOrCreateMainWindow();
+	// A 2nd launch focuses whatever's open, or brings up Home if nothing is.
+	const open = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+	if (open.length === 0) {
+		createHomeWindow();
+	} else {
+		const existing = getHomeWindow() ?? open[0];
+		if (existing.isMinimized()) existing.restore();
+		existing.show();
+		existing.focus();
+	}
 	// Windows/Linux deliver deep link as a CLI arg
 	const link = argv.find((a) => a.startsWith("glitchrecord://"));
 	if (link) void handleGlitchgrabDeepLink(link);
@@ -1007,6 +1021,10 @@ app.whenReady().then(async () => {
 		// call targets (and shows) the HUD recorder instead.
 		const editor = getExistingEditorWindow();
 		if (mainWindow && isEditorWindow(mainWindow)) mainWindow = null;
+		// Close the Home window while recording so it isn't captured in the recording
+		// and so window-all-closed bookkeeping stays correct (it reopens afterward via
+		// the dev self-heal / dock-click → createHomeWindow).
+		getHomeWindow()?.close();
 		focusOrCreateMainWindow();
 		// Clear the previous recording's captured events so the new session starts clean.
 		resetBridgeSession();
@@ -1273,10 +1291,11 @@ app.whenReady().then(async () => {
 		return;
 	}
 
-	// Always open the launcher/home on startup. The user reaches past recordings via
-	// the project browser's "Recent Recordings" list — we never force the editor open
-	// with the last recording (that's wrong when they intentionally started fresh).
-	createWindow();
+	// Launch opens the HOME window — a normal, findable window listing the user's
+	// recordings/projects with a New Recording button. The HUD recorder bar only
+	// appears when recording starts (via open-recorder). We never force the editor
+	// open with the last recording.
+	createHomeWindow();
 	setupAutoUpdates(getUpdateDialogWindow, sendUpdateToastToWindows);
 
 	// Register the display media handler so that renderer's getDisplayMedia()
