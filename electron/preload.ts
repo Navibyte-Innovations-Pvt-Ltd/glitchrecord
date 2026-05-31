@@ -525,7 +525,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	writeClipboard: (text: string) => {
 		return ipcRenderer.invoke("clipboard-write-text", text);
 	},
-	generateNarration: (text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string }) => {
+	generateNarration: (text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string; apiKey?: string }) => {
 		return ipcRenderer.invoke("generate-narration", text, opts) as Promise<{
 			ok: boolean;
 			path?: string;
