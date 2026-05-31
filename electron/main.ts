@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import fssync from "node:fs";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -982,6 +984,57 @@ app.whenReady().then(async () => {
 		clipboard.writeText(typeof text === "string" ? text : String(text));
 		return { ok: true };
 	});
+
+	// Generate narration audio from a script via the local TTS (apps/glitchrecord/tts).
+	ipcMain.handle(
+		"generate-narration",
+		async (_e, text: string, opts?: { engine?: string; lang?: string; speaker?: string }) => {
+			try {
+				if (!text || !text.trim()) return { ok: false, error: "Empty script" };
+				const ttsDir = path.join(process.env.APP_ROOT ?? process.cwd(), "tts");
+				const script = path.join(ttsDir, "narrate.py");
+				const venvPy = path.join(ttsDir, ".venv", "bin", "python");
+				if (!fssync.existsSync(script)) {
+					return { ok: false, error: "narrate.py not found — run the tts/ setup first" };
+				}
+				const py = fssync.existsSync(venvPy) ? venvPy : "python3";
+				const outDir = path.join(app.getPath("userData"), "narrations");
+				await fs.mkdir(outDir, { recursive: true });
+				const stamp = Date.now();
+				const tmpTxt = path.join(outDir, `script-${stamp}.txt`);
+				const outWav = path.join(outDir, `narration-${stamp}.wav`);
+				await fs.writeFile(tmpTxt, text, "utf8");
+				const args = [
+					script,
+					"--engine", opts?.engine ?? "xtts",
+					"--lang", opts?.lang ?? "hi",
+					"--speaker", opts?.speaker ?? "Ana Florence",
+					"--text-file", tmpTxt,
+					"--out", outWav,
+				];
+				appendDebugLog("rec", `narration: spawning ${py} (${text.length} chars)`);
+				const result = await new Promise<{ ok: boolean; path?: string; error?: string }>((resolve) => {
+					const child = spawn(py, args, { env: { ...process.env, COQUI_TOS_AGREED: "1" } });
+					let out = "";
+					let err = "";
+					child.stdout.on("data", (d) => { out += d.toString(); });
+					child.stderr.on("data", (d) => { err += d.toString(); });
+					child.on("error", (e) => resolve({ ok: false, error: String(e) }));
+					child.on("close", (code) => {
+						if (code === 0 && fssync.existsSync(outWav)) {
+							resolve({ ok: true, path: out.trim().split("\n").pop() || outWav });
+						} else {
+							resolve({ ok: false, error: err.slice(-600) || `narrate.py exited ${code}` });
+						}
+					});
+				});
+				appendDebugLog("rec", `narration: ${result.ok ? "ok " + result.path : "FAIL " + result.error}`);
+				return result;
+			} catch (e) {
+				return { ok: false, error: String(e) };
+			}
+		},
+	);
 	ipcMain.handle("glitchbridge:get-events", () => {
 		const session = getCurrentSession();
 		// If a session exists for THIS run, always show its events — even if empty.
