@@ -37,11 +37,35 @@ def pick_device() -> str:
     return "cpu"
 
 
+import re
+
+
+def clean_script(text: str) -> str:
+    """Strip things that shouldn't be SPOKEN: [SECTION] headers, markdown
+    headings/rules/bullets, leftover markdown emphasis. Keep the prose."""
+    lines = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s:
+            continue
+        if re.fullmatch(r"\[.*\]", s):       # [INTRO], [CHAT PE JAANA]
+            continue
+        if re.fullmatch(r"[-=_*]{3,}", s):   # --- horizontal rules
+            continue
+        s = re.sub(r"^#{1,6}\s*", "", s)     # ### headings
+        s = re.sub(r"^[-*+]\s+", "", s)      # bullet markers
+        s = s.replace("**", "").replace("`", "")
+        lines.append(s)
+    return " ".join(lines).strip()
+
+
 def read_text(args) -> str:
     if args.text_file:
         with open(args.text_file, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    return (args.text or "").strip()
+            raw = f.read()
+    else:
+        raw = args.text or ""
+    return clean_script(raw)
 
 
 def generate_indic_parler(text, args, device):
@@ -93,7 +117,8 @@ def main() -> int:
                    help="indic-parler = Apache/commercial-safe (default); xtts = non-commercial")
     p.add_argument("--description", default=DEFAULT_DESCRIPTION, help="[indic-parler] preset voice description")
     p.add_argument("--model", default=None, help="[indic-parler] HF model id override")
-    p.add_argument("--lang", default="hi", help="[xtts] language code (hi/en/…)")
+    # en handles Roman Hinglish + numbers cleanly; "hi" crashes XTTS number-expansion.
+    p.add_argument("--lang", default="en", help="[xtts] language code (en recommended for Roman Hinglish)")
     p.add_argument("--speaker", default=None, help="[xtts] built-in speaker name")
     p.add_argument("--speaker-wav", default=None, help="[xtts] path to a voice sample to clone")
     p.add_argument("--device", default=None, help="cuda | mps | cpu (auto if omitted)")
