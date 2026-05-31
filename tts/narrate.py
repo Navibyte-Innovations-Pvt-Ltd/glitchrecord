@@ -98,6 +98,7 @@ def generate_xtts(text, args, device):
     from TTS.api import TTS
     print("[narrate] XTTS-v2 — NON-COMMERCIAL license (your responsibility)", file=sys.stderr)
     tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+    print("[narrate] generating…", file=sys.stderr, flush=True)
     out = os.path.abspath(args.out)
     kwargs = {"text": text, "language": args.lang, "file_path": out}
     if args.speaker_wav:
