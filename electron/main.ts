@@ -1016,7 +1016,7 @@ app.whenReady().then(async () => {
 	// Generate narration audio from a script via the local TTS (apps/glitchrecord/tts).
 	ipcMain.handle(
 		"generate-narration",
-		async (_e, text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string }) => {
+		async (_e, text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string; apiKey?: string }) => {
 			try {
 				if (!text || !text.trim()) return { ok: false, error: "Empty script" };
 				const ttsDir = path.join(process.env.APP_ROOT ?? process.cwd(), "tts");
@@ -1049,8 +1049,10 @@ app.whenReady().then(async () => {
 					if (!_e.sender.isDestroyed()) _e.sender.send("narration-progress", stage);
 				};
 				sendProgress("Starting…");
+				const childEnv: NodeJS.ProcessEnv = { ...process.env, COQUI_TOS_AGREED: "1" };
+				if (opts?.apiKey) childEnv.SARVAM_API_KEY = opts.apiKey;
 				const result = await new Promise<{ ok: boolean; path?: string; error?: string }>((resolve) => {
-					const child = spawn(py, args, { env: { ...process.env, COQUI_TOS_AGREED: "1" } });
+					const child = spawn(py, args, { env: childEnv });
 					let out = "";
 					let err = "";
 					child.stdout.on("data", (d) => { out += d.toString(); });
