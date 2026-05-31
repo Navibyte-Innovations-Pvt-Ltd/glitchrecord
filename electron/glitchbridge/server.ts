@@ -56,7 +56,8 @@ export function loadPersistedSession(): { events: CaptureEvent[]; sessionId: str
   }
 }
 
-const PORT = 7337;
+// 7337 in prod; overridable so tests don't collide with a running GlitchRecord.
+const PORT = Number(process.env.GLITCHBRIDGE_PORT) || 7337;
 
 const sessions = new Map<string, Session>();
 const chromeClients = new Set<WebSocket>();
@@ -183,19 +184,22 @@ export function startBridgeServer(callbacks: {
           send(ws, { type: "error", message: "Unknown session — events dropped" });
           return;
         }
-        session.events.push(...(msg.events as CaptureEvent[]));
-        persistSession(session);
-        eventsReadyCb?.(session.id, session.events.length);
-        appendDebugLog("rec", `events:upload received ${msg.events.length} (total ${session.events.length}) for ${session.id}`);
 
-        // Idempotency: a session is finalized once. Double-stop (HUD + universal
-        // hook both fire recording:stop) must not re-run upload/script/issue,
-        // which would create duplicate GitHub issues.
+        // Idempotency FIRST — a session is finalized once. Double-stop (HUD +
+        // universal hook both fire recording:stop) must not re-append events or
+        // re-run upload/script/issue (which would duplicate events + GitHub issues).
+        // The extension uploads the full event list once on stop, so finalize on
+        // the first upload and ignore any later duplicate.
         if (session.finalized) {
           appendDebugLog("rec", `events:upload ignored — session ${session.id} already finalized`);
           return;
         }
         session.finalized = true;
+
+        session.events.push(...(msg.events as CaptureEvent[]));
+        persistSession(session);
+        eventsReadyCb?.(session.id, session.events.length);
+        appendDebugLog("rec", `events:upload received ${msg.events.length} (total ${session.events.length}) for ${session.id}`);
 
         // Skip DB upload + issue creation when not logged in
         if (!currentUser) {
