@@ -295,6 +295,18 @@ export function broadcastRecordingStop(sessionId: string, meta: RecordingMeta) {
 export function getCurrentUser() { return currentUser; }
 export function getCurrentSession() { return currentSession; }
 
+// "New Recording" — wipe the previous session + persisted cache so the editor's
+// event panel clears and getCurrentSession()/loadPersistedSession() return empty
+// until the next recording starts.
+export function resetBridgeSession() {
+  currentSession = null;
+  recordingActive = false;
+  try {
+    fs.writeFileSync(getSessionCachePath(), JSON.stringify({ events: [], sessionId: null }), "utf8");
+  } catch { /* non-critical */ }
+  appendDebugLog("rec", "Session reset (New Recording) — events cleared");
+}
+
 // ── IPC-callable helpers (used by main process handlers) ─────
 export function getAuthStatus() {
   const auth = loadAuth();
