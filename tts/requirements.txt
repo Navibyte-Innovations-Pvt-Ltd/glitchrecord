@@ -1,0 +1,8 @@
+# Local narration TTS — AI4Bharat Indic-Parler-TTS (Apache-2.0, commercial-safe).
+# Install into a venv (see README.md).
+torch>=2.2
+transformers>=4.46
+soundfile>=0.12
+sentencepiece>=0.2
+# parler-tts is not on PyPI — install from git:
+#   pip install git+https://github.com/huggingface/parler-tts.git
