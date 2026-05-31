@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CountdownOverlay } from "./components/countdown/CountdownOverlay";
+import { HomeWindow } from "./components/launch/HomeWindow";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
 import { SourceSelector } from "./components/launch/SourceSelector";
 import { UpdateToastWindow } from "./components/launch/UpdateToastWindow";
@@ -57,6 +58,13 @@ export default function App() {
 	}, [windowType, t]);
 
 	switch (windowType) {
+		case "home":
+			return (
+				<>
+					<HomeWindow />
+					<Toaster className="pointer-events-auto" />
+				</>
+			);
 		case "hud-overlay":
 			return (
 				<>
