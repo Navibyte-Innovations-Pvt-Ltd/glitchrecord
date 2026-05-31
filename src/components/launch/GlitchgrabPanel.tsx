@@ -84,8 +84,13 @@ export function GlitchgrabPopover({ onOpen }: { onOpen?: () => void }) {
 	});
 
 	const loggedIn = status?.loggedIn ?? false;
+	// fullName is "org/repo" — show just the repo for a clean, readable label.
+	const bareName = (full?: string | null) =>
+		full && full.includes("/") ? full.split("/").pop()! : (full ?? "");
+	const orgName = (full?: string | null) =>
+		full && full.includes("/") ? full.slice(0, full.lastIndexOf("/")) : "";
 	const triggerLabel = loggedIn
-		? (status?.selectedRepoName ?? "Select repo")
+		? (status?.selectedRepoName ? bareName(status.selectedRepoName) : "Select repo")
 		: "Connect Glitchgrab";
 
 	const trigger = (
