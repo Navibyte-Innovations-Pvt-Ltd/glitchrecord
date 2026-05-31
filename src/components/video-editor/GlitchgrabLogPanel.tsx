@@ -10,12 +10,13 @@ import {
 	Copy,
 	CursorClick,
 	Keyboard,
+	NoteBlank,
 	Sparkle,
 	TextT,
 } from "@phosphor-icons/react";
 
 interface CaptureEvent {
-	type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste";
+	type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste" | "note";
 	t: number;
 	label?: string;
 	tag?: string;
@@ -23,6 +24,7 @@ interface CaptureEvent {
 	durationMs?: number;
 	preview?: string;
 	meta?: Record<string, string>;
+	note?: string;
 }
 
 interface GlitchgrabAPI {
@@ -47,6 +49,7 @@ function EventIcon({ type }: { type: CaptureEvent["type"] }) {
 		case "scroll":   return <ArrowsDownUp className={cls} />;
 		case "copy":     return <Copy className={cls} />;
 		case "paste":    return <Clipboard className={cls} />;
+		case "note":     return <NoteBlank className="h-3.5 w-3.5 shrink-0 text-amber-400" weight="fill" />;
 		default:         return <CursorClick className={cls} />;
 	}
 }
@@ -61,6 +64,7 @@ function eventText(e: CaptureEvent): string {
 		case "scroll":   return `Scrolled`;
 		case "copy":     return e.label ? `Copied: "${e.label.slice(0, 40)}"` : "Copy";
 		case "paste":    return "Paste";
+		case "note":     return `📌 Explain: ${e.label ?? "this"}`;
 		default:         return `Click: ${e.label ?? "element"}`;
 	}
 }
