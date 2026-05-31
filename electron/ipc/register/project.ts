@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { RECORDINGS_DIR } from "../../appPaths";
+import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import {
 	LEGACY_PROJECT_FILE_EXTENSIONS,
@@ -531,6 +534,63 @@ export function registerProjectHandlers() {
     } catch (error) {
       return { success: false, recordingsDir: RECORDINGS_DIR, entries: [], error: String(error) }
     }
+  })
+
+  // Guard: only operate on .mp4 files INSIDE the recordings directory.
+  const isRecordingPath = (filePath: string): string | null => {
+    if (!filePath || typeof filePath !== 'string') return null
+    const resolved = path.resolve(filePath)
+    const dir = path.resolve(RECORDINGS_DIR) + path.sep
+    return resolved.startsWith(dir) && resolved.endsWith('.mp4') ? resolved : null
+  }
+
+  // First-frame JPEG thumbnail for a recording (cached as a sidecar .thumb.jpg).
+  ipcMain.handle('get-recording-thumbnail', async (_, filePath: string) => {
+    const resolved = isRecordingPath(filePath)
+    if (!resolved) return { success: false as const }
+    const thumbPath = resolved.replace(/\.mp4$/, '.thumb.jpg')
+    try {
+      await fs.access(thumbPath, fsConstants.F_OK)
+      return { success: true as const, thumbnailPath: thumbPath }
+    } catch {
+      /* not cached yet — generate below */
+    }
+    try {
+      const execFileAsync = promisify(execFile)
+      await execFileAsync(
+        getFfmpegBinaryPath(),
+        ['-y', '-ss', '0', '-i', resolved, '-frames:v', '1', '-vf', 'scale=480:-1', '-q:v', '4', thumbPath],
+        { timeout: 15000 },
+      )
+      await fs.access(thumbPath, fsConstants.F_OK)
+      return { success: true as const, thumbnailPath: thumbPath }
+    } catch {
+      return { success: false as const }
+    }
+  })
+
+  // Delete a recording + its sidecar files (audio tracks, thumbnail).
+  ipcMain.handle('delete-recording', async (_, filePath: string) => {
+    const resolved = isRecordingPath(filePath)
+    if (!resolved) return { success: false as const, error: 'Not a deletable recording' }
+    const base = resolved.replace(/\.mp4$/, '')
+    const targets = [
+      resolved,
+      `${base}.thumb.jpg`,
+      `${base}.mic.wav`, `${base}.system.wav`,
+      `${base}.mic.m4a`, `${base}.system.m4a`,
+      `${base}.mic.webm`, `${base}.system.webm`,
+    ]
+    let deletedMain = false
+    for (const t of targets) {
+      try {
+        await fs.unlink(t)
+        if (t === resolved) deletedMain = true
+      } catch {
+        /* sidecar may not exist — ignore */
+      }
+    }
+    return deletedMain ? { success: true as const } : { success: false as const, error: 'File not found' }
   })
 
   ipcMain.handle('open-project-file-at-path', async (_, filePath: string) => {
