@@ -117,9 +117,69 @@ export function setCurrentProjectPath(v: string | null) {
 }
 export function setCurrentVideoPath(v: string | null) {
 	currentVideoPath = v;
+	persistLastSession();
 }
 export function setCurrentRecordingSession(v: RecordingSessionData | null) {
 	currentRecordingSession = v;
+	persistLastSession();
+}
+
+// ── Dev-only crash/restart recovery ───────────────────────────────────────────
+// In dev, vite-plugin-electron RESTARTS Electron on every electron/main.ts edit,
+// wiping in-memory currentVideoPath/currentRecordingSession — so the editor opens
+// empty and the user's recording looks "gone" (the footage file is still on disk).
+// We persist a tiny pointer to the last video/session and restore it on the next
+// dev launch so testing survives reloads. Prod is untouched (gated on !isPackaged).
+function lastSessionFile(): string | null {
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const { app } = require("electron") as typeof import("electron");
+		if (app.isPackaged) return null; // dev only
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const path = require("node:path") as typeof import("node:path");
+		return path.join(app.getPath("userData"), "last-session.json");
+	} catch {
+		return null;
+	}
+}
+
+function persistLastSession() {
+	const file = lastSessionFile();
+	if (!file) return;
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const fs = require("node:fs") as typeof import("node:fs");
+		fs.writeFileSync(
+			file,
+			JSON.stringify({ currentVideoPath, currentRecordingSession }),
+			"utf8",
+		);
+	} catch {
+		/* best-effort */
+	}
+}
+
+export function restoreLastSession() {
+	const file = lastSessionFile();
+	if (!file) return;
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const fs = require("node:fs") as typeof import("node:fs");
+		if (!fs.existsSync(file)) return;
+		const data = JSON.parse(fs.readFileSync(file, "utf8")) as {
+			currentVideoPath?: string | null;
+			currentRecordingSession?: RecordingSessionData | null;
+		};
+		// Only restore if the underlying video file still exists on disk.
+		const raw = data.currentVideoPath;
+		const onDisk = raw ? raw.replace(/^file:\/\//, "").replace(/%20/g, " ") : null;
+		if (onDisk && fs.existsSync(decodeURI(onDisk))) {
+			currentVideoPath = raw ?? null;
+			currentRecordingSession = data.currentRecordingSession ?? null;
+		}
+	} catch {
+		/* corrupt pointer — ignore */
+	}
 }
 
 export function setNativeScreenRecordingActive(v: boolean) {
