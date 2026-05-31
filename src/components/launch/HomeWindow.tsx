@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { VideoCamera, ArrowClockwise, Trash, Check, X } from "@phosphor-icons/react";
+import { VideoCamera, ArrowClockwise, Trash } from "@phosphor-icons/react";
 import { toFileUrl } from "../video-editor/projectPersistence";
 import type { ProjectLibraryEntry } from "../video-editor/ProjectBrowserDialog";
 
@@ -22,7 +22,6 @@ export function HomeWindow() {
 	const [recordings, setRecordings] = useState<RecordingEntry[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [thumbs, setThumbs] = useState<Record<string, string>>({});
-	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
 	const refresh = useCallback(async () => {
 		setLoading(true);
@@ -97,7 +96,6 @@ export function HomeWindow() {
 			const res = (await a?.deleteRecording?.(path)) as { success: boolean } | undefined;
 			if (res?.success) {
 				setRecordings((prev) => prev.filter((r) => r.path !== path));
-				setConfirmDelete(null);
 			}
 		},
 		[],
@@ -231,46 +229,18 @@ export function HomeWindow() {
 													/>
 												)}
 
-												{/* Delete control (hover) with inline confirm */}
-												{confirmDelete === r.path ? (
-													<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 backdrop-blur-[2px]">
-														<span className="text-[11px] font-medium text-white">Delete this recording?</span>
-														<div className="flex gap-2">
-															<button
-																type="button"
-																onClick={(e) => {
-																	e.stopPropagation();
-																	void deleteRecording(r.path);
-																}}
-																className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-500"
-															>
-																<Check className="h-3 w-3" /> Delete
-															</button>
-															<button
-																type="button"
-																onClick={(e) => {
-																	e.stopPropagation();
-																	setConfirmDelete(null);
-																}}
-																className="flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-white/20"
-															>
-																<X className="h-3 w-3" /> Cancel
-															</button>
-														</div>
-													</div>
-												) : (
-													<button
-														type="button"
-														onClick={(e) => {
-															e.stopPropagation();
-															setConfirmDelete(r.path);
-														}}
-														title="Delete recording"
-														className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/55 text-white/70 opacity-0 transition hover:bg-red-600 hover:text-white group-hover:opacity-100"
-													>
-														<Trash className="h-3.5 w-3.5" />
-													</button>
-												)}
+												{/* Delete — single click, no confirm */}
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														void deleteRecording(r.path);
+													}}
+													title="Delete recording"
+													className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/55 text-white/70 opacity-0 transition hover:bg-red-600 hover:text-white group-hover:opacity-100"
+												>
+													<Trash className="h-3.5 w-3.5" />
+												</button>
 											</div>
 											<span className="truncate text-[12px] font-medium tracking-tight">
 												{r.name.replace(/^recording-/, "").replace(/\.mp4$/, "")}
