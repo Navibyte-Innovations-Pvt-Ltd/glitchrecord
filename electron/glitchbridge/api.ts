@@ -29,7 +29,11 @@ export async function getRepos(token: string): Promise<GlitchRepo[]> {
       data: { ownRepos: Array<{ id: string; fullName: string }> };
     };
     if (!data.success) return [];
-    return data.data.ownRepos.map((r) => ({ id: r.id, name: r.fullName, fullName: r.fullName }));
+    // Safety net: dedupe by fullName so the selector never shows a repo twice.
+    const seen = new Set<string>();
+    return data.data.ownRepos
+      .filter((r) => (seen.has(r.fullName) ? false : (seen.add(r.fullName), true)))
+      .map((r) => ({ id: r.id, name: r.fullName, fullName: r.fullName }));
   } catch { return []; }
 }
 
