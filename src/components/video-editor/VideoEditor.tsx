@@ -357,6 +357,34 @@ function getErrorMessage(error: unknown): string {
 	return "Something went wrong";
 }
 
+// Carve the span [a,b] out of the existing clip regions and make it its own
+// region at `speed`. Any region overlapping the boundary is split; the part
+// inside [a,b] is replaced by the new sped region. Works on an empty list too
+// (gaps render as the base 1× clip). Used by the Shift-marker speed gesture.
+function carveSpeedRegion(
+	regions: ClipRegion[],
+	a: number,
+	b: number,
+	speed: number,
+	newId: () => string,
+): ClipRegion[] {
+	const start = Math.round(Math.min(a, b));
+	const end = Math.round(Math.max(a, b));
+	const out: ClipRegion[] = [];
+	for (const r of regions) {
+		if (r.endMs <= start || r.startMs >= end) {
+			out.push(r); // no overlap
+			continue;
+		}
+		if (r.startMs < start) out.push({ ...r, id: newId(), endMs: start }); // left remainder
+		if (r.endMs > end) out.push({ ...r, id: newId(), startMs: end }); // right remainder
+		// the inside part is dropped — replaced by the new region below
+	}
+	out.push({ id: newId(), startMs: start, endMs: end, speed });
+	out.sort((x, y) => x.startMs - y.startMs);
+	return out;
+}
+
 export default function VideoEditor() {
 	const { t } = useI18n();
 	const smokeExportConfig = useMemo(
@@ -3625,6 +3653,31 @@ export default function VideoEditor() {
 		}
 	}, []);
 
+	// Shift+click on the timeline drops a marker. First click = start marker
+	// (rendered as a line). Second click = carve a 2× speed-up region between the
+	// two points (then it's editable/draggable like any clip region).
+	const [pendingMarkerMs, setPendingMarkerMs] = useState<number | null>(null);
+	const pendingMarkerRef = useRef<number | null>(null);
+	const handleShiftMarker = useCallback((ms: number) => {
+		const rounded = Math.round(ms);
+		// first marker — remember it and show the line
+		if (pendingMarkerRef.current === null) {
+			pendingMarkerRef.current = rounded;
+			setPendingMarkerMs(rounded);
+			return;
+		}
+		// second marker — carve a speed region between the two
+		const a = Math.min(pendingMarkerRef.current, rounded);
+		const b = Math.max(pendingMarkerRef.current, rounded);
+		pendingMarkerRef.current = null;
+		setPendingMarkerMs(null);
+		if (b - a >= 100) {
+			setClipRegions((regions) =>
+				carveSpeedRegion(regions, a, b, 2, () => `clip-${nextClipIdRef.current++}`),
+			);
+		}
+	}, []);
+
 	const handleClipSplit = useCallback(
 		(splitMs: number) => {
 			setClipRegions((prev) => {
@@ -6308,6 +6361,8 @@ export default function VideoEditor() {
 						trimRegions={trimRegions}
 						clipRegions={clipRegions}
 						onClipSplit={handleClipSplit}
+						onShiftMarker={handleShiftMarker}
+						pendingMarkerMs={pendingMarkerMs}
 						onClipSpanChange={handleClipSpanChange}
 						selectedClipId={selectedClipId}
 						onSelectClip={handleSelectClip}
