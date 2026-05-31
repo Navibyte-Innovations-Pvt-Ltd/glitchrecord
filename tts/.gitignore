@@ -5,3 +5,6 @@ __pycache__/
 *.log
 *.txt
 !requirements.txt
+# Secrets — never commit the real .env (keep .env.example)
+.env
+!.env.example
