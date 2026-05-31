@@ -532,6 +532,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			error?: string;
 		}>;
 	},
+	narrationKeyStatus: () =>
+		ipcRenderer.invoke("narration-key-status") as Promise<{ hasSarvamKey: boolean }>,
 	onNarrationProgress: (cb: (stage: string) => void) => {
 		const handler = (_e: unknown, stage: string) => cb(stage);
 		ipcRenderer.on("narration-progress", handler);
