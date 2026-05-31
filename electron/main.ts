@@ -1013,12 +1013,24 @@ app.whenReady().then(async () => {
 					"--out", outWav,
 				];
 				appendDebugLog("rec", `narration: spawning ${py} (${text.length} chars)`);
+				const sendProgress = (stage: string) => {
+					if (!_e.sender.isDestroyed()) _e.sender.send("narration-progress", stage);
+				};
+				sendProgress("Starting…");
 				const result = await new Promise<{ ok: boolean; path?: string; error?: string }>((resolve) => {
 					const child = spawn(py, args, { env: { ...process.env, COQUI_TOS_AGREED: "1" } });
 					let out = "";
 					let err = "";
 					child.stdout.on("data", (d) => { out += d.toString(); });
-					child.stderr.on("data", (d) => { err += d.toString(); });
+					child.stderr.on("data", (d) => {
+						const s = d.toString();
+						err += s;
+						// Surface meaningful stages to the UI.
+						for (const line of s.split("\n")) {
+							if (line.includes("loading") || line.includes("downloads")) sendProgress("Loading model…");
+							else if (line.includes("[narrate] generating") || line.includes("Processing")) sendProgress("Synthesizing voice…");
+						}
+					});
 					child.on("error", (e) => resolve({ ok: false, error: String(e) }));
 					child.on("close", (code) => {
 						if (code === 0 && fssync.existsSync(outWav)) {
