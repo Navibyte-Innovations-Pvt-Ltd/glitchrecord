@@ -107,7 +107,42 @@ export function GlitchgrabLogPanel() {
 	const [loading, setLoading] = useState(true);
 	const [hasGetEvents, setHasGetEvents] = useState(true);
 	const [copied, setCopied] = useState(false);
+	const [narrationText, setNarrationText] = useState("");
+	const [narrating, setNarrating] = useState(false);
+	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
+	const [narrationError, setNarrationError] = useState<string | null>(null);
 	const listRef = useRef<HTMLDivElement>(null);
+
+	const electronAPI = () =>
+		(window as unknown as {
+			electronAPI?: {
+				generateNarration?: (t: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+				getLocalMediaUrl?: (p: string) => Promise<{ success: boolean; url?: string }>;
+				revealInFolder?: (p: string) => void;
+			};
+		}).electronAPI;
+
+	const generateNarration = useCallback(async () => {
+		const api = electronAPI();
+		if (!api?.generateNarration || !narrationText.trim()) return;
+		setNarrating(true);
+		setNarrationError(null);
+		setNarrationUrl(null);
+		try {
+			const res = await api.generateNarration(narrationText);
+			if (res.ok && res.path) {
+				const media = await api.getLocalMediaUrl?.(res.path);
+				setNarrationUrl(media?.success ? (media.url ?? null) : null);
+				(window as unknown as { __ggNarrationPath?: string }).__ggNarrationPath = res.path;
+			} else {
+				setNarrationError(res.error ?? "Generation failed");
+			}
+		} catch (e) {
+			setNarrationError(String(e));
+		} finally {
+			setNarrating(false);
+		}
+	}, [narrationText]);
 
 	const copyAll = useCallback(() => {
 		if (events.length === 0) return;
@@ -278,6 +313,54 @@ export function GlitchgrabLogPanel() {
 					))}
 				</div>
 			)}
+
+			{/* ── Narration generator ─────────────────────────────── */}
+			<div className="mt-auto shrink-0 border-t border-foreground/10 pt-3 flex flex-col gap-2">
+				<div className="flex items-center gap-2">
+					<Sparkle className="h-3.5 w-3.5 text-blue-500" />
+					<span className="text-[12px] font-semibold">Narration</span>
+				</div>
+				<textarea
+					value={narrationText}
+					onChange={(e) => setNarrationText(e.target.value)}
+					placeholder="Paste your script here (from Claude), then Generate…"
+					rows={3}
+					className="w-full resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] p-2 text-[11px] leading-relaxed outline-none focus:border-blue-500/40"
+				/>
+				<button
+					type="button"
+					onClick={generateNarration}
+					disabled={narrating || !narrationText.trim()}
+					className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40"
+				>
+					{narrating ? (
+						<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+					) : (
+						<><Sparkle className="h-3.5 w-3.5" /> Generate narration</>
+					)}
+				</button>
+				{narrationError && (
+					<div className="rounded-md bg-red-500/10 px-2 py-1.5 text-[10px] text-red-400 max-h-[60px] overflow-y-auto">
+						{narrationError}
+					</div>
+				)}
+				{narrationUrl && (
+					<div className="flex flex-col gap-1.5">
+						{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+						<audio controls src={narrationUrl} className="w-full h-8" />
+						<button
+							type="button"
+							onClick={() => {
+								const p = (window as unknown as { __ggNarrationPath?: string }).__ggNarrationPath;
+								if (p) electronAPI()?.revealInFolder?.(p);
+							}}
+							className="text-[11px] text-foreground/50 hover:text-foreground/80 transition-colors text-left"
+						>
+							Reveal file → drag into timeline via Add Layer
+						</button>
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }
