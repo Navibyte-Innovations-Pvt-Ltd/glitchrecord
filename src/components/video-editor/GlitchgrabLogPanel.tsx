@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ArrowClockwise,
 	ArrowRight,
@@ -69,6 +69,11 @@ function eventText(e: CaptureEvent): string {
 	}
 }
 
+function formatStartSec(sec: number): string {
+	const s = Math.max(0, Math.round(sec));
+	return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 function formatMs(ms: number): string {
 	const s = Math.floor(ms / 1000);
 	const m = Math.floor(s / 60);
@@ -126,11 +131,33 @@ function execCommandCopy(text: string, onDone: () => void) {
 	}
 }
 
-export function GlitchgrabLogPanel() {
+interface GlitchgrabLogPanelProps {
+	/** Live playhead in TIMELINE seconds + play state, updated each frame by the editor. */
+	playbackRef?: { current: { timelineTime: number; isPlaying: boolean } };
+	timelineDurationSec?: number;
+	/** Seek the video to a timeline-time position (seconds). */
+	onSeekTimeline?: (sec: number) => void;
+	onTogglePlay?: () => void;
+	/** Mute the screen-recording audio while sync-previewing the narration. */
+	onSetRecordingMuted?: (muted: boolean) => void;
+}
+
+export function GlitchgrabLogPanel({
+	playbackRef,
+	timelineDurationSec,
+	onSeekTimeline,
+	onTogglePlay,
+	onSetRecordingMuted,
+}: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [hasGetEvents, setHasGetEvents] = useState(true);
 	const [copied, setCopied] = useState(false);
+	// Sync-preview: where the narration should START in the video (timeline seconds),
+	// and whether we're actively keeping the audio aligned to the video playhead.
+	const [narrationStartSec, setNarrationStartSec] = useState(0);
+	const [syncArmed, setSyncArmed] = useState(false);
+	const syncAudioRef = useRef<HTMLAudioElement | null>(null);
 	const [narrationText, setNarrationText] = useState("");
 	const [narrating, setNarrating] = useState(false);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
@@ -309,6 +336,72 @@ export function GlitchgrabLogPanel() {
 		listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
 	}, [events.length]);
 
+	// ── Sync-preview loop ──────────────────────────────────────────────
+	// While armed, keep the narration <audio> aligned to the video playhead:
+	// audio position = (timeline playhead) − (narration start). Reads the editor's
+	// playbackRef via rAF so there's no per-frame React re-render. Timeline time
+	// (not source time) keeps 1× audio correct across speed regions + cuts.
+	useEffect(() => {
+		if (!syncArmed || !playbackRef) return;
+		let raf = 0;
+		const tick = () => {
+			const audio = syncAudioRef.current;
+			const pb = playbackRef.current;
+			if (audio && pb) {
+				const rel = pb.timelineTime - narrationStartSec;
+				const dur = Number.isFinite(audio.duration) ? audio.duration : Infinity;
+				if (!pb.isPlaying || rel < 0 || rel > dur) {
+					if (!audio.paused) audio.pause();
+				} else {
+					if (Math.abs(audio.currentTime - rel) > 0.3) audio.currentTime = rel;
+					if (audio.paused) audio.play().catch(() => {});
+				}
+			}
+			raf = requestAnimationFrame(tick);
+		};
+		raf = requestAnimationFrame(tick);
+		return () => {
+			cancelAnimationFrame(raf);
+			syncAudioRef.current?.pause();
+		};
+	}, [syncArmed, narrationStartSec, playbackRef]);
+
+	// Arming mutes the recording audio and jumps the video to the narration start
+	// so the user immediately hears it from the right spot; disarming restores audio.
+	const toggleSync = useCallback(() => {
+		setSyncArmed((armed) => {
+			const next = !armed;
+			onSetRecordingMuted?.(next);
+			if (next) onSeekTimeline?.(narrationStartSec);
+			else syncAudioRef.current?.pause();
+			return next;
+		});
+	}, [onSetRecordingMuted, onSeekTimeline, narrationStartSec]);
+
+	const setStartAtPlayhead = useCallback(() => {
+		if (!playbackRef) return;
+		const max = timelineDurationSec ?? Infinity;
+		setNarrationStartSec(Math.max(0, Math.min(playbackRef.current.timelineTime, max)));
+	}, [playbackRef, timelineDurationSec]);
+
+	// Memoized so the per-frame re-renders during playback don't re-map 65+ events.
+	const eventListEls = useMemo(
+		() =>
+			events.map((e, i) => (
+				<div
+					key={`${e.t}-${i}`}
+					className="flex items-start gap-2 rounded-md px-2 py-1.5 text-[12px] hover:bg-foreground/[0.04]"
+				>
+					<EventIcon type={e.type} />
+					<span className="flex-1 min-w-0 truncate text-foreground/80">{eventText(e)}</span>
+					<span className="shrink-0 text-[10px] font-mono text-foreground/30 pt-0.5">
+						{formatMs(e.t)}
+					</span>
+				</div>
+			)),
+		[events],
+	);
+
 	if (!gg()) return null;
 
 	return (
@@ -404,20 +497,7 @@ export function GlitchgrabLogPanel() {
 					className="flex flex-col gap-0.5 overflow-y-auto"
 					style={{ scrollbarWidth: "thin" }}
 				>
-					{events.map((e, i) => (
-						<div
-							key={`${e.t}-${i}`}
-							className="flex items-start gap-2 rounded-md px-2 py-1.5 text-[12px] hover:bg-foreground/[0.04]"
-						>
-							<EventIcon type={e.type} />
-							<span className="flex-1 min-w-0 truncate text-foreground/80">
-								{eventText(e)}
-							</span>
-							<span className="shrink-0 text-[10px] font-mono text-foreground/30 pt-0.5">
-								{formatMs(e.t)}
-							</span>
-						</div>
-					))}
+					{eventListEls}
 				</div>
 			)}
 			</>
@@ -519,7 +599,64 @@ export function GlitchgrabLogPanel() {
 				{narrationUrl && (
 					<div className="flex flex-col gap-1.5">
 						{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-						<audio controls src={narrationUrl} className="w-full h-8" />
+						<audio ref={syncAudioRef} controls src={narrationUrl} className="w-full h-8" />
+
+						{/* ── Sync preview: hear narration aligned to the video ── */}
+						{playbackRef && (
+							<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.03] p-2">
+								<div className="flex items-center justify-between text-[10px] text-foreground/50">
+									<span>Sync preview</span>
+									<span className="font-mono">starts at {formatStartSec(narrationStartSec)}</span>
+								</div>
+								<div className="flex gap-1.5">
+									<button
+										type="button"
+										onClick={setStartAtPlayhead}
+										className="flex-1 rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/70 transition-colors hover:bg-foreground/[0.08]"
+										title="Set narration start to the current playhead position"
+									>
+										Set start at playhead
+									</button>
+									<button
+										type="button"
+										onClick={() => setNarrationStartSec(0)}
+										className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/50 transition-colors hover:bg-foreground/[0.08]"
+										title="Reset start to 0"
+									>
+										0:00
+									</button>
+								</div>
+								<div className="flex gap-1.5">
+									<button
+										type="button"
+										onClick={toggleSync}
+										className={`flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+											syncArmed
+												? "bg-green-600 text-white hover:bg-green-500"
+												: "bg-blue-600 text-white hover:bg-blue-500"
+										}`}
+									>
+										{syncArmed ? "● Synced — disarm" : "Sync with video"}
+									</button>
+									{onTogglePlay && (
+										<button
+											type="button"
+											onClick={onTogglePlay}
+											className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-1 text-[11px] text-foreground/70 transition-colors hover:bg-foreground/[0.08]"
+											title="Play / pause the video"
+										>
+											▶ / ❚❚
+										</button>
+									)}
+								</div>
+								{syncArmed && (
+									<p className="text-[9px] leading-snug text-foreground/40">
+										Recording audio muted. Hit play — narration speaks from {formatStartSec(narrationStartSec)}. Scrub + "Set start at playhead" to move it.
+									</p>
+								)}
+							</div>
+						)}
+
 						<button
 							type="button"
 							onClick={() => {
