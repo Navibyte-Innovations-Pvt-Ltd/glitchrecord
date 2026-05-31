@@ -537,6 +537,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("narration-progress", handler);
 		return () => ipcRenderer.removeListener("narration-progress", handler);
 	},
+	openNarrationTester: () => ipcRenderer.invoke("open-narration-tester") as Promise<{ ok: boolean }>,
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
