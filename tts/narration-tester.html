@@ -39,10 +39,13 @@
   <h1><span class="dot"></span> Narration Tester</h1>
   <p class="hint">Paste a script → pick model/voice → Generate → hear the audio. No recording needed. Runs locally on your Mac.</p>
   <textarea id="script" placeholder="Paste your script here… e.g. Toh basically, GlitchGrab ek AI bug tracker hai."></textarea>
+  <input id="apikey" type="password" placeholder="Sarvam API key (only for Sarvam — get from dashboard.sarvam.ai)"
+    style="width:100%;background:#18181c;border:1px solid #2a2a30;border-radius:7px;color:#e7e7ea;padding:7px 10px;font-size:12px;outline:none;" />
   <div class="row" style="flex-wrap: wrap;">
     <select id="engine" title="Model">
-      <option value="supertonic" selected>Supertonic (native Hindi, commercial-safe)</option>
-      <option value="xtts">XTTS (Western voices)</option>
+      <option value="sarvam" selected>Sarvam AI (cloud, native Hinglish)</option>
+      <option value="supertonic">Supertonic (local, Hindi)</option>
+      <option value="xtts">XTTS (local, Western)</option>
     </select>
     <select id="lang" title="Language">
       <option value="hi" selected>Hindi (hi)</option>
@@ -64,12 +67,14 @@
 
     // Voices per engine.
     const VOICES = {
+      sarvam: [["anushka","Anushka"],["manisha","Manisha"],["vidya","Vidya"],["arya","Arya"],["abhilash","Abhilash"],["karun","Karun"],["hitesh","Hitesh"]],
       supertonic: [["F1","F1 (female)"],["F2","F2 (female)"],["F3","F3 (female)"],["M1","M1 (male)"],["M2","M2 (male)"],["M3","M3 (male)"]],
       xtts: [["Ana Florence","Ana (F)"],["Daisy Studious","Daisy (F)"],["Andrew Chipper","Andrew (M)"],["Damien Black","Damien (M)"]],
     };
     function fillVoices() {
       const eng = $("engine").value;
       $("voice").innerHTML = VOICES[eng].map(([v,l]) => `<option value="${v}">${l}</option>`).join("");
+      $("apikey").style.display = eng === "sarvam" ? "block" : "none";
     }
     $("engine").addEventListener("change", fillVoices);
     fillVoices();
@@ -95,7 +100,7 @@
       const unsub = a.onNarrationProgress ? a.onNarrationProgress((s) => { stage = s; render(); }) : null;
 
       try {
-        const res = await a.generateNarration(text, { engine: $("engine").value, lang: $("lang").value, voice: $("voice").value });
+        const res = await a.generateNarration(text, { engine: $("engine").value, lang: $("lang").value, voice: $("voice").value, apiKey: $("apikey").value.trim() });
         if (res.ok && res.path) {
           lastPath = res.path;
           const m = a.getLocalMediaUrl ? await a.getLocalMediaUrl(res.path) : null;
