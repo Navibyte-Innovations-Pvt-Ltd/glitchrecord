@@ -48,6 +48,8 @@ interface TimelineCanvasProps {
 	videoDurationMs: number;
 	currentTimeMs: number;
 	onSeek?: (time: number) => void;
+	onShiftMarker?: (ms: number) => void;
+	pendingMarkerMs?: number | null;
 	canPlaceZoomAtMs?: (startMs: number) => boolean;
 	onSelectZoom?: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
@@ -531,6 +533,8 @@ export default function TimelineCanvas({
 	videoDurationMs,
 	currentTimeMs,
 	onSeek,
+	onShiftMarker,
+	pendingMarkerMs,
 	onAddZoomAtMs,
 	canPlaceZoomAtMs,
 	onSelectZoom,
@@ -569,7 +573,22 @@ export default function TimelineCanvas({
 	const handleTimelineClick = useCallback(
 		(e: MouseEvent<HTMLDivElement>) => {
 			if (isSeeking) return;
-			if (!onSeek || videoDurationMs <= 0) return;
+			if (videoDurationMs <= 0) return;
+
+			// Shift+click drops a speed marker instead of seeking.
+			if (e.shiftKey && onShiftMarker) {
+				const rect = e.currentTarget.getBoundingClientRect();
+				const clickX =
+					direction === "rtl"
+						? rect.right - sidebarWidth - e.clientX
+						: e.clientX - rect.left - sidebarWidth;
+				if (clickX < 0) return;
+				const absMs = Math.max(0, Math.min(range.start + pixelsToValue(clickX), videoDurationMs));
+				onShiftMarker(absMs);
+				return;
+			}
+
+			if (!onSeek) return;
 
 			if (onClearBlockSelection) {
 				onClearBlockSelection();
@@ -593,6 +612,7 @@ export default function TimelineCanvas({
 		[
 			isSeeking,
 			onSeek,
+			onShiftMarker,
 			onSelectZoom,
 			onSelectClip,
 			onSelectAnnotation,
@@ -771,6 +791,25 @@ export default function TimelineCanvas({
 						className="absolute top-0 bottom-0 w-px bg-foreground/35"
 						style={{ [sideProperty]: `${timelineGhostOffsetPx}px` }}
 					/>
+				</div>
+			)}
+
+			{pendingMarkerMs != null && (
+				<div
+					className="absolute top-0 bottom-0 z-[46] pointer-events-none"
+					style={{
+						[sideProperty === "right" ? "marginRight" : "marginLeft"]:
+							`${sidebarWidth - 1}px`,
+					}}
+				>
+					<div
+						className="absolute top-0 bottom-0 w-0.5 bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
+						style={{
+							[sideProperty]: `${valueToPixels(pendingMarkerMs - range.start)}px`,
+						}}
+					>
+						<div className="absolute -top-0.5 left-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-amber-400" />
+					</div>
 				</div>
 			)}
 
