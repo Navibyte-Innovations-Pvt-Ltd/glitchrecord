@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Narration Tester</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f12; color: #e7e7ea; padding: 18px;
+      display: flex; flex-direction: column; gap: 12px; height: 100vh;
+    }
+    h1 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; }
+    p.hint { font-size: 11px; color: #8a8a92; line-height: 1.5; }
+    textarea {
+      flex: 1; min-height: 120px; resize: none; width: 100%;
+      background: #18181c; border: 1px solid #2a2a30; border-radius: 8px;
+      color: #e7e7ea; padding: 10px; font-size: 13px; line-height: 1.55; outline: none;
+    }
+    textarea:focus { border-color: #3b82f6; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    select, button {
+      font-size: 12px; border-radius: 7px; border: 1px solid #2a2a30;
+      background: #18181c; color: #e7e7ea; padding: 7px 10px; cursor: pointer;
+    }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 600; flex: 1; }
+    button.primary:hover { background: #1d4ed8; }
+    button.primary:disabled { opacity: 0.45; cursor: default; }
+    #status { font-size: 12px; color: #9aa0aa; min-height: 16px; }
+    #err { font-size: 11px; color: #f87171; background: #2a1414; border-radius: 6px;
+      padding: 8px; max-height: 90px; overflow: auto; white-space: pre-wrap; display: none; }
+    audio { width: 100%; display: none; }
+    .reveal { font-size: 11px; color: #8a8a92; text-decoration: underline; cursor: pointer; display: none; }
+  </style>
+</head>
+<body>
+  <h1><span class="dot"></span> Narration Tester</h1>
+  <p class="hint">Paste a script → Generate → hear the audio. No recording needed. (Local XTTS, runs on your Mac.)</p>
+  <textarea id="script" placeholder="Paste your script here… e.g. Toh basically, GlitchGrab ek AI bug tracker hai."></textarea>
+  <div class="row">
+    <select id="lang" title="Language">
+      <option value="en" selected>Hinglish/English (en)</option>
+      <option value="hi">Hindi (hi)</option>
+    </select>
+    <select id="speaker" title="Voice">
+      <option value="Ana Florence" selected>Ana (F)</option>
+      <option value="Daisy Studious">Daisy (F)</option>
+      <option value="Andrew Chipper">Andrew (M)</option>
+      <option value="Damien Black">Damien (M)</option>
+    </select>
+    <button id="gen" class="primary">✨ Generate audio</button>
+  </div>
+  <div id="status"></div>
+  <div id="err"></div>
+  <audio id="audio" controls></audio>
+  <span id="reveal" class="reveal">Reveal file in Finder</span>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const api = () => window.electronAPI;
+    let lastPath = null;
+    let timer = null, elapsed = 0;
+
+    $("gen").addEventListener("click", async () => {
+      const text = $("script").value.trim();
+      if (!text) return;
+      const a = api();
+      if (!a?.generateNarration) { $("err").style.display = "block"; $("err").textContent = "electronAPI not available"; return; }
+
+      $("gen").disabled = true;
+      $("err").style.display = "none"; $("err").textContent = "";
+      $("audio").style.display = "none"; $("reveal").style.display = "none";
+      elapsed = 0; $("status").textContent = "Starting… 0s";
+      timer = setInterval(() => { elapsed++; const s = $("status").textContent.replace(/\\s\\d+s$/, ""); $("status").textContent = s + " " + elapsed + "s"; }, 1000);
+
+      const unsub = a.onNarrationProgress ? a.onNarrationProgress((stage) => {
+        $("status").textContent = stage + " " + elapsed + "s";
+      }) : null;
+
+      try {
+        const res = await a.generateNarration(text, { lang: $("lang").value, speaker: $("speaker").value });
+        if (res.ok && res.path) {
+          lastPath = res.path;
+          const m = a.getLocalMediaUrl ? await a.getLocalMediaUrl(res.path) : null;
+          if (m && m.success) { $("audio").src = m.url; $("audio").style.display = "block"; $("audio").play().catch(() => {}); }
+          $("reveal").style.display = "inline";
+          $("status").textContent = "Done ✓";
+        } else {
+          $("err").style.display = "block"; $("err").textContent = res.error || "Generation failed";
+          $("status").textContent = "";
+        }
+      } catch (e) {
+        $("err").style.display = "block"; $("err").textContent = String(e);
+        $("status").textContent = "";
+      } finally {
+        clearInterval(timer);
+        $("gen").disabled = false;
+        if (unsub) unsub();
+      }
+    });
+
+    $("reveal").addEventListener("click", () => { if (lastPath) api()?.revealInFolder?.(lastPath); });
+  </script>
+</body>
+</html>
