@@ -532,6 +532,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			error?: string;
 		}>;
 	},
+	onNarrationProgress: (cb: (stage: string) => void) => {
+		const handler = (_e: unknown, stage: string) => cb(stage);
+		ipcRenderer.on("narration-progress", handler);
+		return () => ipcRenderer.removeListener("narration-progress", handler);
+	},
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
