@@ -225,7 +225,7 @@ interface Window {
 		writeClipboard: (text: string) => Promise<{ ok: boolean }>;
 		generateNarration: (
 			text: string,
-			opts?: { engine?: string; lang?: string; speaker?: string },
+			opts?: { engine?: string; lang?: string; speaker?: string; voice?: string },
 		) => Promise<{ ok: boolean; path?: string; error?: string }>;
 		onNarrationProgress: (cb: (stage: string) => void) => () => void;
 		openNarrationTester: () => Promise<{ ok: boolean }>;
