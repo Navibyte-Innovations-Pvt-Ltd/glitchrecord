@@ -25,6 +25,24 @@ DEFAULT_DESCRIPTION = (
 )
 
 
+def load_env_file():
+    """Load KEY=VALUE lines from a `.env` next to this script (e.g. SARVAM_API_KEY).
+    Real env vars take precedence, so the editor can still override per-call."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(p):
+        return
+    try:
+        with open(p, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    except Exception:
+        pass
+
+
 def pick_device() -> str:
     try:
         import torch
@@ -247,6 +265,7 @@ def generate_xtts(text, args, device):
 
 
 def main() -> int:
+    load_env_file()  # pick up SARVAM_API_KEY etc. from tts/.env
     p = argparse.ArgumentParser(description="Generate narration audio from a script.")
     p.add_argument("--text", help="Script text to narrate")
     p.add_argument("--text-file", help="Path to a .txt file with the script")
