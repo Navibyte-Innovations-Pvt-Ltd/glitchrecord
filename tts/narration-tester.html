@@ -72,12 +72,16 @@
       $("gen").disabled = true;
       $("err").style.display = "none"; $("err").textContent = "";
       $("audio").style.display = "none"; $("reveal").style.display = "none";
-      elapsed = 0; $("status").textContent = "Starting… 0s";
-      timer = setInterval(() => { elapsed++; const s = $("status").textContent.replace(/\\s\\d+s$/, ""); $("status").textContent = s + " " + elapsed + "s"; }, 1000);
 
-      const unsub = a.onNarrationProgress ? a.onNarrationProgress((stage) => {
-        $("status").textContent = stage + " " + elapsed + "s";
-      }) : null;
+      // Status = current stage + elapsed seconds. Track stage in a var so the
+      // ticker rebuilds the line cleanly (no appending).
+      elapsed = 0;
+      let stage = "Loading model…";
+      const render = () => { $("status").textContent = stage + " · " + elapsed + "s"; };
+      render();
+      timer = setInterval(() => { elapsed++; render(); }, 1000);
+
+      const unsub = a.onNarrationProgress ? a.onNarrationProgress((s) => { stage = s; render(); }) : null;
 
       try {
         const res = await a.generateNarration(text, { lang: $("lang").value, speaker: $("speaker").value });
@@ -86,7 +90,7 @@
           const m = a.getLocalMediaUrl ? await a.getLocalMediaUrl(res.path) : null;
           if (m && m.success) { $("audio").src = m.url; $("audio").style.display = "block"; $("audio").play().catch(() => {}); }
           $("reveal").style.display = "inline";
-          $("status").textContent = "Done ✓";
+          $("status").textContent = "Done ✓ (" + elapsed + "s)";
         } else {
           $("err").style.display = "block"; $("err").textContent = res.error || "Generation failed";
           $("status").textContent = "";
