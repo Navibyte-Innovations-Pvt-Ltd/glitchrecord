@@ -869,7 +869,9 @@ function createSourceSelectorWindowWrapper() {
 
 // On macOS, applications and their menu bar stay active until the user quits
 // explicitly with Cmd + Q.
+let isAppQuitting = false;
 app.on("before-quit", () => {
+	isAppQuitting = true;
 	killWindowsCaptureProcess();
 	showCursor();
 	cleanupNativeVideoExportSessions();
@@ -880,6 +882,14 @@ app.on("before-quit", () => {
 app.on("window-all-closed", () => {
 	if (IS_SMOKE_EXPORT || process.platform !== "darwin") {
 		app.quit();
+		return;
+	}
+	// DEV self-heal: a vite main-process restart (from editing electron/*.ts) or a
+	// closed editor can leave the app alive with ZERO windows and no visible dock
+	// entry — the user sees "the app vanished." In dev, immediately recreate the
+	// launcher so there's always a window. Prod keeps macOS's stay-alive behavior.
+	if (!app.isPackaged && !isAppQuitting) {
+		focusOrCreateMainWindow();
 	}
 });
 
