@@ -1034,10 +1034,10 @@ app.whenReady().then(async () => {
 				await fs.writeFile(tmpTxt, text, "utf8");
 				// One "voice" value from the UI; narrate.py reads --voice (supertonic)
 				// or --speaker (xtts), so pass it to both — each engine uses its own.
-				const voice = opts?.voice ?? opts?.speaker ?? "M1";
+				const voice = opts?.voice ?? opts?.speaker ?? "ritu";
 				const args = [
 					script,
-					"--engine", opts?.engine ?? "supertonic",
+					"--engine", opts?.engine ?? "sarvam",
 					"--lang", opts?.lang ?? "hi",
 					"--voice", voice,
 					"--speaker", voice,
