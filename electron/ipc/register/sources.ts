@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
 import { reassertHudOverlayMousePassthrough } from "../../windows";
+import { appendDebugLog } from "../../glitchbridge/server";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import {
 	getNativeMacWindowSources,
@@ -395,6 +396,11 @@ export function registerSourceHandlers({
 			}
 
 			const resolvedBounds = bounds;
+			appendDebugLog(
+				"rec",
+				`source-highlight: id=${source.id} resolved bounds=${JSON.stringify(resolvedBounds)} ` +
+					`primary=${JSON.stringify(getScreen().getPrimaryDisplay().bounds)}`,
+			);
 
 			// ── 3. Show traveling wave highlight ──
 			// On macOS, screen highlights use workArea and no outward padding —
