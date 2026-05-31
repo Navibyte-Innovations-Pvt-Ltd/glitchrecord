@@ -964,6 +964,7 @@ app.whenReady().then(async () => {
 		// After the editor opens, `mainWindow` points at the EDITOR, so
 		// focusOrCreateMainWindow would just re-focus the editor. Detach it so the
 		// call targets (and shows) the HUD recorder instead.
+		const editor = getExistingEditorWindow();
 		if (mainWindow && isEditorWindow(mainWindow)) mainWindow = null;
 		focusOrCreateMainWindow();
 		// Clear the previous recording's captured events so the new session starts clean.
@@ -971,6 +972,9 @@ app.whenReady().then(async () => {
 		for (const w of BrowserWindow.getAllWindows()) {
 			if (!w.isDestroyed()) w.webContents.send("glitchbridge:session-reset");
 		}
+		// Close the editor so its layout disappears — "New Recording" = fresh start.
+		// The captured recording stays on disk; only the in-editor edits are dropped.
+		if (editor && !editor.isDestroyed()) closeEditorWindowBypassingUnsavedPrompt(editor);
 		return { ok: true };
 	});
 	// Native clipboard write — reliable in Electron where navigator.clipboard can fail
