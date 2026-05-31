@@ -3767,9 +3767,26 @@ export default function VideoEditor() {
 			}
 
 			setClipRegions((prev) =>
-				prev.map((clip) =>
-					clip.id === id ? { ...clip, startMs: newStart, endMs: newEnd } : clip,
-				),
+				prev.map((clip) => {
+					if (clip.id === id) {
+						return { ...clip, startMs: newStart, endMs: newEnd };
+					}
+					if (!oldClip) return clip;
+					// ripple: a neighbor flush against the moved edge follows it so
+					// clips stay contiguous (no gap / overlap on speed-carved blocks).
+					const MIN = 50;
+					// right neighbor shared the dragged clip's old end → move its start
+					if (clip.startMs === oldClip.endMs && newEnd !== oldClip.endMs) {
+						const nextStart = Math.min(newEnd, clip.endMs - MIN);
+						return { ...clip, startMs: nextStart };
+					}
+					// left neighbor shared the dragged clip's old start → move its end
+					if (clip.endMs === oldClip.startMs && newStart !== oldClip.startMs) {
+						const nextEnd = Math.max(newStart, clip.startMs + MIN);
+						return { ...clip, endMs: nextEnd };
+					}
+					return clip;
+				}),
 			);
 		},
 		[clipRegions],
