@@ -201,6 +201,11 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		ipcRenderer.on("glitchbridge:events-ready", handler);
 		return () => ipcRenderer.removeListener("glitchbridge:events-ready", handler);
 	},
+	onSessionReset: (cb: () => void) => {
+		const handler = () => cb();
+		ipcRenderer.on("glitchbridge:session-reset", handler);
+		return () => ipcRenderer.removeListener("glitchbridge:session-reset", handler);
+	},
 });
 
 contextBridge.exposeInMainWorld("electronAPI", {
