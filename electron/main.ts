@@ -1007,7 +1007,7 @@ app.whenReady().then(async () => {
 				const args = [
 					script,
 					"--engine", opts?.engine ?? "xtts",
-					"--lang", opts?.lang ?? "hi",
+					"--lang", opts?.lang ?? "en", // en reads Roman Hinglish cleanly; hi crashes XTTS
 					"--speaker", opts?.speaker ?? "Ana Florence",
 					"--text-file", tmpTxt,
 					"--out", outWav,
