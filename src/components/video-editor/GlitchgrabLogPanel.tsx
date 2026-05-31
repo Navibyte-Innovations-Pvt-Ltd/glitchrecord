@@ -140,6 +140,8 @@ interface GlitchgrabLogPanelProps {
 	onTogglePlay?: () => void;
 	/** Mute the screen-recording audio while sync-previewing the narration. */
 	onSetRecordingMuted?: (muted: boolean) => void;
+	/** Bake the generated narration into the export as an audio region at startSec. */
+	onAddNarrationToTimeline?: (audioPath: string, startSec: number, durationSec: number) => void;
 }
 
 export function GlitchgrabLogPanel({
@@ -148,6 +150,7 @@ export function GlitchgrabLogPanel({
 	onSeekTimeline,
 	onTogglePlay,
 	onSetRecordingMuted,
+	onAddNarrationToTimeline,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -157,6 +160,8 @@ export function GlitchgrabLogPanel({
 	// and whether we're actively keeping the audio aligned to the video playhead.
 	const [narrationStartSec, setNarrationStartSec] = useState(0);
 	const [syncArmed, setSyncArmed] = useState(false);
+	const [narrationPath, setNarrationPath] = useState<string | null>(null);
+	const [narrationAdded, setNarrationAdded] = useState(false);
 	const syncAudioRef = useRef<HTMLAudioElement | null>(null);
 	const [narrationText, setNarrationText] = useState("");
 	const [narrating, setNarrating] = useState(false);
@@ -237,6 +242,8 @@ export function GlitchgrabLogPanel({
 			if (res.ok && res.path) {
 				const media = await api.getLocalMediaUrl?.(res.path);
 				setNarrationUrl(media?.success ? (media.url ?? null) : null);
+				setNarrationPath(res.path);
+				setNarrationAdded(false);
 				(window as unknown as { __ggNarrationPath?: string }).__ggNarrationPath = res.path;
 			} else {
 				setNarrationError(res.error ?? "Generation failed");
@@ -383,6 +390,14 @@ export function GlitchgrabLogPanel({
 		const max = timelineDurationSec ?? Infinity;
 		setNarrationStartSec(Math.max(0, Math.min(playbackRef.current.timelineTime, max)));
 	}, [playbackRef, timelineDurationSec]);
+
+	// Bake the narration into the export: add it as an audio region at the start point.
+	const addNarrationToTimeline = useCallback(() => {
+		const dur = syncAudioRef.current?.duration;
+		if (!narrationPath || !onAddNarrationToTimeline || !dur || !Number.isFinite(dur)) return;
+		onAddNarrationToTimeline(narrationPath, narrationStartSec, dur);
+		setNarrationAdded(true);
+	}, [narrationPath, narrationStartSec, onAddNarrationToTimeline]);
 
 	// Memoized so the per-frame re-renders during playback don't re-map 65+ events.
 	const eventListEls = useMemo(
@@ -657,15 +672,39 @@ export function GlitchgrabLogPanel({
 							</div>
 						)}
 
+						{/* Bake narration into the video so the export includes it */}
+						{onAddNarrationToTimeline && (
+							<button
+								type="button"
+								onClick={addNarrationToTimeline}
+								className={`flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
+									narrationAdded
+										? "bg-green-600/15 text-green-400"
+										: "bg-foreground/90 text-background hover:bg-foreground"
+								}`}
+							>
+								{narrationAdded ? (
+									<><Check className="h-3.5 w-3.5" /> Added — re-add to update</>
+								) : (
+									<>＋ Add narration to video (at {formatStartSec(narrationStartSec)})</>
+								)}
+							</button>
+						)}
+						{narrationAdded && (
+							<p className="text-[9px] leading-snug text-foreground/40 text-center">
+								On the timeline now — adjust/trim it there, then export. The video will include the narration.
+							</p>
+						)}
+
 						<button
 							type="button"
 							onClick={() => {
-								const p = (window as unknown as { __ggNarrationPath?: string }).__ggNarrationPath;
+								const p = narrationPath ?? (window as unknown as { __ggNarrationPath?: string }).__ggNarrationPath;
 								if (p) electronAPI()?.revealInFolder?.(p);
 							}}
 							className="text-[11px] text-foreground/50 hover:text-foreground/80 transition-colors text-left"
 						>
-							Reveal file → drag into timeline via Add Layer
+							Reveal file → drag into timeline manually
 						</button>
 					</div>
 				)}
