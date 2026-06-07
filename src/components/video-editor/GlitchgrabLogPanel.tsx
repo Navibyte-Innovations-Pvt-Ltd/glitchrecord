@@ -39,6 +39,14 @@ interface GlitchgrabAPI {
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 	}) => Promise<{ ok: boolean; script?: string; error?: string }>;
+	refineScript?: (opts: {
+		messages: Array<{ role: "user" | "assistant"; content: string }>;
+		currentScript?: string;
+		lang?: string;
+		gender?: string;
+		durationSec?: number;
+		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+	}) => Promise<{ ok: boolean; script?: string; error?: string }>;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -180,6 +188,12 @@ export function GlitchgrabLogPanel({
 	// On-demand "generate script from events" (DeepSeek) state.
 	const [scriptLoading, setScriptLoading] = useState(false);
 	const [scriptError, setScriptError] = useState<string | null>(null);
+	// Refine-script chat thread (conversational edits to the script).
+	const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+	const [chatInput, setChatInput] = useState("");
+	const [chatBusy, setChatBusy] = useState(false);
+	const [chatError, setChatError] = useState<string | null>(null);
+	const chatEndRef = useRef<HTMLDivElement | null>(null);
 	const [narrating, setNarrating] = useState(false);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
 	const [narrationError, setNarrationError] = useState<string | null>(null);
@@ -286,6 +300,57 @@ export function GlitchgrabLogPanel({
 			setScriptLoading(false);
 		}
 	}, [engine, voice, lang, timelineDurationSec, zoomRegions]);
+
+	// Send a chat instruction to refine the script. Replies with the full revised
+	// script → shown in the thread AND synced into the narration box.
+	const sendChat = useCallback(async () => {
+		const api = gg();
+		const text = chatInput.trim();
+		if (!text || chatBusy) return;
+		if (!api?.refineScript) {
+			setChatError("Quit & relaunch GlitchRecord — chat needs a restart.");
+			return;
+		}
+		setChatError(null);
+		const voiceLabel = (VOICES[engine] ?? []).find(([v]) => v === voice)?.[1] ?? "";
+		const gender = /\(m\)|male/i.test(voiceLabel) ? "male" : "female";
+		const zooms = (zoomRegions ?? []).map((z) => ({
+			startMs: z.startMs,
+			endMs: z.endMs,
+			depth: z.depth,
+			cx: z.focus?.cx,
+			cy: z.focus?.cy,
+		}));
+		const nextMessages = [...chatMessages, { role: "user" as const, content: text }];
+		setChatMessages(nextMessages);
+		setChatInput("");
+		setChatBusy(true);
+		try {
+			const res = await api.refineScript({
+				messages: nextMessages,
+				currentScript: narrationText,
+				lang,
+				gender,
+				durationSec: timelineDurationSec,
+				zooms,
+			});
+			if (res.ok && res.script) {
+				setChatMessages((prev) => [...prev, { role: "assistant", content: res.script as string }]);
+				setNarrationText(res.script);
+			} else {
+				setChatError(res.error ?? "Refine failed.");
+			}
+		} catch (e) {
+			setChatError(String(e));
+		} finally {
+			setChatBusy(false);
+		}
+	}, [chatInput, chatBusy, chatMessages, narrationText, engine, voice, lang, timelineDurationSec, zoomRegions]);
+
+	// Keep the chat scrolled to the latest message.
+	useEffect(() => {
+		chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	}, [chatMessages, chatBusy]);
 
 	const generateNarration = useCallback(async () => {
 		const api = electronAPI();
@@ -700,6 +765,62 @@ export function GlitchgrabLogPanel({
 					rows={3}
 					className="w-full resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] p-2 text-[11px] leading-relaxed outline-none focus:border-blue-500/40"
 				/>
+
+				{/* ── Refine with AI (chat) ─────────────────────────── */}
+				{narrationText.trim() && (
+					<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.02] p-2">
+						<div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-foreground/40">
+							<Sparkle className="h-3 w-3" /> Refine with AI
+						</div>
+						{chatMessages.length > 0 && (
+							<div className="flex max-h-[140px] flex-col gap-1.5 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
+								{chatMessages.map((m, i) => (
+									<div
+										key={i}
+										className={
+											m.role === "user"
+												? "self-end rounded-lg bg-blue-600/80 px-2 py-1 text-[11px] text-white max-w-[85%]"
+												: "self-start rounded-lg bg-foreground/[0.06] px-2 py-1 text-[10px] text-foreground/60 max-w-[85%]"
+										}
+									>
+										{m.role === "user" ? m.content : "✓ Script updated"}
+									</div>
+								))}
+								{chatBusy && (
+									<div className="self-start flex items-center gap-1.5 text-[10px] text-foreground/40">
+										<ArrowClockwise className="h-3 w-3 animate-spin" /> Updating script…
+									</div>
+								)}
+								<div ref={chatEndRef} />
+							</div>
+						)}
+						{chatError && <p className="text-[10px] text-red-400/80">{chatError}</p>}
+						<div className="flex items-end gap-1.5">
+							<textarea
+								value={chatInput}
+								onChange={(e) => setChatInput(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" && !e.shiftKey) {
+										e.preventDefault();
+										void sendChat();
+									}
+								}}
+								placeholder="e.g. explain the OTP step more, make the intro shorter…"
+								rows={1}
+								className="flex-1 resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1.5 text-[11px] outline-none focus:border-blue-500/40"
+							/>
+							<button
+								type="button"
+								onClick={() => void sendChat()}
+								disabled={chatBusy || !chatInput.trim()}
+								className="flex items-center justify-center rounded-md bg-blue-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40"
+							>
+								Send
+							</button>
+						</div>
+					</div>
+				)}
+
 				<button
 					type="button"
 					onClick={generateNarration}
