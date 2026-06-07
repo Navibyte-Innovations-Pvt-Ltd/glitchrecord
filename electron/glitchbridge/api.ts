@@ -86,6 +86,7 @@ export async function generateScript(params: {
   gender?: string;
   durationSec?: number;
   zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+  noteAnswers?: Array<{ label: string; answer: string }>;
 }): Promise<{ script: string } | { error: string }> {
   try {
     const res = await fetch(`${BASE}/api/v1/capture-sessions/${params.sessionId}`, {
@@ -99,6 +100,7 @@ export async function generateScript(params: {
         gender: params.gender,
         durationSec: params.durationSec,
         zooms: params.zooms,
+        noteAnswers: params.noteAnswers,
       }),
     });
     const data = await res.json().catch(() => null) as
@@ -109,6 +111,35 @@ export async function generateScript(params: {
       return { error: data?.error || `Script API ${res.status}` };
     }
     return { script: data.data.script };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Network error" };
+  }
+}
+
+// Per-note clarifying questions (3 grounded options each + free text) for the
+// shift-marked spots, so the user can say what to explain before generating.
+export async function getNoteQuestions(params: {
+  token: string;
+  sessionId: string;
+}): Promise<
+  | { questions: Array<{ id: string; tMs: number; label: string; question: string; options: string[] }> }
+  | { error: string }
+> {
+  try {
+    const res = await fetch(`${BASE}/api/v1/capture-sessions/${params.sessionId}/note-questions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.token}`,
+      },
+    });
+    const data = (await res.json().catch(() => null)) as
+      | { success: boolean; data?: { questions: Array<{ id: string; tMs: number; label: string; question: string; options: string[] }> }; error?: string }
+      | null;
+    if (!res.ok || !data?.success || !data.data) {
+      return { error: data?.error || `Note questions API ${res.status}` };
+    }
+    return { questions: data.data.questions };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Network error" };
   }
