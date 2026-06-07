@@ -32,6 +32,8 @@ interface GlitchgrabAPI {
 	onLiveEvent: (cb: (event: CaptureEvent) => void) => () => void;
 	onEventsReady?: (cb: (data: { sessionId: string; count: number }) => void) => () => void;
 	onSessionReset?: (cb: () => void) => () => void;
+	onScriptReady?: (cb: (data: { sessionId: string; script: string }) => void) => () => void;
+	generateScript?: () => Promise<{ ok: boolean; script?: string; error?: string }>;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -167,6 +169,9 @@ export function GlitchgrabLogPanel({
 	// AI-written script pushed from the bridge (DeepSeek) when a recording stops.
 	// Held aside so it never clobbers what the user typed — surfaced as a button.
 	const [aiScript, setAiScript] = useState<string | null>(null);
+	// On-demand "generate script from events" (DeepSeek) state.
+	const [scriptLoading, setScriptLoading] = useState(false);
+	const [scriptError, setScriptError] = useState<string | null>(null);
 	const [narrating, setNarrating] = useState(false);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
 	const [narrationError, setNarrationError] = useState<string | null>(null);
@@ -210,9 +215,6 @@ export function GlitchgrabLogPanel({
 				revealInFolder?: (p: string) => void;
 				onNarrationProgress?: (cb: (stage: string) => void) => () => void;
 				narrationKeyStatus?: () => Promise<{ hasSarvamKey: boolean }>;
-				onScriptReady?: (
-					cb: (data: { sessionId: string; script: string }) => void,
-				) => () => void;
 			};
 		}).electronAPI;
 
@@ -225,7 +227,7 @@ export function GlitchgrabLogPanel({
 	// AI script arrives from the bridge after a recording stops → stash it and
 	// jump to the Narration tab so the "Use AI script" button is visible.
 	useEffect(() => {
-		const unsub = electronAPI()?.onScriptReady?.((data) => {
+		const unsub = gg()?.onScriptReady?.((data) => {
 			if (data?.script?.trim()) {
 				setAiScript(data.script.trim());
 				setTab("narration");
@@ -241,6 +243,31 @@ export function GlitchgrabLogPanel({
 		const id = setInterval(() => setNarrationElapsed((s) => s + 1), 1000);
 		return () => clearInterval(id);
 	}, [narrating]);
+
+	// Generate a narration script from the captured events (DeepSeek), then drop
+	// it straight into the textarea so the user can edit + run TTS.
+	const generateScriptFromEvents = useCallback(async () => {
+		const api = gg();
+		setScriptError(null);
+		if (!api?.generateScript) {
+			setScriptError("Quit & relaunch GlitchRecord — this feature needs a restart.");
+			return;
+		}
+		setScriptLoading(true);
+		try {
+			const res = await api.generateScript();
+			if (res.ok && res.script) {
+				setNarrationText(res.script);
+				setAiScript(res.script);
+			} else {
+				setScriptError(res.error ?? "Script generation failed.");
+			}
+		} catch (e) {
+			setScriptError(String(e));
+		} finally {
+			setScriptLoading(false);
+		}
+	}, []);
 
 	const generateNarration = useCallback(async () => {
 		const api = electronAPI();
@@ -618,6 +645,24 @@ export function GlitchgrabLogPanel({
 							/>
 						))}
 				</div>
+
+				{/* Write the script from the captured events with AI (DeepSeek) */}
+				<button
+					type="button"
+					onClick={generateScriptFromEvents}
+					disabled={scriptLoading}
+					className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
+					title="Use AI to write a narration script from the captured events"
+				>
+					{scriptLoading ? (
+						<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Writing script…</>
+					) : (
+						<><Sparkle className="h-3.5 w-3.5" /> Generate script from events</>
+					)}
+				</button>
+				{scriptError && (
+					<p className="text-[10px] text-red-400/80">{scriptError}</p>
+				)}
 
 				{aiScript && aiScript !== narrationText.trim() && (
 					<button
