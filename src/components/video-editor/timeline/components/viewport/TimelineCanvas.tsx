@@ -301,11 +301,9 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoDurationMs,
 	selectAllBlocksActive,
 	selectedZoomId,
-	selectedSpeedId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
-	onSelectSpeed,
 	onSelectZoom,
 	onSelectClip,
 	onSelectAnnotation,
@@ -327,10 +325,9 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onZoomRowClick,
 }: TimelineCanvasRowsProps) {
 	const hiddenIds = useMemo(() => new Set(liveHiddenItemIds ?? []), [liveHiddenItemIds]);
-	const { clipItems, zoomItems, speedItems, annotationRows, audioRows } = useMemo(() => {
+	const { clipItems, zoomItems, annotationRows, audioRows } = useMemo(() => {
 		const nextClipItems: TimelineRenderItem[] = [];
 		const nextZoomItems: TimelineRenderItem[] = [];
-		const nextSpeedItems: TimelineRenderItem[] = [];
 		const annotationBuckets = new Map<number, TimelineRenderItem[]>();
 		const audioBuckets = new Map<number, TimelineRenderItem[]>();
 
@@ -343,8 +340,9 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				nextZoomItems.push(item);
 				continue;
 			}
+			// SPEED_ROW_ID items are no longer rendered as a separate overlay — speed
+			// is shown by colouring the clip segment itself (carve). Skip them.
 			if (item.rowId === SPEED_ROW_ID) {
-				nextSpeedItems.push(item);
 				continue;
 			}
 			if (isAnnotationTrackRowId(item.rowId)) {
@@ -378,7 +376,6 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 		return {
 			clipItems: nextClipItems,
 			zoomItems: nextZoomItems,
-			speedItems: nextSpeedItems,
 			annotationRows: annotationRowsSorted,
 			audioRows: audioRowsSorted,
 		};
@@ -402,23 +399,6 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						{item.label}
 					</Item>
 				))}
-				{/* Speed regions render ON the clip (overlay segment, draggable edges). */}
-				{speedItems
-					.filter((item) => !hiddenIds.has(item.id))
-					.map((item) => (
-						<Item
-							id={item.id}
-							key={item.id}
-							rowId={item.rowId}
-							span={item.span}
-							isSelected={selectAllBlocksActive || item.id === selectedSpeedId}
-							onSelectId={onSelectSpeed}
-							speedValue={item.speedValue}
-							variant="speed"
-						>
-							{item.label}
-						</Item>
-					))}
 			</Row>
 			{showSourceAudioTrack &&
 				sourceAudioTracks.map((track) => (
