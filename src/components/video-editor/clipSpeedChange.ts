@@ -19,13 +19,6 @@ export function formatClipSpeedLabel(speed: number): string | null {
 	return `${Number.isInteger(speed) ? speed.toFixed(0) : speed.toString()}x`;
 }
 
-function spansOverlap(
-	left: { startMs: number; endMs: number },
-	right: { startMs: number; endMs: number },
-): boolean {
-	return left.startMs < right.endMs && left.endMs > right.startMs;
-}
-
 export function planClipSpeedChange(params: {
 	clipRegions: ClipRegion[];
 	zoomRegions: ZoomRegion[];
@@ -43,57 +36,40 @@ export function planClipSpeedChange(params: {
 	}
 
 	const oldSpeed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-	const sourceDurationMs = Math.max(0, clip.endMs - clip.startMs) * oldSpeed;
+	const oldEndMs = clip.endMs;
+	const sourceDurationMs = Math.max(0, oldEndMs - clip.startMs) * oldSpeed;
 	const newEndMs = Math.round(clip.startMs + sourceDurationMs / speed);
-	const nextClip = clipRegions
-		.filter((candidate) => candidate.id !== selectedClipId && candidate.startMs >= clip.endMs)
-		.sort((left, right) => left.startMs - right.startMs)[0];
-
-	if (nextClip && newEndMs > nextClip.startMs) {
-		return { blockedReason: "clip-overlap" };
-	}
-
+	// How much this clip's timeline duration changes. Slowing → positive (grows),
+	// speeding → negative (shrinks). Everything AFTER the clip shifts by this so
+	// nothing overlaps — the total video gets longer/shorter (time-remap).
+	const delta = newEndMs - oldEndMs;
 	const scaleFactor = oldSpeed / speed;
-	const nextZoomRegions = zoomRegions.map((zoom) => {
-		if (zoom.startMs < clip.startMs || zoom.startMs >= clip.endMs) {
-			return zoom;
-		}
 
-		return {
-			...zoom,
-			startMs: Math.round(clip.startMs + (zoom.startMs - clip.startMs) * scaleFactor),
-			endMs: Math.round(clip.startMs + (zoom.endMs - clip.startMs) * scaleFactor),
-		};
+	const nextClipRegions = clipRegions.map((candidate) => {
+		if (candidate.id === selectedClipId) {
+			return { ...candidate, speed, endMs: newEndMs };
+		}
+		if (candidate.startMs >= oldEndMs) {
+			return { ...candidate, startMs: candidate.startMs + delta, endMs: candidate.endMs + delta };
+		}
+		return candidate;
 	});
 
-	const changedZoomIds = new Set(
-		nextZoomRegions
-			.filter((zoom, index) => {
-				const previous = zoomRegions[index];
-				return previous.startMs !== zoom.startMs || previous.endMs !== zoom.endMs;
-			})
-			.map((zoom) => zoom.id),
-	);
+	const nextZoomRegions = zoomRegions.map((zoom) => {
+		// Inside the changed clip → scale around the clip start.
+		if (zoom.startMs >= clip.startMs && zoom.startMs < oldEndMs) {
+			return {
+				...zoom,
+				startMs: Math.round(clip.startMs + (zoom.startMs - clip.startMs) * scaleFactor),
+				endMs: Math.round(clip.startMs + (zoom.endMs - clip.startMs) * scaleFactor),
+			};
+		}
+		// After the changed clip → shift by delta to stay aligned.
+		if (zoom.startMs >= oldEndMs) {
+			return { ...zoom, startMs: zoom.startMs + delta, endMs: zoom.endMs + delta };
+		}
+		return zoom;
+	});
 
-	const hasZoomOverlap = nextZoomRegions.some((zoom, index) =>
-		nextZoomRegions.some(
-			(other, otherIndex) =>
-				index !== otherIndex &&
-				(changedZoomIds.has(zoom.id) || changedZoomIds.has(other.id)) &&
-				spansOverlap(zoom, other),
-		),
-	);
-
-	if (hasZoomOverlap) {
-		return { blockedReason: "zoom-overlap" };
-	}
-
-	return {
-		clipRegions: clipRegions.map((candidate) =>
-			candidate.id === selectedClipId
-				? { ...candidate, speed, endMs: newEndMs }
-				: candidate,
-		),
-		zoomRegions: nextZoomRegions,
-	};
+	return { clipRegions: nextClipRegions, zoomRegions: nextZoomRegions };
 }
