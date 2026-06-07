@@ -2402,6 +2402,23 @@ export default function VideoEditor() {
 				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();
 				if (sessionResult?.success && sessionResult.session?.videoPath) {
 					const sourcePath = fromFileUrl(sessionResult.session.videoPath);
+					// Recovery: restore autosaved edits (narration/zoom/speed) for this
+					// unsaved recording instead of resetting, if a sidecar exists.
+					const rec = await window.electronAPI.loadRecordingProject?.(sourcePath);
+					if (rec?.success && rec.project) {
+						const restored = await applyLoadedProject(rec.project, null);
+						if (restored) {
+							applySessionPresentation(sessionResult.session);
+							setWebcam((prev) => ({
+								...prev,
+								enabled: Boolean(sessionResult.session?.webcamPath),
+								sourcePath: sessionResult.session?.webcamPath ?? null,
+								timeOffsetMs:
+									sessionResult.session?.timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS,
+							}));
+							return;
+						}
+					}
 					const sourceVideoUrl = await resolveVideoUrl(sourcePath);
 					setVideoSourcePath(sourcePath);
 					setVideoPath(sourceVideoUrl);
@@ -2964,6 +2981,17 @@ export default function VideoEditor() {
 			clearPendingProjectAutosave();
 		};
 	}, [clearPendingProjectAutosave, currentProjectPath, hasUnsavedChanges, saveProject]);
+
+	// Recovery autosave for UNSAVED recordings (no project path): debounce-write the
+	// editor state to a sidecar next to the recording so reopening it restores the
+	// narration/zoom/speed edits even if the app closed/crashed before a real save.
+	useEffect(() => {
+		if (currentProjectPath || !currentSourcePath || !currentProjectSnapshot) return;
+		const timer = window.setTimeout(() => {
+			void window.electronAPI.saveRecordingProject?.(currentSourcePath, currentProjectSnapshot);
+		}, 1500);
+		return () => window.clearTimeout(timer);
+	}, [currentProjectPath, currentSourcePath, currentProjectSnapshot]);
 
 	/**
 	 * Saves the current project directly into the projects library under a chosen name.
