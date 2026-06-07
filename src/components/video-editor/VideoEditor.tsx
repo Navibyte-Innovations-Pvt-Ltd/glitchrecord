@@ -6292,11 +6292,12 @@ export default function VideoEditor() {
 								<Button
 									onClick={() => timelineRef.current?.suggestZooms()}
 									variant="ghost"
-									size="icon"
-									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[#2563EB]/10 hover:text-[#2563EB]"
+									size="sm"
+									className="h-7 gap-1 rounded-full border border-[#2563EB]/30 bg-[#2563EB]/10 px-2.5 text-[11px] font-medium text-[#2563EB] transition-all hover:bg-[#2563EB]/20"
 									title={t("timeline.zoom.suggestZooms")}
 								>
-									<WandSparkles className="w-4 h-4" />
+									<WandSparkles className="w-3.5 h-3.5" />
+									<span>Auto-zoom</span>
 								</Button>
 								<Button
 									onClick={() => timelineRef.current?.splitClip()}
