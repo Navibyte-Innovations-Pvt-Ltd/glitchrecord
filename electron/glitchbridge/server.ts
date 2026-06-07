@@ -219,11 +219,12 @@ export function startBridgeServer(callbacks: {
         }
 
         // 2. Generate script from the DB session
-        const script = await generateScript({
+        const result = await generateScript({
           token: currentUser.token,
           sessionId: dbSessionId,
         });
-        if (script) {
+        if ("script" in result) {
+          const script = result.script;
           session.script = script;
           broadcastChrome({ type: "script:ready", sessionId: msg.sessionId, script });
           callbacks.onScriptReady(msg.sessionId, script);
