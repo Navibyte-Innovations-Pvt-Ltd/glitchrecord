@@ -3772,7 +3772,7 @@ export default function VideoEditor() {
 	// Drag a speed region's edge: stretch wider → slower, squeeze narrower → faster.
 	// speed = sourceMs / timelineWidth, snapped to the nearest allowed PlaybackSpeed.
 	const handleSpeedSpanChange = useCallback((id: string, span: Span) => {
-		const SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2];
+		const SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
 		setSpeedRegions((prev) =>
 			prev.map((r) => {
 				if (r.id !== id) return r;
@@ -3843,7 +3843,7 @@ export default function VideoEditor() {
 				const sourceContent = Math.max(1, (oldClip.endMs - oldClip.startMs) * oldSpeed);
 				const newWidth = Math.max(50, newEnd - oldClip.startMs);
 				const raw = sourceContent / newWidth;
-				const SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2];
+				const SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
 				const speed = SPEEDS.reduce((p, c) => (Math.abs(c - raw) < Math.abs(p - raw) ? c : p));
 				const plan = planClipSpeedChange({ clipRegions, zoomRegions, selectedClipId: id, speed });
 				if (plan && !("blockedReason" in plan)) {
@@ -3992,6 +3992,17 @@ export default function VideoEditor() {
 	const handleClipDelete = useCallback(
 		(id: string) => {
 			const deletedClip = clipRegions.find((clip) => clip.id === id);
+			// Deleting a SPEED segment removes the speed EFFECT (revert to 1× and reflow
+			// the timeline back) instead of cutting the footage out.
+			if (deletedClip && deletedClip.speed !== 1) {
+				const plan = planClipSpeedChange({ clipRegions, zoomRegions, selectedClipId: id, speed: 1 });
+				if (plan && !("blockedReason" in plan)) {
+					setClipRegions(plan.clipRegions);
+					setZoomRegions(plan.zoomRegions);
+				}
+				if (selectedClipId === id) setSelectedClipId(null);
+				return;
+			}
 			setClipRegions((prev) => prev.filter((clip) => clip.id !== id));
 			if (deletedClip) {
 				const { startMs, endMs } = deletedClip;
@@ -4012,7 +4023,7 @@ export default function VideoEditor() {
 				setSelectedClipId(null);
 			}
 		},
-		[clipRegions, selectedClipId],
+		[clipRegions, zoomRegions, selectedClipId],
 	);
 
 	const handleSelectAudio = useCallback((id: string | null) => {
