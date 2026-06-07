@@ -288,12 +288,29 @@ export function GlitchgrabLogPanel({
 		try {
 			const raw = localStorage.getItem(`gg.script.${storageKey}`);
 			if (raw) {
-				const d = JSON.parse(raw) as { script?: string; chat?: typeof chatMessages };
+				const d = JSON.parse(raw) as {
+					script?: string;
+					chat?: typeof chatMessages;
+					audioPath?: string | null;
+				};
 				setNarrationText(typeof d.script === "string" ? d.script : "");
 				setChatMessages(Array.isArray(d.chat) ? d.chat : []);
+				// Restore the generated audio (player + "Add to video") until a new one is made.
+				if (d.audioPath) {
+					setNarrationPath(d.audioPath);
+					electronAPI()
+						?.getLocalMediaUrl?.(d.audioPath)
+						.then((m) => setNarrationUrl(m?.success ? (m.url ?? null) : null))
+						.catch(() => {});
+				} else {
+					setNarrationPath(null);
+					setNarrationUrl(null);
+				}
 			} else {
 				setNarrationText("");
 				setChatMessages([]);
+				setNarrationPath(null);
+				setNarrationUrl(null);
 			}
 		} catch {
 			/* ignore corrupt storage */
@@ -306,14 +323,14 @@ export function GlitchgrabLogPanel({
 			try {
 				localStorage.setItem(
 					`gg.script.${storageKey}`,
-					JSON.stringify({ script: narrationText, chat: chatMessages }),
+					JSON.stringify({ script: narrationText, chat: chatMessages, audioPath: narrationPath }),
 				);
 			} catch {
 				/* quota / serialize issues — non-fatal */
 			}
 		}, 800);
 		return () => clearTimeout(t);
-	}, [storageKey, narrationText, chatMessages]);
+	}, [storageKey, narrationText, chatMessages, narrationPath]);
 
 	// Elapsed-seconds ticker while generating (XTTS has no clean %, so show time).
 	useEffect(() => {
