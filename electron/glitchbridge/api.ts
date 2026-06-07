@@ -84,6 +84,8 @@ export async function generateScript(params: {
   sessionId: string;
   lang?: string;
   gender?: string;
+  durationSec?: number;
+  zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 }): Promise<{ script: string } | { error: string }> {
   try {
     const res = await fetch(`${BASE}/api/v1/capture-sessions/${params.sessionId}`, {
@@ -92,7 +94,12 @@ export async function generateScript(params: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${params.token}`,
       },
-      body: JSON.stringify({ lang: params.lang, gender: params.gender }),
+      body: JSON.stringify({
+        lang: params.lang,
+        gender: params.gender,
+        durationSec: params.durationSec,
+        zooms: params.zooms,
+      }),
     });
     const data = await res.json().catch(() => null) as
       | { success: boolean; data?: { script: string }; error?: string }
