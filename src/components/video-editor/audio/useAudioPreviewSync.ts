@@ -129,6 +129,10 @@ export function useAudioPreviewSync({
       if (!audio) {
         audio = new Audio();
         audio.preload = "auto";
+        const el = audio;
+        el.addEventListener("error", () =>
+          console.warn("[GG-audio] failed to load narration/audio track:", el.src, el.error?.message),
+        );
         existing.set(track.id, audio);
       }
 
