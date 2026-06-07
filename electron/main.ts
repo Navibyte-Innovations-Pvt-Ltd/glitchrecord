@@ -990,7 +990,12 @@ app.whenReady().then(async () => {
 	// On-demand: generate a DeepSeek narration script from the CURRENT captured
 	// events (no recording stop needed). Used by the Narration tab's "Generate
 	// script from events" button. Requires login (web endpoint is token-gated).
-	ipcMain.handle("glitchbridge:generate-script", async (_e, opts?: { lang?: string; gender?: string }) => {
+	ipcMain.handle("glitchbridge:generate-script", async (_e, opts?: {
+		lang?: string;
+		gender?: string;
+		durationSec?: number;
+		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+	}) => {
 		const user = getCurrentUser();
 		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
 		const session = getCurrentSession();
@@ -1007,6 +1012,8 @@ app.whenReady().then(async () => {
 			sessionId: dbSessionId,
 			lang: opts?.lang,
 			gender: opts?.gender,
+			durationSec: opts?.durationSec,
+			zooms: opts?.zooms,
 		});
 		if ("error" in result) {
 			appendDebugLog("rec", `generate-script: failed — ${result.error}`);
