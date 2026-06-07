@@ -34,7 +34,7 @@ import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
 import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, getCurrentUser, loadPersistedSession, appendDebugLog, resetBridgeSession } from "./glitchbridge/server";
 import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
-import { validateToken, uploadSession, generateScript, refineScript, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
+import { validateToken, uploadSession, generateScript, refineScript, getNoteQuestions, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -990,11 +990,27 @@ app.whenReady().then(async () => {
 	// On-demand: generate a DeepSeek narration script from the CURRENT captured
 	// events (no recording stop needed). Used by the Narration tab's "Generate
 	// script from events" button. Requires login (web endpoint is token-gated).
+	// Per-note clarifying questions for the shift-marked spots. Re-uploads events
+	// (cheap) to get a DB session, then asks the web API.
+	ipcMain.handle("glitchbridge:note-questions", async () => {
+		const user = getCurrentUser();
+		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
+		const session = getCurrentSession();
+		const events = session?.events ?? loadPersistedSession().events;
+		if (!events?.length) return { ok: false, error: "No captured events yet." };
+		const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
+		if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
+		const result = await getNoteQuestions({ token: user.token, sessionId: dbSessionId });
+		if ("error" in result) return { ok: false, error: result.error };
+		return { ok: true, questions: result.questions };
+	});
+
 	ipcMain.handle("glitchbridge:generate-script", async (_e, opts?: {
 		lang?: string;
 		gender?: string;
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+		noteAnswers?: Array<{ label: string; answer: string }>;
 	}) => {
 		const user = getCurrentUser();
 		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
@@ -1014,6 +1030,7 @@ app.whenReady().then(async () => {
 			gender: opts?.gender,
 			durationSec: opts?.durationSec,
 			zooms: opts?.zooms,
+			noteAnswers: opts?.noteAnswers,
 		});
 		if ("error" in result) {
 			appendDebugLog("rec", `generate-script: failed — ${result.error}`);
