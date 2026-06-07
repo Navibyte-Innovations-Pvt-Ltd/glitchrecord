@@ -602,8 +602,6 @@ export default function VideoEditor() {
 		initialEditorPreferences.aspectRatio,
 	);
 	const [activeEffectSection, setActiveEffectSection] = useState<EditorEffectSection>("scene");
-	// Right-side Script & Narration drawer (script + AI chat + TTS).
-	const [scriptPanelOpen, setScriptPanelOpen] = useState(false);
 	const [exportQuality, setExportQuality] = useState<ExportQuality>(
 		initialEditorPreferences.exportQuality,
 	);
@@ -2261,18 +2259,6 @@ export default function VideoEditor() {
 		() => hasUnsavedProjectChanges(currentProjectSnapshot, lastSavedSnapshot),
 		[currentProjectSnapshot, lastSavedSnapshot],
 	);
-
-	// Auto-open the Script drawer when the bridge finishes a script (e.g. after a
-	// recording stops). The user can also open it anytime via the GlitchGrab rail icon.
-	useEffect(() => {
-		const gg = (window as unknown as {
-			glitchgrab?: { onScriptReady?: (cb: (d: { script: string }) => void) => () => void };
-		}).glitchgrab;
-		const unsub = gg?.onScriptReady?.((d) => {
-			if (d?.script?.trim()) setScriptPanelOpen(true);
-		});
-		return () => unsub?.();
-	}, []);
 
 	// A fresh, never-saved recording (no project path, no saved baseline) gets
 	// auto-zoom suggestions applied on load — that alone would flag it "unsaved"
@@ -5847,37 +5833,7 @@ export default function VideoEditor() {
 			</div>
 
 			<div className="relative flex min-h-0 flex-1 flex-col gap-3 p-4">
-				{/* Right-side Script & Narration drawer (opened via the GlitchGrab rail icon
-				    or auto-opened when a script is ready). */}
-				{scriptPanelOpen && (
-					<div className="absolute right-0 top-0 bottom-0 z-30 flex w-[400px] flex-col border-l border-foreground/10 bg-background shadow-2xl">
-						<div className="flex items-center justify-between border-b border-foreground/10 px-3 py-2">
-							<span className="flex items-center gap-1.5 text-[12px] font-semibold">
-								<Sparkle className="h-4 w-4 text-blue-500" /> Script &amp; Narration
-							</span>
-							<button
-								type="button"
-								onClick={() => setScriptPanelOpen(false)}
-								title="Close"
-								className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition hover:bg-foreground/[0.06] hover:text-foreground"
-							>
-								<X className="h-4 w-4" />
-							</button>
-						</div>
-						<div className="min-h-0 flex-1 overflow-hidden p-2">
-							<GlitchgrabLogPanel
-								playbackRef={narrationPlaybackRef}
-								timelineDurationSec={timelineDuration}
-								onSeekTimeline={handleSeek}
-								onTogglePlay={togglePlayPause}
-								onSetRecordingMuted={setNarrationPreviewMuted}
-								onAddNarrationToTimeline={handleAddNarrationToTimeline}
-								zoomRegions={zoomRegions}
-							/>
-						</div>
-					</div>
-				)}
-				<div className="flex min-h-0 flex-1 gap-3 relative z-10">
+				<div id="gg-editor-row" className="flex min-h-0 flex-1 gap-3 relative z-10">
 					{/* Settings sidebar */}
 					<div className="flex flex-shrink-0 gap-1.5">
 						{/* Icon rail */}
@@ -5888,11 +5844,7 @@ export default function VideoEditor() {
 									<div key={section.id} className="flex items-center">
 										<motion.button
 											type="button"
-											onClick={() => {
-												setActiveEffectSection(section.id);
-												// GlitchGrab lives in the right drawer — toggle it.
-												if (section.id === "glitchgrab") setScriptPanelOpen((o) => !o);
-											}}
+											onClick={() => setActiveEffectSection(section.id)}
 											title={section.label}
 											className="group relative flex h-9 w-9 items-center justify-center rounded-lg outline-none focus:outline-none focus-visible:outline-none"
 											animate={{ opacity: isActive ? 1 : 0.55 }}
@@ -5969,8 +5921,15 @@ export default function VideoEditor() {
 						{activeEffectSection === "extensions" ? (
 							<ExtensionManager />
 						) : activeEffectSection === "glitchgrab" ? (
-							// GlitchGrab (script + narration) renders in the right drawer instead.
-							null
+							<GlitchgrabLogPanel
+								playbackRef={narrationPlaybackRef}
+								timelineDurationSec={timelineDuration}
+								onSeekTimeline={handleSeek}
+								onTogglePlay={togglePlayPause}
+								onSetRecordingMuted={setNarrationPreviewMuted}
+								onAddNarrationToTimeline={handleAddNarrationToTimeline}
+								zoomRegions={zoomRegions}
+							/>
 						) : (
 							<SettingsPanel
 								panelMode="editor"
