@@ -6021,6 +6021,7 @@ export default function VideoEditor() {
 								onSetRecordingMuted={setNarrationPreviewMuted}
 								onAddNarrationToTimeline={handleAddNarrationToTimeline}
 								zoomRegions={zoomRegions}
+								storageKey={currentSourcePath ?? undefined}
 							/>
 						) : (
 							<SettingsPanel
