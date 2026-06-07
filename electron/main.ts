@@ -1058,7 +1058,7 @@ app.whenReady().then(async () => {
 			appendDebugLog("rec", `refine-script: failed — ${result.error}`);
 			return { ok: false, error: result.error };
 		}
-		return { ok: true, script: result.script };
+		return { ok: true, reply: result.reply, script: result.script };
 	});
 
 	// Standalone Narration Tester — paste a script → generate audio, no recording.
