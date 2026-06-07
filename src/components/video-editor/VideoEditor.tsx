@@ -3391,6 +3391,26 @@ export default function VideoEditor() {
 		setAutoSuggestZoomsTrigger(0);
 	}, []);
 
+	// Manual "Auto-zoom" button. On reopened projects the cursor-telemetry state
+	// can be empty (it isn't reloaded with retries like a fresh recording), so the
+	// suggestion path would wrongly report "no telemetry" even though the on-disk
+	// telemetry file exists. Reload it from disk first, then run the suggester.
+	const handleManualAutoZoom = useCallback(async () => {
+		try {
+			const res = await window.electronAPI.getCursorTelemetry(videoSourcePath ?? undefined);
+			const samples = res?.success ? res.samples : [];
+			if (samples.length >= 2) {
+				setCursorTelemetry(samples);
+				setCursorTelemetrySourcePath(videoSourcePath);
+			}
+		} catch {
+			/* fall through — the suggester will report the empty state */
+		}
+		// Re-run via the existing auto-suggest pipeline (fresh telemetry now in state).
+		autoSuggestedVideoPathRef.current = null;
+		setAutoSuggestZoomsTrigger((v) => v + 1);
+	}, [videoSourcePath]);
+
 	const handleSeek = useCallback(
 		(time: number, options: { pause?: boolean } = {}) => {
 			const playback = getActivePlayback();
@@ -6290,7 +6310,7 @@ export default function VideoEditor() {
 									<ZoomIn className="w-4 h-4" />
 								</Button>
 								<Button
-									onClick={() => timelineRef.current?.suggestZooms()}
+									onClick={handleManualAutoZoom}
 									variant="ghost"
 									size="sm"
 									className="h-7 gap-1 rounded-full border border-[#2563EB]/30 bg-[#2563EB]/10 px-2.5 text-[11px] font-medium text-[#2563EB] transition-all hover:bg-[#2563EB]/20"
