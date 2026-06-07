@@ -1002,10 +1002,13 @@ app.whenReady().then(async () => {
 		if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
 
 		appendDebugLog("rec", `generate-script: calling DeepSeek (session ${dbSessionId})`);
-		const script = await generateScript({ token: user.token, sessionId: dbSessionId });
-		if (!script) return { ok: false, error: "Script generation failed." };
-		appendDebugLog("rec", `generate-script: got ${script.length} chars`);
-		return { ok: true, script };
+		const result = await generateScript({ token: user.token, sessionId: dbSessionId });
+		if ("error" in result) {
+			appendDebugLog("rec", `generate-script: failed — ${result.error}`);
+			return { ok: false, error: result.error };
+		}
+		appendDebugLog("rec", `generate-script: got ${result.script.length} chars`);
+		return { ok: true, script: result.script };
 	});
 
 	// Standalone Narration Tester — paste a script → generate audio, no recording.
