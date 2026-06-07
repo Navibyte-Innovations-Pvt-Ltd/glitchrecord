@@ -124,7 +124,7 @@ export async function refineScript(params: {
   gender?: string;
   durationSec?: number;
   zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
-}): Promise<{ script: string } | { error: string }> {
+}): Promise<{ reply: string; script: string | null } | { error: string }> {
   try {
     const res = await fetch(`${BASE}/api/v1/capture-sessions/${params.sessionId}/refine`, {
       method: "POST",
@@ -142,12 +142,12 @@ export async function refineScript(params: {
       }),
     });
     const data = await res.json().catch(() => null) as
-      | { success: boolean; data?: { script: string }; error?: string }
+      | { success: boolean; data?: { reply: string; script: string | null }; error?: string }
       | null;
-    if (!res.ok || !data?.success || !data.data?.script) {
+    if (!res.ok || !data?.success || !data.data) {
       return { error: data?.error || `Refine API ${res.status}` };
     }
-    return { script: data.data.script };
+    return { reply: data.data.reply, script: data.data.script };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Network error" };
   }
