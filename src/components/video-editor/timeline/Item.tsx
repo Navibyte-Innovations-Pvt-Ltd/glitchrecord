@@ -128,12 +128,17 @@ export default function Item({
 	const showAudioWaveform = isAudio && Boolean(waveformPeaks);
 	const clipSpeedLabel = isClip ? formatClipSpeedLabel(speedValue ?? 1) : null;
 
+	// A clip segment with a non-1 speed is a speed region — colour it amber so it
+	// stands out as a marked span inside the otherwise-continuous clip bar.
+	const isSpeedClip = isClip && speedValue !== undefined && speedValue !== 1;
 	const glassClass = isZoom
 		? glassStyles.glassPurple
 		: isTrim
 			? glassStyles.glassRed
 			: isClip
-				? glassStyles.glassCyan
+				? isSpeedClip
+					? glassStyles.glassAmber
+					: glassStyles.glassCyan
 				: isSpeed
 					? glassStyles.glassAmber
 					: isAudio
@@ -179,9 +184,12 @@ export default function Item({
 						isSelected && glassStyles.selected,
 					)}
 					style={{
-						height: "85%",
+						// Clips fill the row and lose their rounding so contiguous
+						// segments read as ONE continuous clip bar (no visible cut).
+						height: isClip ? "100%" : "85%",
 						minHeight: 22,
 						minWidth: MIN_ITEM_PX,
+						...(isClip ? { borderRadius: 0 } : {}),
 					}}
 					onClick={(event) => {
 						event.stopPropagation();
