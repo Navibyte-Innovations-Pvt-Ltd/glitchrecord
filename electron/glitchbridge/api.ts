@@ -82,6 +82,8 @@ export async function uploadSession(params: {
 export async function generateScript(params: {
   token: string;
   sessionId: string;
+  lang?: string;
+  gender?: string;
 }): Promise<{ script: string } | { error: string }> {
   try {
     const res = await fetch(`${BASE}/api/v1/capture-sessions/${params.sessionId}`, {
@@ -90,6 +92,7 @@ export async function generateScript(params: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${params.token}`,
       },
+      body: JSON.stringify({ lang: params.lang, gender: params.gender }),
     });
     const data = await res.json().catch(() => null) as
       | { success: boolean; data?: { script: string }; error?: string }
