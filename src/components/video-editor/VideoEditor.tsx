@@ -2260,6 +2260,21 @@ export default function VideoEditor() {
 		[currentProjectSnapshot, lastSavedSnapshot],
 	);
 
+	// A fresh, never-saved recording (no project path, no saved baseline) gets
+	// auto-zoom suggestions applied on load — that alone would flag it "unsaved"
+	// before the user touched anything, so quitting would falsely prompt to save.
+	// Once the auto-applied state settles (snapshot stops changing for a beat),
+	// adopt it as the saved baseline. Guarded on lastSavedSnapshot === null so a
+	// real edit afterwards still marks the project dirty.
+	useEffect(() => {
+		if (lastSavedSnapshot !== null || currentProjectPath !== null) return;
+		if (!currentProjectSnapshot || !isPreviewReady || loading) return;
+		const timer = window.setTimeout(() => {
+			setLastSavedSnapshot(cloneStructured(currentProjectSnapshot));
+		}, 1200);
+		return () => window.clearTimeout(timer);
+	}, [currentProjectSnapshot, lastSavedSnapshot, currentProjectPath, isPreviewReady, loading]);
+
 	useEffect(() => {
 		async function loadInitialData() {
 			try {
