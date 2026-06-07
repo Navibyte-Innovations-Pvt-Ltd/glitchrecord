@@ -582,6 +582,9 @@ export interface SpeedRegion {
 	startMs: number;
 	endMs: number;
 	speed: PlaybackSpeed;
+	/** Source content (ms) the region covers. Drag the edge to stretch (slower) or
+	 *  squeeze (faster); speed = sourceMs / timelineWidth, snapped to PlaybackSpeed. */
+	sourceMs?: number;
 }
 
 export const SPEED_OPTIONS: Array<{ speed: PlaybackSpeed; label: string }> = [
