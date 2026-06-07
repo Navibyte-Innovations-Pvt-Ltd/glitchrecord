@@ -3827,6 +3827,25 @@ export default function VideoEditor() {
 			const oldClip = clipRegions.find((c) => c.id === id);
 			const newStart = Math.round(span.start);
 			const newEnd = Math.round(span.end);
+
+			// Right-edge resize → treat as a SPEED change (stretch = slower, squeeze =
+			// faster) and reflow the following clips, instead of trimming. Keeps the
+			// clip's source content fixed; derives speed from the new timeline width.
+			if (oldClip && newStart === oldClip.startMs && newEnd !== oldClip.endMs) {
+				const oldSpeed = oldClip.speed && oldClip.speed > 0 ? oldClip.speed : 1;
+				const sourceContent = Math.max(1, (oldClip.endMs - oldClip.startMs) * oldSpeed);
+				const newWidth = Math.max(50, newEnd - oldClip.startMs);
+				const raw = sourceContent / newWidth;
+				const SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2];
+				const speed = SPEEDS.reduce((p, c) => (Math.abs(c - raw) < Math.abs(p - raw) ? c : p));
+				const plan = planClipSpeedChange({ clipRegions, zoomRegions, selectedClipId: id, speed });
+				if (plan && !("blockedReason" in plan)) {
+					setClipRegions(plan.clipRegions);
+					setZoomRegions(plan.zoomRegions);
+				}
+				return;
+			}
+
 			const removedSegments = oldClip
 				? [
 						...(newStart > oldClip.startMs
@@ -3903,7 +3922,7 @@ export default function VideoEditor() {
 				}),
 			);
 		},
-		[clipRegions],
+		[clipRegions, zoomRegions],
 	);
 
 	const handleClipSpeedChange = useCallback(
