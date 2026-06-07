@@ -201,7 +201,9 @@ export function GlitchgrabLogPanel({
 	const [noteQuestions, setNoteQuestions] = useState<
 		Array<{ id: string; tMs: number; label: string; question: string; options: string[] }> | null
 	>(null);
-	const [noteAnswers, setNoteAnswers] = useState<Record<string, string>>({});
+	// Per-question: multiple selected options + a free-text addition.
+	const [noteAnswers, setNoteAnswers] = useState<Record<string, string[]>>({});
+	const [noteText, setNoteText] = useState<Record<string, string>>({});
 	// Refine-script chat thread (conversational edits to the script). Assistant
 	// turns may carry a `script` (the revised draft) the user can apply.
 	const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; script?: string | null }>>([]);
@@ -339,6 +341,7 @@ export function GlitchgrabLogPanel({
 				if (q.ok && q.questions && q.questions.length > 0) {
 					setNoteQuestions(q.questions);
 					setNoteAnswers({});
+					setNoteText({});
 					setScriptLoading(false);
 					return; // wait for the user to answer, then runGenerate
 				}
@@ -949,26 +952,37 @@ export function GlitchgrabLogPanel({
 								<span className="text-foreground/40">{formatStartSec(q.tMs / 1000)} · </span>{q.question}
 							</span>
 							<div className="flex flex-wrap gap-1">
-								{q.options.map((opt) => (
-									<button
-										key={opt}
-										type="button"
-										onClick={() => setNoteAnswers((p) => ({ ...p, [q.id]: opt }))}
-										className={
-											noteAnswers[q.id] === opt
-												? "rounded-md border border-amber-500/60 bg-amber-500/20 px-2 py-1 text-[10px] text-amber-100"
-												: "rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[10px] text-foreground/70 hover:border-amber-500/40"
-										}
-									>
-										{opt}
-									</button>
-								))}
+								{q.options.map((opt) => {
+									const selected = (noteAnswers[q.id] ?? []).includes(opt);
+									return (
+										<button
+											key={opt}
+											type="button"
+											onClick={() =>
+												setNoteAnswers((p) => {
+													const cur = p[q.id] ?? [];
+													return {
+														...p,
+														[q.id]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt],
+													};
+												})
+											}
+											className={
+												selected
+													? "rounded-md border border-amber-500/60 bg-amber-500/20 px-2 py-1 text-[10px] text-amber-100"
+													: "rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[10px] text-foreground/70 hover:border-amber-500/40"
+											}
+										>
+											{selected ? "✓ " : ""}{opt}
+										</button>
+									);
+								})}
 							</div>
 							<input
 								type="text"
-								value={q.options.includes(noteAnswers[q.id] ?? "") ? "" : (noteAnswers[q.id] ?? "")}
-								onChange={(e) => setNoteAnswers((p) => ({ ...p, [q.id]: e.target.value }))}
-								placeholder="…or type your own"
+								value={noteText[q.id] ?? ""}
+								onChange={(e) => setNoteText((p) => ({ ...p, [q.id]: e.target.value }))}
+								placeholder="…or add your own (combined with picks above)"
 								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1 text-[11px] outline-none focus:border-amber-500/40"
 							/>
 						</div>
@@ -979,7 +993,12 @@ export function GlitchgrabLogPanel({
 							onClick={() =>
 								void runGenerate(
 									(noteQuestions ?? [])
-										.map((q) => ({ label: q.label, answer: (noteAnswers[q.id] ?? "").trim() }))
+										.map((q) => ({
+											label: q.label,
+											answer: [...(noteAnswers[q.id] ?? []), (noteText[q.id] ?? "").trim()]
+												.filter(Boolean)
+												.join("; "),
+										}))
 										.filter((n) => n.answer),
 								)
 							}
