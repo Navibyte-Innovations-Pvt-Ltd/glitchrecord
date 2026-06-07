@@ -40,7 +40,6 @@ import ClipMarkerOverlay from "../overlays/ClipMarkerOverlay";
 import PlaybackCursor from "../playhead/PlaybackCursor";
 
 const HINT_CLIP = "Press C to split clip";
-const HINT_SPEED = "Shift+click twice on the timeline to add a speed region";
 const HINT_ANNOTATION = "Press A to add annotation";
 const HINT_AUDIO = "Click music icon to add audio";
 
@@ -403,6 +402,23 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						{item.label}
 					</Item>
 				))}
+				{/* Speed regions render ON the clip (overlay segment, draggable edges). */}
+				{speedItems
+					.filter((item) => !hiddenIds.has(item.id))
+					.map((item) => (
+						<Item
+							id={item.id}
+							key={item.id}
+							rowId={item.rowId}
+							span={item.span}
+							isSelected={selectAllBlocksActive || item.id === selectedSpeedId}
+							onSelectId={onSelectSpeed}
+							speedValue={item.speedValue}
+							variant="speed"
+						>
+							{item.label}
+						</Item>
+					))}
 			</Row>
 			{showSourceAudioTrack &&
 				sourceAudioTracks.map((track) => (
@@ -489,25 +505,6 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 							zoomDepth={item.zoomDepth}
 							zoomMode={item.zoomMode}
 							variant="zoom"
-						>
-							{item.label}
-						</Item>
-					))}
-			</Row>
-
-			<Row id={SPEED_ROW_ID} isEmpty={speedItems.length === 0} hint={HINT_SPEED}>
-				{speedItems
-					.filter((item) => !hiddenIds.has(item.id))
-					.map((item) => (
-						<Item
-							id={item.id}
-							key={item.id}
-							rowId={item.rowId}
-							span={item.span}
-							isSelected={selectAllBlocksActive || item.id === selectedSpeedId}
-							onSelectId={onSelectSpeed}
-							speedValue={item.speedValue}
-							variant="speed"
 						>
 							{item.label}
 						</Item>
