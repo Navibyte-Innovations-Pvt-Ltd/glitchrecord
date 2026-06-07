@@ -212,6 +212,7 @@ import {
 	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime as resolveTimelineTimeToSourceTime,
 	type SpeedRegion,
+	type PlaybackSpeed,
 	type TrimRegion,
 	trimsToClips,
 	type WebcamOverlaySettings,
@@ -3716,18 +3717,37 @@ export default function VideoEditor() {
 		setPendingMarkerMs(null);
 		if (b - a >= 100) {
 			const id = `speed-${nextSpeedIdRef.current++}`;
-			setSpeedRegions((prev) => [...prev, { id, startMs: a, endMs: b, speed: 2 }]);
+			const speed: PlaybackSpeed = 2;
+			// sourceMs = the source content this region plays. Width stays as drawn;
+			// dragging the edge later changes width → derives a new (slower/faster) speed.
+			setSpeedRegions((prev) => [...prev, { id, startMs: a, endMs: b, speed, sourceMs: (b - a) * speed }]);
 			setSelectedSpeedId(id);
 		}
 	}, []);
 
+	// Drag a speed region's edge: stretch wider → slower, squeeze narrower → faster.
+	// speed = sourceMs / timelineWidth, snapped to the nearest allowed PlaybackSpeed.
 	const handleSpeedSpanChange = useCallback((id: string, span: Span) => {
+		const SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2];
 		setSpeedRegions((prev) =>
-			prev.map((r) =>
-				r.id === id
-					? { ...r, startMs: Math.round(span.start), endMs: Math.round(span.end) }
-					: r,
-			),
+			prev.map((r) => {
+				if (r.id !== id) return r;
+				const sourceMs = r.sourceMs ?? (r.endMs - r.startMs) * r.speed;
+				let start = Math.round(span.start);
+				let end = Math.round(span.end);
+				// Which edge moved? Anchor the other one.
+				const startMoved = Math.abs(start - r.startMs) > Math.abs(end - r.endMs);
+				const width = Math.max(50, end - start);
+				const raw = sourceMs / width;
+				const speed = SPEEDS.reduce((p, c) =>
+					Math.abs(c - raw) < Math.abs(p - raw) ? c : p,
+				);
+				// Recompute the moved edge so the width exactly matches the snapped speed.
+				const snappedWidth = Math.max(50, Math.round(sourceMs / speed));
+				if (startMoved) start = end - snappedWidth;
+				else end = start + snappedWidth;
+				return { ...r, startMs: start, endMs: end, speed, sourceMs };
+			}),
 		);
 	}, []);
 
