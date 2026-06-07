@@ -322,10 +322,9 @@ export function useAudioPreviewSync({
 
   useEffect(() => {
     const currentTimeMs = timelineTime * 1000;
-    const activeSpeedRegion = effectiveSpeedRegions.find(
-      (region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
-    );
-    const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+    // Narration / user audio plays at NORMAL speed regardless of clip speed —
+    // it's an independent overlay, not part of the video clip being slowed.
+    const targetPlaybackRate = 1;
 
     for (const track of resolvedUserTracks) {
       const audio = audioElementsRef.current.get(track.id);
@@ -356,7 +355,7 @@ export function useAudioPreviewSync({
         audio.pause();
       }
     }
-  }, [effectiveSpeedRegions, isPlaying, resolvedUserTracks, timelineTime]);
+  }, [isPlaying, resolvedUserTracks, timelineTime]);
 
   useEffect(() => {
     if (resolvedSourceTracks.length === 0) {
