@@ -33,7 +33,12 @@ interface GlitchgrabAPI {
 	onEventsReady?: (cb: (data: { sessionId: string; count: number }) => void) => () => void;
 	onSessionReset?: (cb: () => void) => () => void;
 	onScriptReady?: (cb: (data: { sessionId: string; script: string }) => void) => () => void;
-	generateScript?: (opts?: { lang?: string; gender?: string }) => Promise<{ ok: boolean; script?: string; error?: string }>;
+	generateScript?: (opts?: {
+		lang?: string;
+		gender?: string;
+		durationSec?: number;
+		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+	}) => Promise<{ ok: boolean; script?: string; error?: string }>;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -144,6 +149,8 @@ interface GlitchgrabLogPanelProps {
 	onSetRecordingMuted?: (muted: boolean) => void;
 	/** Bake the generated narration into the export as an audio region at startSec. */
 	onAddNarrationToTimeline?: (audioPath: string, startSec: number, durationSec: number) => void;
+	/** Zoom regions from the editor — fed to the AI as emphasis context. */
+	zoomRegions?: Array<{ startMs: number; endMs: number; depth?: number; focus?: { cx: number; cy: number } }>;
 }
 
 export function GlitchgrabLogPanel({
@@ -153,6 +160,7 @@ export function GlitchgrabLogPanel({
 	onTogglePlay,
 	onSetRecordingMuted,
 	onAddNarrationToTimeline,
+	zoomRegions,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -258,7 +266,14 @@ export function GlitchgrabLogPanel({
 			// Gender inferred from the selected voice label "(F)" / "(M)".
 			const voiceLabel = (VOICES[engine] ?? []).find(([v]) => v === voice)?.[1] ?? "";
 			const gender = /\(m\)|male/i.test(voiceLabel) ? "male" : "female";
-			const res = await api.generateScript({ lang, gender });
+			const zooms = (zoomRegions ?? []).map((z) => ({
+				startMs: z.startMs,
+				endMs: z.endMs,
+				depth: z.depth,
+				cx: z.focus?.cx,
+				cy: z.focus?.cy,
+			}));
+			const res = await api.generateScript({ lang, gender, durationSec: timelineDurationSec, zooms });
 			if (res.ok && res.script) {
 				setNarrationText(res.script);
 				setAiScript(res.script);
@@ -270,7 +285,7 @@ export function GlitchgrabLogPanel({
 		} finally {
 			setScriptLoading(false);
 		}
-	}, [engine, voice, lang]);
+	}, [engine, voice, lang, timelineDurationSec, zoomRegions]);
 
 	const generateNarration = useCallback(async () => {
 		const api = electronAPI();
