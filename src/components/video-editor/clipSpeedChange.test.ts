@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	type BlockedClipSpeedChange,
-	formatClipSpeedLabel,
-	planClipSpeedChange,
-} from "./clipSpeedChange";
+import { formatClipSpeedLabel, planClipSpeedChange } from "./clipSpeedChange";
 
 describe("formatClipSpeedLabel", () => {
 	it("returns labels only for non-default positive speeds", () => {
@@ -85,7 +81,7 @@ describe("planClipSpeedChange", () => {
 		});
 	});
 
-	it("blocks slow speed changes that would overlap the next clip", () => {
+	it("shifts the following clip when slowing (reflow, not blocked)", () => {
 		const result = planClipSpeedChange({
 			clipRegions: [
 				{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 1 },
@@ -94,9 +90,15 @@ describe("planClipSpeedChange", () => {
 			zoomRegions: [],
 			selectedClipId: "clip-1",
 			speed: 0.5,
-		}) as BlockedClipSpeedChange;
+		});
 
-		expect(result.blockedReason).toBe("clip-overlap");
+		expect(result).toEqual({
+			clipRegions: [
+				{ id: "clip-1", startMs: 0, endMs: 10_000, speed: 0.5 },
+				{ id: "clip-2", startMs: 10_000, endMs: 15_000, speed: 1 },
+			],
+			zoomRegions: [],
+		});
 	});
 
 	it("scales zoom regions inside the changed clip", () => {
@@ -117,7 +119,7 @@ describe("planClipSpeedChange", () => {
 		});
 	});
 
-	it("does not scale zoom regions that start outside the changed clip", () => {
+	it("leaves earlier zooms alone but shifts zooms after the changed clip", () => {
 		const result = planClipSpeedChange({
 			clipRegions: [{ id: "clip-1", startMs: 2_000, endMs: 6_000, speed: 1 }],
 			zoomRegions: [
@@ -128,16 +130,17 @@ describe("planClipSpeedChange", () => {
 			speed: 0.5,
 		});
 
+		// clip 2000–6000 @1x → 0.5x → end 10000 (delta +4000); zoom-after shifts +4000.
 		expect(result).toEqual({
 			clipRegions: [{ id: "clip-1", startMs: 2_000, endMs: 10_000, speed: 0.5 }],
 			zoomRegions: [
 				{ id: "zoom-before", startMs: 1_000, endMs: 1_500, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
-				{ id: "zoom-after", startMs: 6_000, endMs: 6_500, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
+				{ id: "zoom-after", startMs: 10_000, endMs: 10_500, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
 			],
 		});
 	});
 
-	it("blocks speed changes that would make scaled zooms overlap unchanged zooms", () => {
+	it("reflows zooms after the clip instead of blocking", () => {
 		const result = planClipSpeedChange({
 			clipRegions: [{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 1 }],
 			zoomRegions: [
@@ -146,8 +149,16 @@ describe("planClipSpeedChange", () => {
 			],
 			selectedClipId: "clip-1",
 			speed: 0.5,
-		}) as BlockedClipSpeedChange;
+		});
 
-		expect(result.blockedReason).toBe("zoom-overlap");
+		// clip 0–5000 @1x → 0.5x → end 10000 (delta +5000). zoom-1 inside scales ×2;
+		// zoom-2 (after) shifts +5000.
+		expect(result).toEqual({
+			clipRegions: [{ id: "clip-1", startMs: 0, endMs: 10_000, speed: 0.5 }],
+			zoomRegions: [
+				{ id: "zoom-1", startMs: 4_000, endMs: 6_000, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
+				{ id: "zoom-2", startMs: 10_500, endMs: 11_500, depth: 3, focus: { cx: 0.5, cy: 0.5 } },
+			],
+		});
 	});
 });
