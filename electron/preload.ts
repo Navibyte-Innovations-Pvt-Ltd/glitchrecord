@@ -849,6 +849,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	loadCurrentProjectFile: () => {
 		return ipcRenderer.invoke("load-current-project-file");
 	},
+	saveRecordingProject: (videoPath: string, projectData: unknown) =>
+		ipcRenderer.invoke("save-recording-project", videoPath, projectData),
+	loadRecordingProject: (videoPath: string) =>
+		ipcRenderer.invoke("load-recording-project", videoPath),
 	getProjectsDirectory: () => {
 		return ipcRenderer.invoke("get-projects-directory");
 	},
