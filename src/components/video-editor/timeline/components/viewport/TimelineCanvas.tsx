@@ -15,7 +15,7 @@ import type {
 	SourceAudioTrackWithPeaks,
 } from "@/components/video-editor/audio/audioTypes";
 import { cn } from "@/lib/utils";
-import { CLIP_ROW_ID, SOURCE_AUDIO_ROW_ID, ZOOM_ROW_ID } from "../../core/constants";
+import { CLIP_ROW_ID, SOURCE_AUDIO_ROW_ID, SPEED_ROW_ID, ZOOM_ROW_ID } from "../../core/constants";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -40,6 +40,7 @@ import ClipMarkerOverlay from "../overlays/ClipMarkerOverlay";
 import PlaybackCursor from "../playhead/PlaybackCursor";
 
 const HINT_CLIP = "Press C to split clip";
+const HINT_SPEED = "Shift+click twice on the timeline to add a speed region";
 const HINT_ANNOTATION = "Press A to add annotation";
 const HINT_AUDIO = "Click music icon to add audio";
 
@@ -52,11 +53,13 @@ interface TimelineCanvasProps {
 	pendingMarkerMs?: number | null;
 	canPlaceZoomAtMs?: (startMs: number) => boolean;
 	onSelectZoom?: (id: string | null) => void;
+	onSelectSpeed?: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
 	onAddZoomAtMs?: (startMs: number) => void;
 	selectedZoomId: string | null;
+	selectedSpeedId?: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
@@ -230,9 +233,11 @@ interface TimelineCanvasRowsProps {
 	videoDurationMs: number;
 	selectAllBlocksActive: boolean;
 	selectedZoomId: string | null;
+	selectedSpeedId?: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	onSelectSpeed?: (id: string | null) => void;
 	onSelectZoom?: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
@@ -297,9 +302,11 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoDurationMs,
 	selectAllBlocksActive,
 	selectedZoomId,
+	selectedSpeedId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	onSelectSpeed,
 	onSelectZoom,
 	onSelectClip,
 	onSelectAnnotation,
@@ -321,9 +328,10 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onZoomRowClick,
 }: TimelineCanvasRowsProps) {
 	const hiddenIds = useMemo(() => new Set(liveHiddenItemIds ?? []), [liveHiddenItemIds]);
-	const { clipItems, zoomItems, annotationRows, audioRows } = useMemo(() => {
+	const { clipItems, zoomItems, speedItems, annotationRows, audioRows } = useMemo(() => {
 		const nextClipItems: TimelineRenderItem[] = [];
 		const nextZoomItems: TimelineRenderItem[] = [];
+		const nextSpeedItems: TimelineRenderItem[] = [];
 		const annotationBuckets = new Map<number, TimelineRenderItem[]>();
 		const audioBuckets = new Map<number, TimelineRenderItem[]>();
 
@@ -334,6 +342,10 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			}
 			if (item.rowId === ZOOM_ROW_ID) {
 				nextZoomItems.push(item);
+				continue;
+			}
+			if (item.rowId === SPEED_ROW_ID) {
+				nextSpeedItems.push(item);
 				continue;
 			}
 			if (isAnnotationTrackRowId(item.rowId)) {
@@ -367,6 +379,7 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 		return {
 			clipItems: nextClipItems,
 			zoomItems: nextZoomItems,
+			speedItems: nextSpeedItems,
 			annotationRows: annotationRowsSorted,
 			audioRows: audioRowsSorted,
 		};
@@ -482,6 +495,25 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 					))}
 			</Row>
 
+			<Row id={SPEED_ROW_ID} isEmpty={speedItems.length === 0} hint={HINT_SPEED}>
+				{speedItems
+					.filter((item) => !hiddenIds.has(item.id))
+					.map((item) => (
+						<Item
+							id={item.id}
+							key={item.id}
+							rowId={item.rowId}
+							span={item.span}
+							isSelected={selectAllBlocksActive || item.id === selectedSpeedId}
+							onSelectId={onSelectSpeed}
+							speedValue={item.speedValue}
+							variant="speed"
+						>
+							{item.label}
+						</Item>
+					))}
+			</Row>
+
 			{annotationRows.map(({ rowId, items: rowItems }, index) => (
 				<Row
 					key={rowId}
@@ -538,10 +570,12 @@ export default function TimelineCanvas({
 	onAddZoomAtMs,
 	canPlaceZoomAtMs,
 	onSelectZoom,
+	onSelectSpeed,
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
 	selectedZoomId,
+	selectedSpeedId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
@@ -822,10 +856,12 @@ export default function TimelineCanvas({
 					videoDurationMs={videoDurationMs}
 					selectAllBlocksActive={selectAllBlocksActive}
 					selectedZoomId={selectedZoomId}
+					selectedSpeedId={selectedSpeedId}
 					selectedClipId={selectedClipId}
 					selectedAnnotationId={selectedAnnotationId}
 					selectedAudioId={selectedAudioId}
 					onSelectZoom={onSelectZoom}
+					onSelectSpeed={onSelectSpeed}
 					onSelectClip={onSelectClip}
 					onSelectAnnotation={onSelectAnnotation}
 					onSelectAudio={onSelectAudio}
