@@ -6221,10 +6221,11 @@ export default function VideoEditor() {
 								</div>
 							</div>
 						</div>
-						{/* Toolbar - sits at bottom of right column, only spans preview width */}
-						<div className="relative flex flex-shrink-0 items-center px-1 py-1">
+						{/* Toolbar - sits at bottom of right column. 3 groups that wrap (never
+							 overlap) when the column narrows, e.g. when the Script panel opens. */}
+						<div className="relative flex flex-shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1 py-1">
 							{/* Left tools */}
-							<div className="z-10 flex min-w-0 flex-1 items-center gap-1.5">
+							<div className="z-10 flex min-w-0 items-center gap-1.5">
 								<DropdownMenu>
 									<DropdownMenuTrigger asChild>
 										<Button
@@ -6308,8 +6309,8 @@ export default function VideoEditor() {
 								</Button>
 							</div>
 							{/* Playback controls - centered */}
-							<div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-								<div className="flex items-center gap-1.5 pointer-events-auto">
+							<div className="z-10 flex items-center justify-center">
+								<div className="flex items-center gap-1.5">
 									<span className="mr-1 text-[10px] font-medium tabular-nums text-muted-foreground">
 										{formatTime(timelinePlayheadTime)}
 									</span>
@@ -6350,7 +6351,7 @@ export default function VideoEditor() {
 								</div>
 							</div>
 							{/* Right: collapse + volume */}
-							<div className="z-10 ml-auto flex items-center gap-2">
+							<div className="z-10 flex items-center gap-2">
 								<div className="flex items-center gap-1.5">
 									<button
 										type="button"
