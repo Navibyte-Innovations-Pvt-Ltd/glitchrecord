@@ -82,7 +82,7 @@ export async function uploadSession(params: {
 export async function generateScript(params: {
   token: string;
   sessionId: string;
-}): Promise<string | null> {
+}): Promise<{ script: string } | { error: string }> {
   try {
     const res = await fetch(`${BASE}/api/v1/capture-sessions/${params.sessionId}`, {
       method: "POST",
@@ -91,8 +91,15 @@ export async function generateScript(params: {
         Authorization: `Bearer ${params.token}`,
       },
     });
-    if (!res.ok) return null;
-    const data = await res.json() as { success: boolean; data: { script: string } };
-    return data.success ? data.data.script : null;
-  } catch { return null; }
+    const data = await res.json().catch(() => null) as
+      | { success: boolean; data?: { script: string }; error?: string }
+      | null;
+    if (!res.ok || !data?.success || !data.data?.script) {
+      // Surface the real reason (e.g. "Insufficient Balance") instead of a null.
+      return { error: data?.error || `Script API ${res.status}` };
+    }
+    return { script: data.data.script };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Network error" };
+  }
 }
