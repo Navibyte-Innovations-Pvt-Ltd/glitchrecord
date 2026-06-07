@@ -113,3 +113,42 @@ export async function generateScript(params: {
     return { error: err instanceof Error ? err.message : "Network error" };
   }
 }
+
+// Conversationally refine an existing script. Returns the full revised script.
+export async function refineScript(params: {
+  token: string;
+  sessionId: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  currentScript?: string;
+  lang?: string;
+  gender?: string;
+  durationSec?: number;
+  zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+}): Promise<{ script: string } | { error: string }> {
+  try {
+    const res = await fetch(`${BASE}/api/v1/capture-sessions/${params.sessionId}/refine`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.token}`,
+      },
+      body: JSON.stringify({
+        messages: params.messages,
+        currentScript: params.currentScript,
+        lang: params.lang,
+        gender: params.gender,
+        durationSec: params.durationSec,
+        zooms: params.zooms,
+      }),
+    });
+    const data = await res.json().catch(() => null) as
+      | { success: boolean; data?: { script: string }; error?: string }
+      | null;
+    if (!res.ok || !data?.success || !data.data?.script) {
+      return { error: data?.error || `Refine API ${res.status}` };
+    }
+    return { script: data.data.script };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Network error" };
+  }
+}
