@@ -477,6 +477,32 @@ export function registerProjectHandlers() {
     }
   })
 
+  // Recovery sidecar — autosave the editor state of a NOT-yet-saved recording
+  // next to its video (recording-X.mp4.project.json), so reopening the recording
+  // restores narration/zoom/speed edits even if it was never saved as a project.
+  const recoverySidecarPath = (videoPath: string) => {
+    const normalized = normalizeVideoSourcePath(videoPath) ?? videoPath;
+    return `${normalized}.project.json`;
+  };
+  ipcMain.handle('save-recording-project', async (_, videoPath: string, projectData: unknown) => {
+    try {
+      if (!videoPath) return { success: false, error: 'No video path' };
+      await fs.writeFile(recoverySidecarPath(videoPath), JSON.stringify(projectData), 'utf-8');
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+  ipcMain.handle('load-recording-project', async (_, videoPath: string) => {
+    try {
+      if (!videoPath) return { success: false };
+      const content = await fs.readFile(recoverySidecarPath(videoPath), 'utf-8');
+      return { success: true, project: JSON.parse(content) };
+    } catch {
+      return { success: false };
+    }
+  });
+
   ipcMain.handle('get-projects-directory', async () => {
     try {
       return {
