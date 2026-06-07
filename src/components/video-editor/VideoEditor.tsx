@@ -361,30 +361,6 @@ function getErrorMessage(error: unknown): string {
 // region at `speed`. Any region overlapping the boundary is split; the part
 // inside [a,b] is replaced by the new sped region. Works on an empty list too
 // (gaps render as the base 1× clip). Used by the Shift-marker speed gesture.
-function carveSpeedRegion(
-	regions: ClipRegion[],
-	a: number,
-	b: number,
-	speed: number,
-	newId: () => string,
-): ClipRegion[] {
-	const start = Math.round(Math.min(a, b));
-	const end = Math.round(Math.max(a, b));
-	const out: ClipRegion[] = [];
-	for (const r of regions) {
-		if (r.endMs <= start || r.startMs >= end) {
-			out.push(r); // no overlap
-			continue;
-		}
-		if (r.startMs < start) out.push({ ...r, id: newId(), endMs: start }); // left remainder
-		if (r.endMs > end) out.push({ ...r, id: newId(), startMs: end }); // right remainder
-		// the inside part is dropped — replaced by the new region below
-	}
-	out.push({ id: newId(), startMs: start, endMs: end, speed });
-	out.sort((x, y) => x.startMs - y.startMs);
-	return out;
-}
-
 export default function VideoEditor() {
 	const { t } = useI18n();
 	const smokeExportConfig = useMemo(
@@ -540,6 +516,8 @@ export default function VideoEditor() {
 	const [clipRegions, setClipRegions] = useState<ClipRegion[]>([]);
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 	const [speedRegions, setSpeedRegions] = useState<SpeedRegion[]>([]);
+	const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
+	const nextSpeedIdRef = useRef(1);
 	const [annotationRegions, setAnnotationRegions] = useState<AnnotationRegion[]>([]);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
@@ -2186,6 +2164,8 @@ export default function VideoEditor() {
 		autoFullTrackClipIdRef.current = null;
 		autoFullTrackClipEndMsRef.current = null;
 		setSpeedRegions([]);
+		setSelectedSpeedId(null);
+		nextSpeedIdRef.current = 1;
 		setAnnotationRegions([]);
 		setAudioRegions([]);
 		setCursorTelemetry([]);
@@ -3722,16 +3702,31 @@ export default function VideoEditor() {
 			setPendingMarkerMs(rounded);
 			return;
 		}
-		// second marker — carve a speed region between the two
+		// second marker — drop a NON-DESTRUCTIVE speed region between the two
+		// (no clip cutting). It overlays the clip and is draggable/adjustable.
 		const a = Math.min(pendingMarkerRef.current, rounded);
 		const b = Math.max(pendingMarkerRef.current, rounded);
 		pendingMarkerRef.current = null;
 		setPendingMarkerMs(null);
 		if (b - a >= 100) {
-			setClipRegions((regions) =>
-				carveSpeedRegion(regions, a, b, 2, () => `clip-${nextClipIdRef.current++}`),
-			);
+			const id = `speed-${nextSpeedIdRef.current++}`;
+			setSpeedRegions((prev) => [...prev, { id, startMs: a, endMs: b, speed: 2 }]);
+			setSelectedSpeedId(id);
 		}
+	}, []);
+
+	const handleSpeedSpanChange = useCallback((id: string, span: Span) => {
+		setSpeedRegions((prev) =>
+			prev.map((r) =>
+				r.id === id
+					? { ...r, startMs: Math.round(span.start), endMs: Math.round(span.end) }
+					: r,
+			),
+		);
+	}, []);
+
+	const handleSelectSpeed = useCallback((id: string | null) => {
+		setSelectedSpeedId(id);
 	}, []);
 
 	const handleClipSplit = useCallback(
@@ -6459,6 +6454,10 @@ export default function VideoEditor() {
 						onClipSpanChange={handleClipSpanChange}
 						selectedClipId={selectedClipId}
 						onSelectClip={handleSelectClip}
+						speedRegions={speedRegions}
+						onSpeedSpanChange={handleSpeedSpanChange}
+						selectedSpeedId={selectedSpeedId}
+						onSelectSpeed={handleSelectSpeed}
 						audioRegions={audioRegions}
 						onAudioAdded={handleAudioAdded}
 						onAudioSpanChange={handleAudioSpanChange}
