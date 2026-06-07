@@ -164,6 +164,9 @@ export function GlitchgrabLogPanel({
 	const [narrationAdded, setNarrationAdded] = useState(false);
 	const syncAudioRef = useRef<HTMLAudioElement | null>(null);
 	const [narrationText, setNarrationText] = useState("");
+	// AI-written script pushed from the bridge (DeepSeek) when a recording stops.
+	// Held aside so it never clobbers what the user typed — surfaced as a button.
+	const [aiScript, setAiScript] = useState<string | null>(null);
 	const [narrating, setNarrating] = useState(false);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
 	const [narrationError, setNarrationError] = useState<string | null>(null);
@@ -207,12 +210,27 @@ export function GlitchgrabLogPanel({
 				revealInFolder?: (p: string) => void;
 				onNarrationProgress?: (cb: (stage: string) => void) => () => void;
 				narrationKeyStatus?: () => Promise<{ hasSarvamKey: boolean }>;
+				onScriptReady?: (
+					cb: (data: { sessionId: string; script: string }) => void,
+				) => () => void;
 			};
 		}).electronAPI;
 
 	// Live stage updates from the TTS process.
 	useEffect(() => {
 		const unsub = electronAPI()?.onNarrationProgress?.((stage) => setNarrationStage(stage));
+		return () => unsub?.();
+	}, []);
+
+	// AI script arrives from the bridge after a recording stops → stash it and
+	// jump to the Narration tab so the "Use AI script" button is visible.
+	useEffect(() => {
+		const unsub = electronAPI()?.onScriptReady?.((data) => {
+			if (data?.script?.trim()) {
+				setAiScript(data.script.trim());
+				setTab("narration");
+			}
+		});
 		return () => unsub?.();
 	}, []);
 
@@ -601,10 +619,21 @@ export function GlitchgrabLogPanel({
 						))}
 				</div>
 
+				{aiScript && aiScript !== narrationText.trim() && (
+					<button
+						type="button"
+						onClick={() => setNarrationText(aiScript)}
+						className="flex items-center gap-1.5 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-300 transition-colors hover:bg-blue-500/20"
+						title="Paste the AI-generated script into the box below"
+					>
+						<Sparkle className="h-3 w-3" /> Use AI script
+					</button>
+				)}
+
 				<textarea
 					value={narrationText}
 					onChange={(e) => setNarrationText(e.target.value)}
-					placeholder="Paste your script here (from Claude), then Generate…"
+					placeholder="Type or paste your script here — or use the AI script button above…"
 					rows={3}
 					className="w-full resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] p-2 text-[11px] leading-relaxed outline-none focus:border-blue-500/40"
 				/>
