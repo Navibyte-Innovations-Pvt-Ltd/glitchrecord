@@ -3,9 +3,10 @@ import type {
 	AnnotationRegion,
 	AudioRegion,
 	ClipRegion,
+	SpeedRegion,
 	ZoomRegion,
 } from "../../types";
-import { CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
+import { CLIP_ROW_ID, SPEED_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -36,8 +37,9 @@ export function buildTimelineItems(params: {
 	clipRegions: ClipRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
+	speedRegions?: SpeedRegion[];
 }): TimelineRenderItem[] {
-	const { zoomRegions, clipRegions, annotationRegions, audioRegions } = params;
+	const { zoomRegions, clipRegions, annotationRegions, audioRegions, speedRegions = [] } = params;
 	const zooms: TimelineRenderItem[] = zoomRegions.map((region, index) => ({
 		id: region.id,
 		rowId: ZOOM_ROW_ID,
@@ -46,6 +48,15 @@ export function buildTimelineItems(params: {
 		zoomDepth: region.depth,
 		zoomMode: region.mode ?? "auto",
 		variant: "zoom",
+	}));
+
+	const speeds: TimelineRenderItem[] = speedRegions.map((region) => ({
+		id: region.id,
+		rowId: SPEED_ROW_ID,
+		span: { start: region.startMs, end: region.endMs },
+		label: formatClipSpeedLabel(region.speed) || `${region.speed}×`,
+		speedValue: region.speed,
+		variant: "speed",
 	}));
 
 	const clips: TimelineRenderItem[] = clipRegions.map((region, index) => {
@@ -86,7 +97,7 @@ export function buildTimelineItems(params: {
 		variant: "audio",
 	}));
 
-	return [...zooms, ...clips, ...annotations, ...audios];
+	return [...zooms, ...speeds, ...clips, ...annotations, ...audios];
 }
 
 export function buildAllRegionSpans(params: {
