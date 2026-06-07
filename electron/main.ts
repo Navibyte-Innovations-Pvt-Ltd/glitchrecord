@@ -32,9 +32,9 @@ import {
 import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
-import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, loadPersistedSession, appendDebugLog, resetBridgeSession } from "./glitchbridge/server";
+import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, getCurrentUser, loadPersistedSession, appendDebugLog, resetBridgeSession } from "./glitchbridge/server";
 import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
-import { validateToken, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
+import { validateToken, uploadSession, generateScript, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -985,6 +985,27 @@ app.whenReady().then(async () => {
 	});
 	ipcMain.handle("glitchbridge:recording-stop", (_e, sessionId: string, meta: unknown) => {
 		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
+	});
+
+	// On-demand: generate a DeepSeek narration script from the CURRENT captured
+	// events (no recording stop needed). Used by the Narration tab's "Generate
+	// script from events" button. Requires login (web endpoint is token-gated).
+	ipcMain.handle("glitchbridge:generate-script", async () => {
+		const user = getCurrentUser();
+		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
+		const session = getCurrentSession();
+		const events = session?.events ?? loadPersistedSession().events;
+		if (!events?.length) return { ok: false, error: "No captured events yet." };
+
+		appendDebugLog("rec", `generate-script: uploading ${events.length} events`);
+		const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
+		if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
+
+		appendDebugLog("rec", `generate-script: calling DeepSeek (session ${dbSessionId})`);
+		const script = await generateScript({ token: user.token, sessionId: dbSessionId });
+		if (!script) return { ok: false, error: "Script generation failed." };
+		appendDebugLog("rec", `generate-script: got ${script.length} chars`);
+		return { ok: true, script };
 	});
 
 	// Standalone Narration Tester — paste a script → generate audio, no recording.
