@@ -3319,12 +3319,18 @@ export default function VideoEditor() {
 		}
 		return result;
 	}, [clipRegions, speedRegions]);
+	// Audio stays at 1× inside overlay speed bands ("audio untouched") — exclude the
+	// shift-marker speed regions from the audio speed list (clip-derived speed kept).
+	const audioSpeedRegions = useMemo<SpeedRegion[]>(
+		() => effectiveSpeedRegions.filter((r) => !speedRegions.some((s) => s.id === r.id)),
+		[effectiveSpeedRegions, speedRegions],
+	);
 	const audio = useVideoEditorAudio({
 		currentSourcePath,
 		selectedClipId,
 		clipRegions,
 		audioRegions,
-		effectiveSpeedRegions,
+		effectiveSpeedRegions: audioSpeedRegions,
 		sourceAudioTrackSettingsByClip,
 		setSourceAudioTrackSettingsByClip,
 		defaultSourceAudioTrackSettings,
