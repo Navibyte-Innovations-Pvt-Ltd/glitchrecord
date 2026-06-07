@@ -33,7 +33,7 @@ interface GlitchgrabAPI {
 	onEventsReady?: (cb: (data: { sessionId: string; count: number }) => void) => () => void;
 	onSessionReset?: (cb: () => void) => () => void;
 	onScriptReady?: (cb: (data: { sessionId: string; script: string }) => void) => () => void;
-	generateScript?: () => Promise<{ ok: boolean; script?: string; error?: string }>;
+	generateScript?: (opts?: { lang?: string; gender?: string }) => Promise<{ ok: boolean; script?: string; error?: string }>;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -255,7 +255,10 @@ export function GlitchgrabLogPanel({
 		}
 		setScriptLoading(true);
 		try {
-			const res = await api.generateScript();
+			// Gender inferred from the selected voice label "(F)" / "(M)".
+			const voiceLabel = (VOICES[engine] ?? []).find(([v]) => v === voice)?.[1] ?? "";
+			const gender = /\(m\)|male/i.test(voiceLabel) ? "male" : "female";
+			const res = await api.generateScript({ lang, gender });
 			if (res.ok && res.script) {
 				setNarrationText(res.script);
 				setAiScript(res.script);
@@ -267,7 +270,7 @@ export function GlitchgrabLogPanel({
 		} finally {
 			setScriptLoading(false);
 		}
-	}, []);
+	}, [engine, voice, lang]);
 
 	const generateNarration = useCallback(async () => {
 		const api = electronAPI();
