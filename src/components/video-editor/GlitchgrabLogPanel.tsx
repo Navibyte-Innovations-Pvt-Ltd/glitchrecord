@@ -46,7 +46,7 @@ interface GlitchgrabAPI {
 		gender?: string;
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
-	}) => Promise<{ ok: boolean; script?: string; error?: string }>;
+	}) => Promise<{ ok: boolean; reply?: string; script?: string | null; error?: string }>;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -188,8 +188,9 @@ export function GlitchgrabLogPanel({
 	// On-demand "generate script from events" (DeepSeek) state.
 	const [scriptLoading, setScriptLoading] = useState(false);
 	const [scriptError, setScriptError] = useState<string | null>(null);
-	// Refine-script chat thread (conversational edits to the script).
-	const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+	// Refine-script chat thread (conversational edits to the script). Assistant
+	// turns may carry a `script` (the revised draft) the user can apply.
+	const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; script?: string | null }>>([]);
 	const [chatInput, setChatInput] = useState("");
 	const [chatBusy, setChatBusy] = useState(false);
 	const [chatError, setChatError] = useState<string | null>(null);
@@ -321,22 +322,23 @@ export function GlitchgrabLogPanel({
 			cx: z.focus?.cx,
 			cy: z.focus?.cy,
 		}));
-		const nextMessages = [...chatMessages, { role: "user" as const, content: text }];
-		setChatMessages(nextMessages);
+		// Send only role+content to the API (strip the local `script` field).
+		const apiMessages = [...chatMessages.map((m) => ({ role: m.role, content: m.content })), { role: "user" as const, content: text }];
+		setChatMessages((prev) => [...prev, { role: "user", content: text }]);
 		setChatInput("");
 		setChatBusy(true);
 		try {
 			const res = await api.refineScript({
-				messages: nextMessages,
+				messages: apiMessages,
 				currentScript: narrationText,
 				lang,
 				gender,
 				durationSec: timelineDurationSec,
 				zooms,
 			});
-			if (res.ok && res.script) {
-				setChatMessages((prev) => [...prev, { role: "assistant", content: res.script as string }]);
-				setNarrationText(res.script);
+			if (res.ok) {
+				const reply = res.reply?.trim() || (res.script ? "Updated the script." : "");
+				setChatMessages((prev) => [...prev, { role: "assistant", content: reply, script: res.script ?? null }]);
 			} else {
 				setChatError(res.error ?? "Refine failed.");
 			}
@@ -777,13 +779,26 @@ export function GlitchgrabLogPanel({
 								{chatMessages.map((m, i) => (
 									<div
 										key={i}
-										className={
-											m.role === "user"
-												? "self-end rounded-lg bg-blue-600/80 px-2 py-1 text-[11px] text-white max-w-[85%]"
-												: "self-start rounded-lg bg-foreground/[0.06] px-2 py-1 text-[10px] text-foreground/60 max-w-[85%]"
-										}
+										className={m.role === "user" ? "flex flex-col items-end" : "flex flex-col items-start"}
 									>
-										{m.role === "user" ? m.content : "✓ Script updated"}
+										<div
+											className={
+												m.role === "user"
+													? "self-end rounded-lg bg-blue-600/80 px-2 py-1 text-[11px] text-white max-w-[85%]"
+													: "self-start rounded-lg bg-foreground/[0.06] px-2 py-1 text-[11px] text-foreground/70 max-w-[90%] whitespace-pre-wrap"
+											}
+										>
+											{m.content}
+										</div>
+										{m.role === "assistant" && m.script && m.script !== narrationText && (
+											<button
+												type="button"
+												onClick={() => setNarrationText(m.script as string)}
+												className="mt-1 flex items-center gap-1 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300 hover:bg-blue-500/20"
+											>
+												<Sparkle className="h-3 w-3" /> Apply to script
+											</button>
+										)}
 									</div>
 								))}
 								{chatBusy && (
