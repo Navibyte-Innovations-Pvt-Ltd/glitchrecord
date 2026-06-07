@@ -362,6 +362,31 @@ function getErrorMessage(error: unknown): string {
 // region at `speed`. Any region overlapping the boundary is split; the part
 // inside [a,b] is replaced by the new sped region. Works on an empty list too
 // (gaps render as the base 1× clip). Used by the Shift-marker speed gesture.
+// Split the clip at [a,b] and set the middle segment to `speed` — a clip-speed
+// segment, so its timeline duration changes with the speed (time-remap).
+function carveSpeedRegion(
+	regions: ClipRegion[],
+	a: number,
+	b: number,
+	speed: PlaybackSpeed,
+	newId: () => string,
+): ClipRegion[] {
+	const start = Math.round(Math.min(a, b));
+	const end = Math.round(Math.max(a, b));
+	const out: ClipRegion[] = [];
+	for (const r of regions) {
+		if (r.endMs <= start || r.startMs >= end) {
+			out.push(r);
+			continue;
+		}
+		if (r.startMs < start) out.push({ ...r, id: newId(), endMs: start });
+		if (r.endMs > end) out.push({ ...r, id: newId(), startMs: end });
+	}
+	out.push({ id: newId(), startMs: start, endMs: end, speed });
+	out.sort((x, y) => x.startMs - y.startMs);
+	return out;
+}
+
 export default function VideoEditor() {
 	const { t } = useI18n();
 	const smokeExportConfig = useMemo(
@@ -3709,19 +3734,17 @@ export default function VideoEditor() {
 			setPendingMarkerMs(rounded);
 			return;
 		}
-		// second marker — drop a NON-DESTRUCTIVE speed region between the two
-		// (no clip cutting). It overlays the clip and is draggable/adjustable.
+		// second marker — carve a clip-speed segment between the two points. As a
+		// clip segment its timeline duration follows its speed (time-remap): change
+		// the speed and the clip grows/shrinks; content after it shifts.
 		const a = Math.min(pendingMarkerRef.current, rounded);
 		const b = Math.max(pendingMarkerRef.current, rounded);
 		pendingMarkerRef.current = null;
 		setPendingMarkerMs(null);
 		if (b - a >= 100) {
-			const id = `speed-${nextSpeedIdRef.current++}`;
-			const speed: PlaybackSpeed = 2;
-			// sourceMs = the source content this region plays. Width stays as drawn;
-			// dragging the edge later changes width → derives a new (slower/faster) speed.
-			setSpeedRegions((prev) => [...prev, { id, startMs: a, endMs: b, speed, sourceMs: (b - a) * speed }]);
-			setSelectedSpeedId(id);
+			setClipRegions((regions) =>
+				carveSpeedRegion(regions, a, b, 2, () => `clip-${nextClipIdRef.current++}`),
+			);
 		}
 	}, []);
 
