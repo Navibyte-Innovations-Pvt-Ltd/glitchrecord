@@ -202,6 +202,14 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 	}) => ipcRenderer.invoke("glitchbridge:generate-script", opts),
+	refineScript: (opts: {
+		messages: Array<{ role: "user" | "assistant"; content: string }>;
+		currentScript?: string;
+		lang?: string;
+		gender?: string;
+		durationSec?: number;
+		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+	}) => ipcRenderer.invoke("glitchbridge:refine-script", opts),
 	onEventsReady: (cb: (data: { sessionId: string; count: number }) => void) => {
 		const handler = (_e: unknown, data: unknown) => cb(data as { sessionId: string; count: number });
 		ipcRenderer.on("glitchbridge:events-ready", handler);
