@@ -108,11 +108,15 @@ export async function resolveMediaResourceUrl(resource: string): Promise<string>
 			if (result.success) {
 				return result.url;
 			}
-		} catch {
-			// Fall through to a file URL when the local media server is unavailable.
+			console.warn("[GG-media] getLocalMediaUrl denied:", localFilePath);
+		} catch (err) {
+			console.warn("[GG-media] getLocalMediaUrl threw:", localFilePath, err);
 		}
 	}
 
+	// file:// rarely plays in the renderer — if we land here for audio it's the
+	// likely cause of silent playback.
+	console.warn("[GG-media] falling back to file:// (may not play):", localFilePath);
 	return /^file:\/\//i.test(resource) ? resource : toFileUrl(localFilePath);
 }
 
