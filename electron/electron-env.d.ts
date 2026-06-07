@@ -755,6 +755,14 @@ interface Window {
 			canceled?: boolean;
 			error?: string;
 		}>;
+		saveRecordingProject: (videoPath: string, projectData: unknown) => Promise<{
+			success: boolean;
+			error?: string;
+		}>;
+		loadRecordingProject: (videoPath: string) => Promise<{
+			success: boolean;
+			project?: unknown;
+		}>;
 		getProjectsDirectory: () => Promise<{
 			success: boolean;
 			path?: string;
