@@ -34,11 +34,17 @@ interface GlitchgrabAPI {
 	onEventsReady?: (cb: (data: { sessionId: string; count: number }) => void) => () => void;
 	onSessionReset?: (cb: () => void) => () => void;
 	onScriptReady?: (cb: (data: { sessionId: string; script: string }) => void) => () => void;
+	noteQuestions?: () => Promise<{
+		ok: boolean;
+		questions?: Array<{ id: string; tMs: number; label: string; question: string; options: string[] }>;
+		error?: string;
+	}>;
 	generateScript?: (opts?: {
 		lang?: string;
 		gender?: string;
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+		noteAnswers?: Array<{ label: string; answer: string }>;
 	}) => Promise<{ ok: boolean; script?: string; error?: string }>;
 	refineScript?: (opts: {
 		messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -191,6 +197,11 @@ export function GlitchgrabLogPanel({
 	const [scriptError, setScriptError] = useState<string | null>(null);
 	// The script writer lives in a roomy right-side drawer (script is a big chunk).
 	const [scriptOpen, setScriptOpen] = useState(false);
+	// Per-note clarifying questions (asked before generating, when notes exist).
+	const [noteQuestions, setNoteQuestions] = useState<
+		Array<{ id: string; tMs: number; label: string; question: string; options: string[] }> | null
+	>(null);
+	const [noteAnswers, setNoteAnswers] = useState<Record<string, string>>({});
 	// Refine-script chat thread (conversational edits to the script). Assistant
 	// turns may carry a `script` (the revised draft) the user can apply.
 	const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; script?: string | null }>>([]);
@@ -271,40 +282,73 @@ export function GlitchgrabLogPanel({
 		return () => clearInterval(id);
 	}, [narrating]);
 
-	// Generate a narration script from the captured events (DeepSeek), then drop
-	// it straight into the textarea so the user can edit + run TTS.
+	// Actually generate the script (with the user's per-note answers, if any).
+	const runGenerate = useCallback(
+		async (answers?: Array<{ label: string; answer: string }>) => {
+			const api = gg();
+			if (!api?.generateScript) return;
+			setScriptLoading(true);
+			setScriptError(null);
+			try {
+				const voiceLabel = (VOICES[engine] ?? []).find(([v]) => v === voice)?.[1] ?? "";
+				const gender = /\(m\)|male/i.test(voiceLabel) ? "male" : "female";
+				const zooms = (zoomRegions ?? []).map((z) => ({
+					startMs: z.startMs,
+					endMs: z.endMs,
+					depth: z.depth,
+					cx: z.focus?.cx,
+					cy: z.focus?.cy,
+				}));
+				const res = await api.generateScript({
+					lang,
+					gender,
+					durationSec: timelineDurationSec,
+					zooms,
+					noteAnswers: answers,
+				});
+				if (res.ok && res.script) {
+					setNarrationText(res.script);
+					setAiScript(res.script);
+					setNoteQuestions(null);
+				} else {
+					setScriptError(res.error ?? "Script generation failed.");
+				}
+			} catch (e) {
+				setScriptError(String(e));
+			} finally {
+				setScriptLoading(false);
+			}
+		},
+		[engine, voice, lang, timelineDurationSec, zoomRegions],
+	);
+
+	// Generate from events: if there are shift-marked notes, ASK what to explain
+	// at each one first (3 options + free text), then generate using the answers.
 	const generateScriptFromEvents = useCallback(async () => {
 		const api = gg();
 		setScriptError(null);
+		setNoteQuestions(null);
 		if (!api?.generateScript) {
 			setScriptError("Quit & relaunch GlitchRecord — this feature needs a restart.");
 			return;
 		}
-		setScriptLoading(true);
-		try {
-			// Gender inferred from the selected voice label "(F)" / "(M)".
-			const voiceLabel = (VOICES[engine] ?? []).find(([v]) => v === voice)?.[1] ?? "";
-			const gender = /\(m\)|male/i.test(voiceLabel) ? "male" : "female";
-			const zooms = (zoomRegions ?? []).map((z) => ({
-				startMs: z.startMs,
-				endMs: z.endMs,
-				depth: z.depth,
-				cx: z.focus?.cx,
-				cy: z.focus?.cy,
-			}));
-			const res = await api.generateScript({ lang, gender, durationSec: timelineDurationSec, zooms });
-			if (res.ok && res.script) {
-				setNarrationText(res.script);
-				setAiScript(res.script);
-			} else {
-				setScriptError(res.error ?? "Script generation failed.");
+		if (api.noteQuestions) {
+			setScriptLoading(true);
+			try {
+				const q = await api.noteQuestions();
+				if (q.ok && q.questions && q.questions.length > 0) {
+					setNoteQuestions(q.questions);
+					setNoteAnswers({});
+					setScriptLoading(false);
+					return; // wait for the user to answer, then runGenerate
+				}
+			} catch {
+				/* fall through to plain generate */
 			}
-		} catch (e) {
-			setScriptError(String(e));
-		} finally {
 			setScriptLoading(false);
 		}
-	}, [engine, voice, lang, timelineDurationSec, zoomRegions]);
+		await runGenerate();
+	}, [runGenerate]);
 
 	// Send a chat instruction to refine the script. Replies with the full revised
 	// script → shown in the thread AND synced into the narration box.
@@ -894,6 +938,67 @@ export function GlitchgrabLogPanel({
 			{scriptLoading ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Writing script…</>) : (<><Sparkle className="h-3.5 w-3.5" /> Generate script from events</>)}
 			</button>
 			{scriptError && <p className="text-[11px] text-red-400/80">{scriptError}</p>}
+			{noteQuestions && noteQuestions.length > 0 && (
+				<div className="flex flex-col gap-3 rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-3">
+					<div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
+						<NoteBlank className="h-3.5 w-3.5" weight="fill" /> You marked {noteQuestions.length} spot{noteQuestions.length === 1 ? "" : "s"} — what should I explain?
+					</div>
+					{noteQuestions.map((q) => (
+						<div key={q.id} className="flex flex-col gap-1.5">
+							<span className="text-[11px] text-foreground/70">
+								<span className="text-foreground/40">{formatStartSec(q.tMs / 1000)} · </span>{q.question}
+							</span>
+							<div className="flex flex-wrap gap-1">
+								{q.options.map((opt) => (
+									<button
+										key={opt}
+										type="button"
+										onClick={() => setNoteAnswers((p) => ({ ...p, [q.id]: opt }))}
+										className={
+											noteAnswers[q.id] === opt
+												? "rounded-md border border-amber-500/60 bg-amber-500/20 px-2 py-1 text-[10px] text-amber-100"
+												: "rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[10px] text-foreground/70 hover:border-amber-500/40"
+										}
+									>
+										{opt}
+									</button>
+								))}
+							</div>
+							<input
+								type="text"
+								value={q.options.includes(noteAnswers[q.id] ?? "") ? "" : (noteAnswers[q.id] ?? "")}
+								onChange={(e) => setNoteAnswers((p) => ({ ...p, [q.id]: e.target.value }))}
+								placeholder="…or type your own"
+								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1 text-[11px] outline-none focus:border-amber-500/40"
+							/>
+						</div>
+					))}
+					<div className="flex items-center gap-1.5">
+						<button
+							type="button"
+							onClick={() =>
+								void runGenerate(
+									(noteQuestions ?? [])
+										.map((q) => ({ label: q.label, answer: (noteAnswers[q.id] ?? "").trim() }))
+										.filter((n) => n.answer),
+								)
+							}
+							disabled={scriptLoading}
+							className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+						>
+							{scriptLoading ? <><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Writing…</> : <><Sparkle className="h-3.5 w-3.5" /> Write script</>}
+						</button>
+						<button
+							type="button"
+							onClick={() => void runGenerate()}
+							disabled={scriptLoading}
+							className="rounded-md border border-foreground/10 px-2 py-1.5 text-[11px] text-foreground/60 hover:bg-foreground/[0.06] disabled:opacity-40"
+						>
+							Skip
+						</button>
+					</div>
+				</div>
+			)}
 			{aiScript && aiScript !== narrationText.trim() && (
 			<button type="button" onClick={() => setNarrationText(aiScript)} className="flex items-center gap-1.5 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[11px] text-blue-300 transition-colors hover:bg-blue-500/20" title="Use the AI-generated script">
 			<Sparkle className="h-3 w-3" /> Use AI script
