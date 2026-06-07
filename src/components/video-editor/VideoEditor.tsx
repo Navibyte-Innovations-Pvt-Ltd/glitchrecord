@@ -678,6 +678,7 @@ export default function VideoEditor() {
 	const mp4SupportRequestRef = useRef(0);
 	const smokeExportStartedRef = useRef(false);
 	const projectAutosaveTimeoutRef = useRef<number | null>(null);
+	const didInitialLoadRef = useRef(false);
 	const projectSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 	const smokeExportReadyStateRef = useRef<Record<string, unknown>>({});
 	const [historyVersion, setHistoryVersion] = useState(0);
@@ -2282,6 +2283,12 @@ export default function VideoEditor() {
 	}, [currentProjectSnapshot, lastSavedSnapshot, currentProjectPath, isPreviewReady, loading]);
 
 	useEffect(() => {
+		// Run ONCE per mount. The dep array contains callbacks that can change
+		// identity on unrelated UI changes; without this guard a re-run would
+		// reload the recording and wipe in-memory edits (e.g. a just-added audio
+		// region) before the recovery autosave has persisted them.
+		if (didInitialLoadRef.current) return;
+		didInitialLoadRef.current = true;
 		async function loadInitialData() {
 			try {
 				if (smokeExportConfig.enabled && smokeExportConfig.projectPath) {
