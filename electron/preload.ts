@@ -196,7 +196,8 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		return () => ipcRenderer.removeListener("glitchbridge:live-event", handler);
 	},
 	getEvents: () => ipcRenderer.invoke("glitchbridge:get-events"),
-	generateScript: () => ipcRenderer.invoke("glitchbridge:generate-script"),
+	generateScript: (opts?: { lang?: string; gender?: string }) =>
+		ipcRenderer.invoke("glitchbridge:generate-script", opts),
 	onEventsReady: (cb: (data: { sessionId: string; count: number }) => void) => {
 		const handler = (_e: unknown, data: unknown) => cb(data as { sessionId: string; count: number });
 		ipcRenderer.on("glitchbridge:events-ready", handler);
