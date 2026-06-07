@@ -64,6 +64,8 @@ export interface TimelineEditorProps {
 	onSelectAnnotation?: (id: string | null) => void;
 	speedRegions?: SpeedRegion[];
 	onSpeedSpanChange?: (id: string, span: Span) => void;
+	selectedSpeedId?: string | null;
+	onSelectSpeed?: (id: string | null) => void;
 	audioRegions?: AudioRegion[];
 	onAudioAdded?: (span: Span, audioPath: string, trackIndex?: number) => void;
 	onAudioSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
@@ -140,6 +142,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onSelectAnnotation,
 			speedRegions = [],
 			onSpeedSpanChange,
+			selectedSpeedId,
+			onSelectSpeed,
 			audioRegions = [],
 			onAudioAdded,
 			onAudioSpanChange,
@@ -456,10 +460,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							onAddZoomAtMs={addZoomAtMs}
 							canPlaceZoomAtMs={canPlaceZoomAtMs}
 							onSelectZoom={handleSelectZoom}
+							onSelectSpeed={onSelectSpeed}
 							onSelectClip={handleSelectClip}
 							onSelectAnnotation={handleSelectAnnotation}
 							onSelectAudio={handleSelectAudio}
 							selectedZoomId={selectedZoomId}
+							selectedSpeedId={selectedSpeedId}
 							selectedClipId={selectedClipId}
 							selectedAnnotationId={selectedAnnotationId}
 							selectedAudioId={selectedAudioId}
