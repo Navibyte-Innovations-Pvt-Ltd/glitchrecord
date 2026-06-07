@@ -88,7 +88,9 @@ export function useTimelineDndBindings({
 
 			if (itemKind === "zoom") return checkOverlap(zoomRegions);
 			if (itemKind === "trim") return checkOverlap(trimRegions);
-			if (itemKind === "clip") return checkOverlap(clipRegions);
+			// Clips may grow past a neighbor — a right-edge stretch becomes a speed
+			// change that reflows the following clips, so don't block the overlap.
+			if (itemKind === "clip") return false;
 			if (itemKind === "speed") return checkOverlap(speedRegions);
 
 			if (itemKind === "audio") {
