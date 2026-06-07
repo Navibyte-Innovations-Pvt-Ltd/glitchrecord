@@ -3351,40 +3351,26 @@ export default function VideoEditor() {
 		[clipRegions, duration],
 	);
 
-	// Merge clip speeds into speed regions so playback + export respect per-clip speed
-	const effectiveSpeedRegions = useMemo<SpeedRegion[]>(() => {
-		const clipDerived: SpeedRegion[] = clipRegions
-			.filter((clip) => clip.speed !== 1)
-			.map((clip) => ({
-				id: `clip-speed-${clip.id}`,
-				startMs: clip.startMs,
-				endMs: getClipSourceEndMs(clip),
-				speed: clip.speed as SpeedRegion["speed"],
-			}));
-		if (clipDerived.length === 0) return speedRegions;
-		const result = [...speedRegions];
-		for (const cs of clipDerived) {
-			const overlaps = speedRegions.some(
-				(sr) => sr.endMs > cs.startMs && sr.startMs < cs.endMs,
-			);
-			if (!overlaps) {
-				result.push(cs);
-			}
-		}
-		return result;
-	}, [clipRegions, speedRegions]);
-	// Audio stays at 1× inside overlay speed bands ("audio untouched") — exclude the
-	// shift-marker speed regions from the audio speed list (clip-derived speed kept).
-	const audioSpeedRegions = useMemo<SpeedRegion[]>(
-		() => effectiveSpeedRegions.filter((r) => !speedRegions.some((s) => s.id === r.id)),
-		[effectiveSpeedRegions, speedRegions],
+	// Speed = per-clip speed (carve). Derived from clipRegions only; the old
+	// overlay speedRegions state is no longer used so it can't apply invisibly.
+	const effectiveSpeedRegions = useMemo<SpeedRegion[]>(
+		() =>
+			clipRegions
+				.filter((clip) => clip.speed !== 1)
+				.map((clip) => ({
+					id: `clip-speed-${clip.id}`,
+					startMs: clip.startMs,
+					endMs: getClipSourceEndMs(clip),
+					speed: clip.speed as SpeedRegion["speed"],
+				})),
+		[clipRegions],
 	);
 	const audio = useVideoEditorAudio({
 		currentSourcePath,
 		selectedClipId,
 		clipRegions,
 		audioRegions,
-		effectiveSpeedRegions: audioSpeedRegions,
+		effectiveSpeedRegions,
 		sourceAudioTrackSettingsByClip,
 		setSourceAudioTrackSettingsByClip,
 		defaultSourceAudioTrackSettings,
