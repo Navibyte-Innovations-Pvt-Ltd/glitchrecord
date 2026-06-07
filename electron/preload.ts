@@ -196,11 +196,13 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		return () => ipcRenderer.removeListener("glitchbridge:live-event", handler);
 	},
 	getEvents: () => ipcRenderer.invoke("glitchbridge:get-events"),
+	noteQuestions: () => ipcRenderer.invoke("glitchbridge:note-questions"),
 	generateScript: (opts?: {
 		lang?: string;
 		gender?: string;
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+		noteAnswers?: Array<{ label: string; answer: string }>;
 	}) => ipcRenderer.invoke("glitchbridge:generate-script", opts),
 	refineScript: (opts: {
 		messages: Array<{ role: "user" | "assistant"; content: string }>;
