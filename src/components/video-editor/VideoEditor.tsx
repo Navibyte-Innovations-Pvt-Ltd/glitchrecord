@@ -5928,6 +5928,7 @@ export default function VideoEditor() {
 							onTogglePlay={togglePlayPause}
 							onSetRecordingMuted={setNarrationPreviewMuted}
 							onAddNarrationToTimeline={handleAddNarrationToTimeline}
+							zoomRegions={zoomRegions}
 						/>
 						) : (
 							<SettingsPanel
