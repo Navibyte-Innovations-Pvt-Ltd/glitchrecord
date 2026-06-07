@@ -4024,30 +4024,42 @@ export default function VideoEditor() {
 		}
 	}, []);
 
-	const handleAudioAdded = useCallback((span: Span, audioPath: string, trackIndex?: number) => {
-		const id = `audio-${nextAudioIdRef.current++}`;
-		const newRegion: AudioRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-			audioPath,
-			volume: 1,
-			normalize: false,
-			trackIndex,
-		};
-		setAudioRegions((prev) => [...prev, newRegion]);
-		setSelectedAudioId(id);
-		setSelectedZoomId(null);
-		setSelectedAnnotationId(null);
-		setActiveEffectSection("audio");
-	}, []);
+	const handleAudioAdded = useCallback(
+		(span: Span, audioPath: string, trackIndex?: number, opts?: { focusAudioPanel?: boolean }) => {
+			const id = `audio-${nextAudioIdRef.current++}`;
+			const newRegion: AudioRegion = {
+				id,
+				startMs: Math.round(span.start),
+				endMs: Math.round(span.end),
+				audioPath,
+				volume: 1,
+				normalize: false,
+				trackIndex,
+			};
+			setAudioRegions((prev) => [...prev, newRegion]);
+			// Only jump to the Audio settings panel for manual "Add Layer → audio".
+			// Adding narration should keep the user on the Narration panel.
+			if (opts?.focusAudioPanel !== false) {
+				setSelectedAudioId(id);
+				setSelectedZoomId(null);
+				setSelectedAnnotationId(null);
+				setActiveEffectSection("audio");
+			}
+		},
+		[],
+	);
 
 	// Insert the generated narration as an audio region at the chosen start (timeline
-	// seconds) so the export bakes it into the video. Returns once placed.
+	// seconds) so the export bakes it into the video. Stays on the Narration panel.
 	const handleAddNarrationToTimeline = useCallback(
 		(audioPath: string, startSec: number, durationSec: number) => {
 			const startMs = Math.max(0, Math.round(startSec * 1000));
-			handleAudioAdded({ start: startMs, end: startMs + Math.round(durationSec * 1000) }, audioPath, 0);
+			handleAudioAdded(
+				{ start: startMs, end: startMs + Math.round(durationSec * 1000) },
+				audioPath,
+				0,
+				{ focusAudioPanel: false },
+			);
 		},
 		[handleAudioAdded],
 	);
