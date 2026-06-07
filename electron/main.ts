@@ -34,7 +34,7 @@ import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
 import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, getCurrentUser, loadPersistedSession, appendDebugLog, resetBridgeSession } from "./glitchbridge/server";
 import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
-import { validateToken, uploadSession, generateScript, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
+import { validateToken, uploadSession, generateScript, refineScript, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -1020,6 +1020,44 @@ app.whenReady().then(async () => {
 			return { ok: false, error: result.error };
 		}
 		appendDebugLog("rec", `generate-script: got ${result.script.length} chars`);
+		return { ok: true, script: result.script };
+	});
+
+	// Conversationally refine the current script. Re-uploads the events (cheap) to
+	// get a DB session, then chats with DeepSeek. Returns the full revised script.
+	ipcMain.handle("glitchbridge:refine-script", async (_e, opts: {
+		messages: Array<{ role: "user" | "assistant"; content: string }>;
+		currentScript?: string;
+		lang?: string;
+		gender?: string;
+		durationSec?: number;
+		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
+	}) => {
+		const user = getCurrentUser();
+		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
+		if (!opts?.messages?.length) return { ok: false, error: "No message to send." };
+		const session = getCurrentSession();
+		const events = session?.events ?? loadPersistedSession().events;
+		if (!events?.length) return { ok: false, error: "No captured events yet." };
+
+		const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
+		if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
+
+		appendDebugLog("rec", `refine-script: ${opts.messages.length} msgs (session ${dbSessionId})`);
+		const result = await refineScript({
+			token: user.token,
+			sessionId: dbSessionId,
+			messages: opts.messages,
+			currentScript: opts.currentScript,
+			lang: opts.lang,
+			gender: opts.gender,
+			durationSec: opts.durationSec,
+			zooms: opts.zooms,
+		});
+		if ("error" in result) {
+			appendDebugLog("rec", `refine-script: failed — ${result.error}`);
+			return { ok: false, error: result.error };
+		}
 		return { ok: true, script: result.script };
 	});
 
