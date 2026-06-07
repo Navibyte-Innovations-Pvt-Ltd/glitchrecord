@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
 	ArrowClockwise,
 	ArrowRight,
@@ -188,6 +189,8 @@ export function GlitchgrabLogPanel({
 	// On-demand "generate script from events" (DeepSeek) state.
 	const [scriptLoading, setScriptLoading] = useState(false);
 	const [scriptError, setScriptError] = useState<string | null>(null);
+	// The script writer lives in a roomy right-side drawer (script is a big chunk).
+	const [scriptOpen, setScriptOpen] = useState(false);
 	// Refine-script chat thread (conversational edits to the script). Assistant
 	// turns may carry a `script` (the revised draft) the user can apply.
 	const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; script?: string | null }>>([]);
@@ -254,6 +257,7 @@ export function GlitchgrabLogPanel({
 			if (data?.script?.trim()) {
 				setAiScript(data.script.trim());
 				setTab("narration");
+				setScriptOpen(true);
 			}
 		});
 		return () => unsub?.();
@@ -731,112 +735,29 @@ export function GlitchgrabLogPanel({
 						))}
 				</div>
 
-				{/* Write the script from the captured events with AI (DeepSeek) */}
+								{/* Script lives in the right-side Script Writer drawer (a big chunk). */}
 				<button
 					type="button"
-					onClick={generateScriptFromEvents}
-					disabled={scriptLoading}
-					className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
-					title="Use AI to write a narration script from the captured events"
+					onClick={() => setScriptOpen(true)}
+					className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20"
+					title="Open the AI script writer"
 				>
-					{scriptLoading ? (
-						<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Writing script…</>
-					) : (
-						<><Sparkle className="h-3.5 w-3.5" /> Generate script from events</>
-					)}
+					<Sparkle className="h-3.5 w-3.5" /> {narrationText.trim() ? "Open script writer" : "Write script with AI"}
 				</button>
-				{scriptError && (
-					<p className="text-[10px] text-red-400/80">{scriptError}</p>
-				)}
-
-				{aiScript && aiScript !== narrationText.trim() && (
+				{narrationText.trim() ? (
 					<button
 						type="button"
-						onClick={() => setNarrationText(aiScript)}
-						className="flex items-center gap-1.5 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-300 transition-colors hover:bg-blue-500/20"
-						title="Paste the AI-generated script into the box below"
+						onClick={() => setScriptOpen(true)}
+						className="rounded-md border border-foreground/10 bg-foreground/[0.03] p-2 text-left text-[11px] leading-relaxed text-foreground/60 line-clamp-3 hover:border-blue-500/40"
+						title="Open script writer to edit"
 					>
-						<Sparkle className="h-3 w-3" /> Use AI script
+						{narrationText}
 					</button>
+				) : (
+					<p className="text-[10px] text-foreground/40">No script yet — open the writer to generate one from your events.</p>
 				)}
 
-				<textarea
-					value={narrationText}
-					onChange={(e) => setNarrationText(e.target.value)}
-					placeholder="Type or paste your script here — or use the AI script button above…"
-					rows={3}
-					className="w-full resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] p-2 text-[11px] leading-relaxed outline-none focus:border-blue-500/40"
-				/>
-
-				{/* ── Refine with AI (chat) ─────────────────────────── */}
-				{narrationText.trim() && (
-					<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.02] p-2">
-						<div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-foreground/40">
-							<Sparkle className="h-3 w-3" /> Refine with AI
-						</div>
-						{chatMessages.length > 0 && (
-							<div className="flex max-h-[140px] flex-col gap-1.5 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
-								{chatMessages.map((m, i) => (
-									<div
-										key={i}
-										className={m.role === "user" ? "flex flex-col items-end" : "flex flex-col items-start"}
-									>
-										<div
-											className={
-												m.role === "user"
-													? "self-end rounded-lg bg-blue-600/80 px-2 py-1 text-[11px] text-white max-w-[85%]"
-													: "self-start rounded-lg bg-foreground/[0.06] px-2 py-1 text-[11px] text-foreground/70 max-w-[90%] whitespace-pre-wrap"
-											}
-										>
-											{m.content}
-										</div>
-										{m.role === "assistant" && m.script && m.script !== narrationText && (
-											<button
-												type="button"
-												onClick={() => setNarrationText(m.script as string)}
-												className="mt-1 flex items-center gap-1 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300 hover:bg-blue-500/20"
-											>
-												<Sparkle className="h-3 w-3" /> Apply to script
-											</button>
-										)}
-									</div>
-								))}
-								{chatBusy && (
-									<div className="self-start flex items-center gap-1.5 text-[10px] text-foreground/40">
-										<ArrowClockwise className="h-3 w-3 animate-spin" /> Updating script…
-									</div>
-								)}
-								<div ref={chatEndRef} />
-							</div>
-						)}
-						{chatError && <p className="text-[10px] text-red-400/80">{chatError}</p>}
-						<div className="flex items-end gap-1.5">
-							<textarea
-								value={chatInput}
-								onChange={(e) => setChatInput(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" && !e.shiftKey) {
-										e.preventDefault();
-										void sendChat();
-									}
-								}}
-								placeholder="e.g. explain the OTP step more, make the intro shorter…"
-								rows={1}
-								className="flex-1 resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1.5 text-[11px] outline-none focus:border-blue-500/40"
-							/>
-							<button
-								type="button"
-								onClick={() => void sendChat()}
-								disabled={chatBusy || !chatInput.trim()}
-								className="flex items-center justify-center rounded-md bg-blue-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40"
-							>
-								Send
-							</button>
-						</div>
-					</div>
-				)}
-
-				<button
+								<button
 					type="button"
 					onClick={generateNarration}
 					disabled={narrating || !narrationText.trim()}
@@ -957,6 +878,54 @@ export function GlitchgrabLogPanel({
 				)}
 			</div>
 			)}
+			{!scriptOpen && createPortal(
+			<button type="button" onClick={() => setScriptOpen(true)} title="Open script writer" className="absolute right-2 top-2 z-30 flex items-center gap-1.5 rounded-md border border-blue-500/30 bg-background/90 px-2.5 py-1.5 text-[11px] font-medium text-blue-300 shadow-md backdrop-blur transition hover:bg-blue-500/10">
+			<Sparkle className="h-3.5 w-3.5" /> Script
+			</button>,
+			(document.getElementById("gg-editor-row") ?? document.body))}
+			{scriptOpen && createPortal(
+			<div className="flex w-[420px] shrink-0 flex-col rounded-lg border border-foreground/10 bg-background shadow-lg">
+			<div className="flex items-center justify-between border-b border-foreground/10 px-3 py-2">
+			<span className="flex items-center gap-1.5 text-[13px] font-semibold"><Sparkle className="h-4 w-4 text-blue-500" /> Script Writer</span>
+			<button type="button" onClick={() => setScriptOpen(false)} title="Close" className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition hover:bg-foreground/[0.06] hover:text-foreground">✕</button>
+			</div>
+			<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3" style={{ scrollbarWidth: "thin" }}>
+			<button type="button" onClick={generateScriptFromEvents} disabled={scriptLoading} className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40" title="Use AI to write a narration script from the captured events">
+			{scriptLoading ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Writing script…</>) : (<><Sparkle className="h-3.5 w-3.5" /> Generate script from events</>)}
+			</button>
+			{scriptError && <p className="text-[11px] text-red-400/80">{scriptError}</p>}
+			{aiScript && aiScript !== narrationText.trim() && (
+			<button type="button" onClick={() => setNarrationText(aiScript)} className="flex items-center gap-1.5 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[11px] text-blue-300 transition-colors hover:bg-blue-500/20" title="Use the AI-generated script">
+			<Sparkle className="h-3 w-3" /> Use AI script
+			</button>
+			)}
+			<textarea value={narrationText} onChange={(e) => setNarrationText(e.target.value)} placeholder="Generate a script from your events, or write your own here…" className="min-h-[200px] flex-1 resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] p-3 text-[13px] leading-relaxed outline-none focus:border-blue-500/40" />
+			<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.02] p-2">
+			<div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-foreground/40"><Sparkle className="h-3 w-3" /> Refine with AI</div>
+			{chatMessages.length > 0 && (
+			<div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
+			{chatMessages.map((m, i) => (
+			<div key={i} className={m.role === "user" ? "flex flex-col items-end" : "flex flex-col items-start"}>
+			<div className={m.role === "user" ? "self-end rounded-lg bg-blue-600/80 px-2 py-1 text-[12px] text-white max-w-[85%]" : "self-start rounded-lg bg-foreground/[0.06] px-2 py-1 text-[12px] text-foreground/70 max-w-[90%] whitespace-pre-wrap"}>{m.content}</div>
+			{m.role === "assistant" && m.script && m.script !== narrationText && (
+			<button type="button" onClick={() => setNarrationText(m.script as string)} className="mt-1 flex items-center gap-1 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300 hover:bg-blue-500/20"><Sparkle className="h-3 w-3" /> Apply to script</button>
+			)}
+			</div>
+			))}
+			{chatBusy && (<div className="self-start flex items-center gap-1.5 text-[11px] text-foreground/40"><ArrowClockwise className="h-3 w-3 animate-spin" /> Thinking…</div>)}
+			<div ref={chatEndRef} />
+			</div>
+			)}
+			{chatError && <p className="text-[11px] text-red-400/80">{chatError}</p>}
+			<div className="flex items-end gap-1.5">
+			<textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChat(); } }} placeholder="e.g. explain the OTP step more; intro shorter; add the add-vs-claim part…" rows={1} className="flex-1 resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1.5 text-[12px] outline-none focus:border-blue-500/40" />
+			<button type="button" onClick={() => void sendChat()} disabled={chatBusy || !chatInput.trim()} className="flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40">Send</button>
+			</div>
+			</div>
+			</div>
+			</div>,
+			(document.getElementById("gg-editor-row") ?? document.body))}
+
 		</div>
 	);
 }
