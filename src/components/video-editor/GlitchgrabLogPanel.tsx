@@ -166,6 +166,8 @@ interface GlitchgrabLogPanelProps {
 	onAddNarrationToTimeline?: (audioPath: string, startSec: number, durationSec: number) => void;
 	/** Zoom regions from the editor — fed to the AI as emphasis context. */
 	zoomRegions?: Array<{ startMs: number; endMs: number; depth?: number; focus?: { cx: number; cy: number } }>;
+	/** Stable per-recording key — script + chat history are saved/restored under it. */
+	storageKey?: string;
 }
 
 export function GlitchgrabLogPanel({
@@ -176,6 +178,7 @@ export function GlitchgrabLogPanel({
 	onSetRecordingMuted,
 	onAddNarrationToTimeline,
 	zoomRegions,
+	storageKey,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -275,6 +278,42 @@ export function GlitchgrabLogPanel({
 		});
 		return () => unsub?.();
 	}, []);
+
+	// Persist the script + chat history per recording so they survive reopen/crash
+	// and switching away. Load on key change; debounce-save after hydration.
+	const hydratedKeyRef = useRef<string | undefined>(undefined);
+	useEffect(() => {
+		hydratedKeyRef.current = undefined;
+		if (!storageKey) return;
+		try {
+			const raw = localStorage.getItem(`gg.script.${storageKey}`);
+			if (raw) {
+				const d = JSON.parse(raw) as { script?: string; chat?: typeof chatMessages };
+				setNarrationText(typeof d.script === "string" ? d.script : "");
+				setChatMessages(Array.isArray(d.chat) ? d.chat : []);
+			} else {
+				setNarrationText("");
+				setChatMessages([]);
+			}
+		} catch {
+			/* ignore corrupt storage */
+		}
+		hydratedKeyRef.current = storageKey;
+	}, [storageKey]);
+	useEffect(() => {
+		if (!storageKey || hydratedKeyRef.current !== storageKey) return;
+		const t = setTimeout(() => {
+			try {
+				localStorage.setItem(
+					`gg.script.${storageKey}`,
+					JSON.stringify({ script: narrationText, chat: chatMessages }),
+				);
+			} catch {
+				/* quota / serialize issues — non-fatal */
+			}
+		}, 800);
+		return () => clearTimeout(t);
+	}, [storageKey, narrationText, chatMessages]);
 
 	// Elapsed-seconds ticker while generating (XTTS has no clean %, so show time).
 	useEffect(() => {
