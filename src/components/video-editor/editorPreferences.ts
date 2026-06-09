@@ -92,8 +92,13 @@ export interface EditorPreferences extends PersistedEditorControls {
 	whisperModelPath: string | null;
 }
 
+<<<<<<< HEAD
 export const EDITOR_PREFERENCES_STORAGE_KEY = "glitchrecord.editor.preferences";
 export const EDITOR_PRESETS_STORAGE_KEY = "glitchrecord.editor.presets";
+=======
+export const EDITOR_PREFERENCES_STORAGE_KEY = "glitchgrab.editor.preferences";
+export const EDITOR_PRESETS_STORAGE_KEY = "glitchgrab.editor.presets";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 const DEFAULT_EDITOR_CONTROLS = normalizeProjectEditor({});
 
