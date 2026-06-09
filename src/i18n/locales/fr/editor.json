@@ -115,7 +115,11 @@
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Rien n'est cassé, mais nous ne pourrons pas afficher une superposition animée du curseur.",
+<<<<<<< HEAD
 		"description": "Votre appareil ne prend pas en charge la capture native. Cela peut arriver pour plusieurs raisons que nous n'avons pas encore identifiées. GlitchRecord continuera de fonctionner, mais le lissage du curseur sera impossible.",
+=======
+		"description": "Votre appareil ne prend pas en charge la capture native. Cela peut arriver pour plusieurs raisons que nous n'avons pas encore identifiées. GlitchGrab continuera de fonctionner, mais le lissage du curseur sera impossible.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"confirm": "D'accord"
 	},
 	"exportStatus": {
