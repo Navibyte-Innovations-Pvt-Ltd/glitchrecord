@@ -85,7 +85,11 @@
 		"connectedZoomDuration": "Длительность интервала",
 		"connectedZoomEasing": "Кривая панорамирования",
 		"zoomEasingOptions": {
+<<<<<<< HEAD
 			"glitchrecord": "GlitchRecord",
+=======
+			"recordly": "GlitchGrab",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			"glide": "Плавно",
 			"smooth": "Мягко",
 			"snappy": "Резко",
