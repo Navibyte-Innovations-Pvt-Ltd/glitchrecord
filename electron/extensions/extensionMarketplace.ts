@@ -2,7 +2,11 @@
  * Extension Marketplace — Main Process
  *
  * Handles fetching, downloading, and installing extensions from the
+<<<<<<< HEAD
  * GlitchRecord marketplace API. Also provides admin review endpoints.
+=======
+ * GlitchGrab marketplace API. Also provides admin review endpoints.
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
  */
 
 import { createWriteStream, existsSync } from "node:fs";
@@ -77,8 +81,13 @@ async function marketplaceFetch<T>(
 	try {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
+<<<<<<< HEAD
 			"X-GlitchRecord-Version": app.getVersion(),
 			"X-GlitchRecord-Platform": process.platform,
+=======
+			"X-GlitchGrab-Version": app.getVersion(),
+			"X-GlitchGrab-Platform": process.platform,
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		};
 
 		// Attach admin key for privileged endpoints
@@ -197,7 +206,11 @@ export async function downloadAndInstallExtension(
 			response = await fetch(downloadUrl, {
 				signal: controller.signal,
 				headers: {
+<<<<<<< HEAD
 					"X-GlitchRecord-Version": app.getVersion(),
+=======
+					"X-GlitchGrab-Version": app.getVersion(),
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 				},
 			});
 		} finally {
@@ -285,7 +298,11 @@ export async function downloadAndInstallExtension(
 		// Track download count (fire-and-forget — CDN may cache the GET, so POST separately)
 		fetch(`${getMarketplaceUrl()}/extensions/${encodeURIComponent(extensionId)}/download`, {
 			method: "POST",
+<<<<<<< HEAD
 			headers: { "X-GlitchRecord-Version": app.getVersion() },
+=======
+			headers: { "X-GlitchGrab-Version": app.getVersion() },
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		}).catch(() => undefined);
 
 		return { success: true };
