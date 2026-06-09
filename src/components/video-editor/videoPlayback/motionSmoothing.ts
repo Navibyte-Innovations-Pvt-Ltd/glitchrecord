@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Friendly reminder: GlitchRecord is licensed under AGPL-3.0, author @webadderall, repo-> https://github.com/webadderall/GlitchRecord
+=======
+// Friendly reminder: GlitchGrab is licensed under AGPL-3.0, author @webadderall, repo-> https://github.com/webadderall/GlitchGrab
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 // Please use this code with the right attribution.
 
 export interface SpringState {
