@@ -114,7 +114,11 @@ export type EditorEffectSection =
 	| "glitchgrab"
 	| `ext:${string}`;
 
+<<<<<<< HEAD
 export type ZoomTransitionEasing = "glitchrecord" | "glide" | "smooth" | "snappy" | "linear";
+=======
+export type ZoomTransitionEasing = "glitchgrab" | "glide" | "smooth" | "snappy" | "linear";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 export type WebcamCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 export type WebcamPositionPreset =
@@ -175,8 +179,13 @@ export const DEFAULT_ZOOM_IN_OVERLAP_MS = 500;
 export const DEFAULT_ZOOM_OUT_DURATION_MS = 1015.05;
 export const DEFAULT_CONNECTED_ZOOM_GAP_MS = 1500;
 export const DEFAULT_CONNECTED_ZOOM_DURATION_MS = 1000;
+<<<<<<< HEAD
 export const DEFAULT_ZOOM_IN_EASING: ZoomTransitionEasing = "glitchrecord";
 export const DEFAULT_ZOOM_OUT_EASING: ZoomTransitionEasing = "glitchrecord";
+=======
+export const DEFAULT_ZOOM_IN_EASING: ZoomTransitionEasing = "glitchgrab";
+export const DEFAULT_ZOOM_OUT_EASING: ZoomTransitionEasing = "glitchgrab";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 export const DEFAULT_CONNECTED_ZOOM_EASING: ZoomTransitionEasing = "glide";
 export const DEFAULT_WEBCAM_SIZE = 40;
 export const DEFAULT_WEBCAM_REACT_TO_ZOOM = true;
