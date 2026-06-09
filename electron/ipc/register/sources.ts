@@ -3,11 +3,7 @@ import { promisify } from "node:util";
 import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
 import { reassertHudOverlayMousePassthrough } from "../../windows";
 import { appendDebugLog } from "../../glitchbridge/server";
-<<<<<<< HEAD
 import { ALLOW_GLITCHRECORD_WINDOW_CAPTURE } from "../constants";
-=======
-import { ALLOW_GLITCHGRAB_WINDOW_CAPTURE } from "../constants";
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 import {
 	getNativeMacWindowSources,
 	resolveLinuxWindowBounds,
@@ -87,11 +83,7 @@ export function registerSourceHandlers({
 		const ownWindowNames = new Set(
 			[
 				app.getName(),
-<<<<<<< HEAD
 				"GlitchRecord",
-=======
-				"GlitchGrab",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 				...BrowserWindow.getAllWindows().flatMap((win) => {
 					const title = win.getTitle().trim();
 					return title ? [title] : [];
@@ -159,11 +151,7 @@ export function registerSourceHandlers({
 						return true;
 					}
 
-<<<<<<< HEAD
 					if (ALLOW_GLITCHRECORD_WINDOW_CAPTURE && normalizedName.includes("glitchrecord")) {
-=======
-					if (ALLOW_GLITCHGRAB_WINDOW_CAPTURE && normalizedName.includes("glitchgrab")) {
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 						return true;
 					}
 
@@ -211,11 +199,7 @@ export function registerSourceHandlers({
 					const normalizedAppName = normalizeDesktopSourceName(source.appName ?? "");
 
 					if (
-<<<<<<< HEAD
 						!ALLOW_GLITCHRECORD_WINDOW_CAPTURE &&
-=======
-						!ALLOW_GLITCHGRAB_WINDOW_CAPTURE &&
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 						normalizedAppName &&
 						normalizedAppName === ownAppName
 					) {
@@ -223,15 +207,9 @@ export function registerSourceHandlers({
 					}
 
 					if (
-<<<<<<< HEAD
 						ALLOW_GLITCHRECORD_WINDOW_CAPTURE &&
 						(normalizedAppName === "glitchrecord" ||
 							normalizedWindowName?.includes("glitchrecord"))
-=======
-						ALLOW_GLITCHGRAB_WINDOW_CAPTURE &&
-						(normalizedAppName === "glitchgrab" ||
-							normalizedWindowName?.includes("glitchgrab"))
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 					) {
 						return true;
 					}
@@ -290,11 +268,7 @@ export function registerSourceHandlers({
 						return true;
 					}
 
-<<<<<<< HEAD
 					if (ALLOW_GLITCHRECORD_WINDOW_CAPTURE && normalizedName.includes("glitchrecord")) {
-=======
-					if (ALLOW_GLITCHGRAB_WINDOW_CAPTURE && normalizedName.includes("glitchgrab")) {
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 						return true;
 					}
 

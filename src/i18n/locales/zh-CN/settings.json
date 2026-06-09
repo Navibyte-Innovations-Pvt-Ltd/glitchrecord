@@ -80,11 +80,7 @@
 		"connectedZoomDuration": "连接缩放时长",
 		"connectedZoomEasing": "连接平移曲线",
 		"zoomEasingOptions": {
-<<<<<<< HEAD
 			"glitchrecord": "GlitchRecord",
-=======
-			"recordly": "GlitchGrab",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			"glide": "滑行",
 			"smooth": "平滑",
 			"snappy": "利落",

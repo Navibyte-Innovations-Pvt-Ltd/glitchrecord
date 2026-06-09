@@ -175,11 +175,7 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 });
 
 describe("resolveLinuxPortalCursorPresentation", () => {
-<<<<<<< HEAD
 	it("enables the GlitchRecord overlay only when the portal confirms cursor-hidden capture", () => {
-=======
-	it("enables the GlitchGrab overlay only when the portal confirms cursor-hidden capture", () => {
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		expect(
 			resolveLinuxPortalCursorPresentation({
 				requestedCursor: "never",

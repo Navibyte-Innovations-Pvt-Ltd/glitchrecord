@@ -1,12 +1,7 @@
 {
 	"app": {
-<<<<<<< HEAD
 		"name": "GlitchRecord",
 		"editorTitle": "GlitchRecord 編輯器",
-=======
-		"name": "GlitchGrab",
-		"editorTitle": "GlitchGrab 編輯器",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"subtitle": "螢幕錄製與編輯",
 		"language": "語言",
 		"manageRecordings": "打開錄製影像文件夾"

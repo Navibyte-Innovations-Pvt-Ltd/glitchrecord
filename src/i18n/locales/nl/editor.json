@@ -116,11 +116,7 @@
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Er is niets kapot, maar we kunnen geen geanimeerde cursor-overlay renderen.",
-<<<<<<< HEAD
 		"description": "Je apparaat ondersteunt geen native capture. Dit kan verschillende oorzaken hebben die we nog niet hebben achterhaald. GlitchRecord blijft werken, maar cursor smoothing is dan niet mogelijk.",
-=======
-		"description": "Je apparaat ondersteunt geen native capture. Dit kan verschillende oorzaken hebben die we nog niet hebben achterhaald. GlitchGrab blijft werken, maar cursor smoothing is dan niet mogelijk.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"confirm": "Oké"
 	},
 	"exportStatus": {

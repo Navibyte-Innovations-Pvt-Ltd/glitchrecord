@@ -66,11 +66,7 @@
 		"connectedZoomDuration": "Duración entre zooms conectados",
 		"connectedZoomEasing": "Curva del paneo conectado",
 		"zoomEasingOptions": {
-<<<<<<< HEAD
 			"glitchrecord": "GlitchRecord",
-=======
-			"recordly": "GlitchGrab",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			"glide": "Glide",
 			"smooth": "Suave",
 			"snappy": "Rápida",

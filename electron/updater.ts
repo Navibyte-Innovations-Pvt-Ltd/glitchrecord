@@ -212,17 +212,10 @@ function createDownloadingUpdateToastPayload(
 		phase: "downloading",
 		detail:
 			normalizedProgress >= 100
-<<<<<<< HEAD
 				? "Finishing the update download. GlitchRecord will restart as soon as the installer is ready."
 				: remainingMb !== null
 					? `${remainingMb.toFixed(1)} MB left before GlitchRecord restarts.`
 					: "Downloading the update now. GlitchRecord will restart when it finishes.",
-=======
-				? "Finishing the update download. GlitchGrab will restart as soon as the installer is ready."
-				: remainingMb !== null
-					? `${remainingMb.toFixed(1)} MB left before GlitchGrab restarts.`
-					: "Downloading the update now. GlitchGrab will restart when it finishes.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		delayMs: UPDATE_REMINDER_DELAY_MS,
 		progressPercent: normalizedProgress,
 		transferredBytes,
@@ -419,11 +412,7 @@ export async function downloadAvailableUpdate(
 	setUpdateStatusSummary({
 		status: "downloading",
 		availableVersion,
-<<<<<<< HEAD
 		detail: `Downloading GlitchRecord ${availableVersion}`,
-=======
-		detail: `Downloading GlitchGrab ${availableVersion}`,
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	});
 	emitUpdateToastState(
 		sendToRenderer,
@@ -535,11 +524,7 @@ async function showAvailableUpdateDialog(
 	const result = await showMessageBox(getMainWindow, {
 		type: "info",
 		title: "Update Available",
-<<<<<<< HEAD
 		message: `GlitchRecord ${version} is available.`,
-=======
-		message: `GlitchGrab ${version} is available.`,
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		detail: "Install and restart now, or remind me later.",
 		buttons: ["Install & Restart", "Later"],
 		defaultId: 0,
@@ -565,13 +550,8 @@ async function showDownloadedUpdateDialog(
 		type: "info",
 		title: "Update Ready",
 		message: isPreview
-<<<<<<< HEAD
 			? `GlitchRecord ${version} is ready to install.`
 			: `GlitchRecord ${version} has been downloaded.`,
-=======
-			? `GlitchGrab ${version} is ready to install.`
-			: `GlitchGrab ${version} has been downloaded.`,
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		detail: isPreview
 			? "Development preview of the native update prompt. No real update will be installed."
 			: "Install and restart now, or remind me later.",
@@ -694,11 +674,7 @@ export function setupAutoUpdates(
 		setUpdateStatusSummary({
 			status: "available",
 			availableVersion: info.version,
-<<<<<<< HEAD
 			detail: `GlitchRecord ${info.version} is available.`,
-=======
-			detail: `GlitchGrab ${info.version} is available.`,
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		});
 		if (skippedVersion === info.version) {
 			manualCheckRequested = false;
@@ -728,11 +704,7 @@ export function setupAutoUpdates(
 		setUpdateStatusSummary({
 			status: "up-to-date",
 			availableVersion: null,
-<<<<<<< HEAD
 			detail: `GlitchRecord ${app.getVersion()} is up to date.`,
-=======
-			detail: `GlitchGrab ${app.getVersion()} is up to date.`,
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		});
 		clearVisibleUpdateToast(sendToRenderer);
 		manualCheckRequested = false;
@@ -747,11 +719,7 @@ export function setupAutoUpdates(
 		setUpdateStatusSummary({
 			status: "downloading",
 			availableVersion,
-<<<<<<< HEAD
 			detail: `Downloading GlitchRecord ${availableVersion}`,
-=======
-			detail: `Downloading GlitchGrab ${availableVersion}`,
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		});
 		writeUpdaterLog(
 			`Download progress for ${availableVersion}: ${progress.percent.toFixed(1)}%`,
@@ -807,11 +775,7 @@ export function setupAutoUpdates(
 		setUpdateStatusSummary({
 			status: "ready",
 			availableVersion: info.version,
-<<<<<<< HEAD
 			detail: `GlitchRecord ${info.version} is ready to install.`,
-=======
-			detail: `GlitchGrab ${info.version} is ready to install.`,
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		});
 		clearDeferredReminderTimer();
 

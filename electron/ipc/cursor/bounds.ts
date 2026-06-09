@@ -167,11 +167,7 @@ export async function resolveWindowsWindowBounds(source: SelectedSource): Promis
 		'Add-Type -TypeDefinition @"',
 		"using System;",
 		"using System.Runtime.InteropServices;",
-<<<<<<< HEAD
 		"public static class GlitchRecordWindowBounds {",
-=======
-		"public static class GlitchGrabWindowBounds {",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"  [StructLayout(LayoutKind.Sequential)]",
 		"  public struct RECT {",
 		"    public int Left;",
@@ -198,13 +194,8 @@ export async function resolveWindowsWindowBounds(source: SelectedSource): Promis
 		"if ($handle -le 0) {",
 		"  exit 1",
 		"}",
-<<<<<<< HEAD
 		"$rect = New-Object GlitchRecordWindowBounds+RECT",
 		"if (-not [GlitchRecordWindowBounds]::GetWindowRect([IntPtr]$handle, [ref]$rect)) {",
-=======
-		"$rect = New-Object GlitchGrabWindowBounds+RECT",
-		"if (-not [GlitchGrabWindowBounds]::GetWindowRect([IntPtr]$handle, [ref]$rect)) {",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"  exit 1",
 		"}",
 		"@{ x = $rect.Left; y = $rect.Top; width = $rect.Right - $rect.Left; height = $rect.Bottom - $rect.Top } | ConvertTo-Json -Compress",

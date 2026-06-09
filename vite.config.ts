@@ -6,11 +6,7 @@ import electron from "vite-plugin-electron/simple";
 
 function electronMainCjsOutputPlugin(): Plugin {
 	return {
-<<<<<<< HEAD
 		name: "glitchrecord-electron-main-cjs-output",
-=======
-		name: "glitchgrab-electron-main-cjs-output",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		enforce: "post",
 		config(config) {
 			// Vite mergeConfig concatenates lib.formats with the plugin's ESM default.
@@ -40,11 +36,7 @@ function electronMainCjsOutputPlugin(): Plugin {
 
 function electronMainCjsGuardPlugin(): Plugin {
 	return {
-<<<<<<< HEAD
 		name: "glitchrecord-electron-main-cjs-guard",
-=======
-		name: "glitchgrab-electron-main-cjs-guard",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		closeBundle() {
 			const scriptPath = path.resolve(__dirname, "scripts/smoke-electron-main-cjs.mjs");
 			const result = spawnSync(process.execPath, [scriptPath], {

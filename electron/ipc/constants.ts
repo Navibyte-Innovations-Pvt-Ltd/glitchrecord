@@ -1,11 +1,7 @@
 import path from "node:path";
 import { USER_DATA_PATH } from "../appPaths";
 
-<<<<<<< HEAD
 export const PROJECT_FILE_EXTENSION = "glitchrecord";
-=======
-export const PROJECT_FILE_EXTENSION = "glitchgrab";
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 export const LEGACY_PROJECT_FILE_EXTENSIONS = ["recordly", "openscreen"];
 export const PROJECTS_DIRECTORY_NAME = "Projects";
 export const PROJECT_THUMBNAIL_SUFFIX = ".preview.png";
@@ -18,13 +14,8 @@ export const APP_SETTINGS_FILE = path.join(USER_DATA_PATH, "app-settings.json");
 export const AUTO_RECORDING_PREFIX = "recording-";
 export const AUTO_RECORDING_RETENTION_COUNT = 20;
 export const AUTO_RECORDING_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
-<<<<<<< HEAD
 export const ALLOW_GLITCHRECORD_WINDOW_CAPTURE = Boolean(process.env["VITE_DEV_SERVER_URL"]);
 export const RECORDING_SESSION_MANIFEST_SUFFIX = ".glitchrecord-session.json";
-=======
-export const ALLOW_GLITCHGRAB_WINDOW_CAPTURE = Boolean(process.env["VITE_DEV_SERVER_URL"]);
-export const RECORDING_SESSION_MANIFEST_SUFFIX = ".glitchgrab-session.json";
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 export const WHISPER_MODEL_DOWNLOAD_URL =
 	"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
 export const WHISPER_MODEL_DIR = path.join(USER_DATA_PATH, "whisper");

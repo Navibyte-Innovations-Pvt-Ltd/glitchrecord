@@ -50,11 +50,7 @@ describe("ThemeContext persistence", () => {
 	});
 
 	it("loads the persisted theme preference from Electron app settings", () => {
-<<<<<<< HEAD
 		stubElectronSettings({ "glitchrecord.theme": "dark" });
-=======
-		stubElectronSettings({ "glitchgrab.theme": "dark" });
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 		expect(loadThemePreference()).toBe("dark");
 	});
@@ -64,21 +60,13 @@ describe("ThemeContext persistence", () => {
 
 		persistThemePreference("dark");
 
-<<<<<<< HEAD
 		expect(settingsStore.get("glitchrecord.theme")).toBe("dark");
-=======
-		expect(settingsStore.get("glitchgrab.theme")).toBe("dark");
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	});
 
 	it("falls back to localStorage when Electron settings are unavailable", () => {
 		vi.stubGlobal(
 			"localStorage",
-<<<<<<< HEAD
 			createStorageMock({ "glitchrecord.theme": "light" }),
-=======
-			createStorageMock({ "glitchgrab.theme": "light" }),
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		);
 
 		expect(loadThemePreference()).toBe("light");

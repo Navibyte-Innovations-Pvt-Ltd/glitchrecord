@@ -115,11 +115,7 @@
 	},
 	"nativeCaptureUnavailable": {
 		"title": "沒有出錯，但我們無法轉譯動畫游標覆蓋層。",
-<<<<<<< HEAD
 		"description": "你的裝置不支援原生擷取。這可能是由我們尚未釐清的多種原因造成的。GlitchRecord 仍可繼續運作，但無法進行游標平滑處理。",
-=======
-		"description": "你的裝置不支援原生擷取。這可能是由我們尚未釐清的多種原因造成的。GlitchGrab 仍可繼續運作，但無法進行游標平滑處理。",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"confirm": "好的"
 	},
 	"exportStatus": {

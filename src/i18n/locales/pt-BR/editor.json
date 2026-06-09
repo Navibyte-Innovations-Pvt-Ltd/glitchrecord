@@ -115,11 +115,7 @@
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Nada está quebrado, mas não poderemos renderizar uma sobreposição animada do cursor.",
-<<<<<<< HEAD
 		"description": "Seu dispositivo não oferece suporte à captura nativa. Isso pode acontecer por vários motivos que ainda não identificamos. O GlitchRecord continuará funcionando, mas a suavização do cursor ficará indisponível.",
-=======
-		"description": "Seu dispositivo não oferece suporte à captura nativa. Isso pode acontecer por vários motivos que ainda não identificamos. O GlitchGrab continuará funcionando, mas a suavização do cursor ficará indisponível.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"confirm": "Entendi"
 	},
 	"exportStatus": {

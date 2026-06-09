@@ -539,7 +539,6 @@ function syncDockIcon() {
 function getUpdateNotificationTitle(payload: UpdateToastPayload) {
 	switch (payload.phase) {
 		case "available":
-<<<<<<< HEAD
 			return `GlitchRecord ${payload.version} is available`;
 		case "downloading":
 			return `Downloading GlitchRecord ${payload.version}`;
@@ -547,30 +546,15 @@ function getUpdateNotificationTitle(payload: UpdateToastPayload) {
 			return `GlitchRecord ${payload.version} is ready`;
 		case "error":
 			return `GlitchRecord ${payload.version} needs attention`;
-=======
-			return `GlitchGrab ${payload.version} is available`;
-		case "downloading":
-			return `Downloading GlitchGrab ${payload.version}`;
-		case "ready":
-			return `GlitchGrab ${payload.version} is ready`;
-		case "error":
-			return `GlitchGrab ${payload.version} needs attention`;
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	}
 }
 
 function getUpdateNotificationBody(payload: UpdateToastPayload) {
 	switch (payload.phase) {
 		case "available":
-<<<<<<< HEAD
 			return "Click to install the update and restart GlitchRecord.";
 		case "downloading":
 			return "GlitchRecord is downloading the update and will restart when it is ready.";
-=======
-			return "Click to install the update and restart GlitchGrab.";
-		case "downloading":
-			return "GlitchGrab is downloading the update and will restart when it is ready.";
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		case "ready":
 			return "Click to install the downloaded update and restart.";
 		case "error":
@@ -745,11 +729,7 @@ ipcMain.handle("check-for-app-updates", async () => {
 function updateTrayMenu(recording: boolean = false) {
 	if (!tray) return;
 	const trayIcon = recording ? getRecordingTrayIcon() : getDefaultTrayIcon();
-<<<<<<< HEAD
 	const trayToolTip = recording ? `Recording: ${selectedSourceName}` : "GlitchRecord";
-=======
-	const trayToolTip = recording ? `Recording: ${selectedSourceName}` : "GlitchGrab";
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	const menuTemplate = recording
 		? [
 				{

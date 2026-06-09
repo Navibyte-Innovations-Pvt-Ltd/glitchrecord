@@ -87,11 +87,7 @@ import zhTWSettings from "@/i18n/locales/zh-TW/settings.json";
 import zhTWShortcuts from "@/i18n/locales/zh-TW/shortcuts.json";
 import zhTWTimeline from "@/i18n/locales/zh-TW/timeline.json";
 
-<<<<<<< HEAD
 const LOCALE_STORAGE_KEY = "glitchrecord.locale";
-=======
-const LOCALE_STORAGE_KEY = "glitchgrab.locale";
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 type LocaleBundle = Record<I18nNamespace, Record<string, unknown>>;
 

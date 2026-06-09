@@ -316,11 +316,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			getAssetBasePath: () => Promise<string>;
 			listAssetDirectory: () => Promise<{ success: true; files: string[] }>;
 		};
-<<<<<<< HEAD
 		electronAPI.getAssetBasePath = vi.fn(async () => "file:///C:/GlitchRecord/resources/");
-=======
-		electronAPI.getAssetBasePath = vi.fn(async () => "file:///C:/GlitchGrab/resources/");
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		electronAPI.listAssetDirectory = vi.fn(async () => ({
 			success: true,
 			files: ["tahoe-light.jpg"],
@@ -328,21 +324,13 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 
 		await expect(exporter.resolveNativeStaticLayoutBackground()).resolves.toEqual({
 			backgroundColor: "#101010",
-<<<<<<< HEAD
 			backgroundImagePath: "C:/GlitchRecord/resources/wallpapers/tahoe-light.jpg",
-=======
-			backgroundImagePath: "C:/GlitchGrab/resources/wallpapers/tahoe-light.jpg",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		});
 	});
 
 	it("reports video backgrounds while speed can use native timeline maps", () => {
 		const exporter = createExporter({
-<<<<<<< HEAD
 			wallpaper: "file:///C:/GlitchRecord/background.webm",
-=======
-			wallpaper: "file:///C:/GlitchGrab/background.webm",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			speedRegions: [{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 }],
 		});
 
@@ -361,11 +349,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 	it("collects every native static-layout blocker for beta diagnostics", () => {
 		const exporter = createExporter({
 			width: 1921,
-<<<<<<< HEAD
 			wallpaper: "file:///C:/GlitchRecord/background.webm",
-=======
-			wallpaper: "file:///C:/GlitchGrab/background.webm",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			speedRegions: [{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 }],
 			annotationRegions: [{ id: "annotation-1", startMs: 0, endMs: 1_000 }],
 			autoCaptions: [{ id: "caption-1", text: "hello", startMs: 0, endMs: 1_000 }],

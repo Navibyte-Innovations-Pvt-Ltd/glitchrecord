@@ -115,11 +115,7 @@
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Niente è rotto, ma non sarà possibile renderizzare un overlay del cursore animato.",
-<<<<<<< HEAD
 		"description": "Il tuo dispositivo non supporta la cattura nativa. Le cause possono essere varie e non ancora identificate. GlitchRecord funziona comunque, ma non è possibile applicare lo smoothing del cursore.",
-=======
-		"description": "Il tuo dispositivo non supporta la cattura nativa. Le cause possono essere varie e non ancora identificate. GlitchGrab funziona comunque, ma non è possibile applicare lo smoothing del cursore.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"confirm": "Ok"
 	},
 	"exportStatus": {

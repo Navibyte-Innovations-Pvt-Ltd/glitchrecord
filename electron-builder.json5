@@ -1,11 +1,7 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-<<<<<<< HEAD
   "appId": "dev.glitchrecord.app",
-=======
-  "appId": "dev.glitchgrab.app",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
   "electronUpdaterCompatibility": ">=2.16",
   "asar": true,
   "asarUnpack": [
@@ -14,11 +10,7 @@
     "node_modules/uiohook-napi/**",
     "electron/native/**"
   ],
-<<<<<<< HEAD
   "productName": "GlitchRecord",
-=======
-  "productName": "GlitchGrab",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
   "npmRebuild": true,
   "buildDependenciesFromSource": true,
   "compression": "normal",
@@ -50,11 +42,7 @@
     {
       "provider": "github",
       "owner": "webadderall",
-<<<<<<< HEAD
       "repo": "GlitchRecord",
-=======
-      "repo": "GlitchGrab",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
       "tagNamePrefix": "v",
       "publishAutoUpdate": true
     }
@@ -77,15 +65,9 @@
     "icon": "icons/icons/mac/icon.icns",
     "artifactName": "${productName}-${arch}.${ext}",
     "extendInfo": {
-<<<<<<< HEAD
       "NSAudioCaptureUsageDescription": "GlitchRecord needs audio capture permission to record system audio.",
       "NSCameraUsageDescription": "GlitchRecord needs camera access to record webcam video.",
       "NSMicrophoneUsageDescription": "GlitchRecord needs microphone access to record voice audio.",
-=======
-      "NSAudioCaptureUsageDescription": "GlitchGrab needs audio capture permission to record system audio.",
-      "NSCameraUsageDescription": "GlitchGrab needs camera access to record webcam video.",
-      "NSMicrophoneUsageDescription": "GlitchGrab needs microphone access to record voice audio.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
       "NSCameraUseContinuityCameraDeviceType": true,
       "com.apple.security.device.audio-input": true
     }
@@ -104,11 +86,7 @@
     ],
     "icon": "icons/icons/win/icon.ico"
     ,
-<<<<<<< HEAD
     "executableName": "GlitchRecord",
-=======
-    "executableName": "GlitchGrab",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
     "artifactName": "${productName}-windows-${arch}.${ext}"
   }
 }

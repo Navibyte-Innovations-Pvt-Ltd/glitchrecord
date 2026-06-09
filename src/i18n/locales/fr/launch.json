@@ -50,13 +50,8 @@
 			"checkingTitle": "Vérification des mises à jour...",
 			"downloadingTitle": "Téléchargement de la mise à jour...",
 			"errorTitle": "Échec de la vérification des mises à jour. Cliquez pour réessayer.",
-<<<<<<< HEAD
 			"upToDateTitle": "GlitchRecord {{version}} est à jour.",
 			"availableTitle": "GlitchRecord {{version}} est disponible.",
-=======
-			"upToDateTitle": "GlitchGrab {{version}} est à jour.",
-			"availableTitle": "GlitchGrab {{version}} est disponible.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			"availableGenericTitle": "Une mise à jour est disponible."
 		}
 	},
@@ -72,17 +67,10 @@
 		"share": "Partager"
 	},
 	"permissions": {
-<<<<<<< HEAD
 		"screenRecordingNeeded": "GlitchRecord nécessite l’autorisation d’enregistrement d’écran avant de commencer. Les paramètres système ont été ouverts. Après l’avoir activée, quittez et relancez GlitchRecord.",
 		"screenRecordingMissing": "L’autorisation d’enregistrement d’écran est toujours manquante. Les paramètres système ont été ouverts à nouveau. Activez-la, puis quittez et relancez GlitchRecord avant d’enregistrer.",
 		"accessibilityNeeded": "GlitchRecord nécessite également l’autorisation d’accessibilité pour le suivi du curseur. Les paramètres système ont été ouverts. Après l’avoir activée, quittez et relancez GlitchRecord.",
 		"accessibilityMissing": "L’autorisation d’accessibilité est toujours manquante. Les paramètres système ont été ouverts à nouveau. Activez-la, puis quittez et relancez GlitchRecord avant d’enregistrer.",
-=======
-		"screenRecordingNeeded": "GlitchGrab nécessite l’autorisation d’enregistrement d’écran avant de commencer. Les paramètres système ont été ouverts. Après l’avoir activée, quittez et relancez GlitchGrab.",
-		"screenRecordingMissing": "L’autorisation d’enregistrement d’écran est toujours manquante. Les paramètres système ont été ouverts à nouveau. Activez-la, puis quittez et relancez GlitchGrab avant d’enregistrer.",
-		"accessibilityNeeded": "GlitchGrab nécessite également l’autorisation d’accessibilité pour le suivi du curseur. Les paramètres système ont été ouverts. Après l’avoir activée, quittez et relancez GlitchGrab.",
-		"accessibilityMissing": "L’autorisation d’accessibilité est toujours manquante. Les paramètres système ont été ouverts à nouveau. Activez-la, puis quittez et relancez GlitchGrab avant d’enregistrer.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"selectSource": "Veuillez sélectionner une source à enregistrer",
 		"systemAudioUnavailable": "L’audio système n’est pas disponible pour cette source. L’enregistrement continuera sans audio système.",
 		"microphoneDenied": "L’accès au microphone a été refusé. L’enregistrement continuera sans audio du microphone.",

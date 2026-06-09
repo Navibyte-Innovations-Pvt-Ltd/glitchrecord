@@ -53,13 +53,8 @@ export default function App() {
 	useEffect(() => {
 		document.title =
 			windowType === "editor"
-<<<<<<< HEAD
 				? t("app.editorTitle", "GlitchRecord Editor")
 				: t("app.name", "GlitchRecord");
-=======
-				? t("app.editorTitle", "GlitchGrab Editor")
-				: t("app.name", "GlitchGrab");
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	}, [windowType, t]);
 
 	switch (windowType) {
@@ -96,20 +91,12 @@ export default function App() {
 					<div className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 px-6 py-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
 						<img
 							src={appIconSrc}
-<<<<<<< HEAD
 							alt={t("app.name", "GlitchRecord")}
-=======
-							alt={t("app.name", "GlitchGrab")}
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 							className="h-12 w-12 rounded-xl"
 						/>
 						<div>
 							<h1 className="text-xl font-semibold tracking-tight">
-<<<<<<< HEAD
 								{t("app.name", "GlitchRecord")}
-=======
-								{t("app.name", "GlitchGrab")}
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 							</h1>
 							<p className="text-sm text-foreground/65">
 								{t("app.subtitle", "Screen recording and editing")}

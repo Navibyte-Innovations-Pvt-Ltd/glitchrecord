@@ -1,12 +1,7 @@
 {
 	"app": {
-<<<<<<< HEAD
 		"name": "GlitchRecord",
 		"editorTitle": "Editor de GlitchRecord",
-=======
-		"name": "GlitchGrab",
-		"editorTitle": "Editor de GlitchGrab",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"subtitle": "Grabación de pantalla y edición",
 		"language": "Idioma",
 		"manageRecordings": "Abrir carpeta de grabaciones"

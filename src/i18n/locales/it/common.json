@@ -1,12 +1,7 @@
 {
 	"app": {
-<<<<<<< HEAD
 		"name": "GlitchRecord",
 		"editorTitle": "Editor GlitchRecord",
-=======
-		"name": "GlitchGrab",
-		"editorTitle": "Editor GlitchGrab",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"subtitle": "Registrazione e modifica dello schermo",
 		"language": "Lingua",
 		"manageRecordings": "Apri cartella registrazioni"

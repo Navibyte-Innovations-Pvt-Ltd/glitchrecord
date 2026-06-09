@@ -6,11 +6,7 @@ import { waitForWindowsCaptureStop } from "./windows";
 
 vi.mock("electron", () => ({
 	app: {
-<<<<<<< HEAD
 		getPath: () => "C:\\GlitchRecordTest",
-=======
-		getPath: () => "C:\\GlitchGrabTest",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	},
 	BrowserWindow: {
 		getAllWindows: () => [],
@@ -37,11 +33,7 @@ describe("waitForWindowsCaptureStop", () => {
 
 	it("resolves the helper output path when the process closes cleanly", async () => {
 		const proc = new FakeCaptureProcess();
-<<<<<<< HEAD
 		setWindowsCaptureOutputBuffer("Recording stopped. Output path: C:\\GlitchRecord\\capture.mp4");
-=======
-		setWindowsCaptureOutputBuffer("Recording stopped. Output path: C:\\GlitchGrab\\capture.mp4");
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 		const stopped = waitForWindowsCaptureStop(
 			proc as unknown as Parameters<typeof waitForWindowsCaptureStop>[0],
@@ -49,22 +41,14 @@ describe("waitForWindowsCaptureStop", () => {
 		);
 		proc.emit("close", 0);
 
-<<<<<<< HEAD
 		await expect(stopped).resolves.toBe("C:\\GlitchRecord\\capture.mp4");
-=======
-		await expect(stopped).resolves.toBe("C:\\GlitchGrab\\capture.mp4");
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		expect(proc.kill).not.toHaveBeenCalled();
 	});
 
 	it("resolves the fallback target path when the helper closes cleanly without output path", async () => {
 		const proc = new FakeCaptureProcess();
 		setWindowsCaptureOutputBuffer("Recording stopped without output path");
-<<<<<<< HEAD
 		setWindowsCaptureTargetPath("C:\\GlitchRecord\\fallback.mp4");
-=======
-		setWindowsCaptureTargetPath("C:\\GlitchGrab\\fallback.mp4");
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 		const stopped = waitForWindowsCaptureStop(
 			proc as unknown as Parameters<typeof waitForWindowsCaptureStop>[0],
@@ -72,11 +56,7 @@ describe("waitForWindowsCaptureStop", () => {
 		);
 		proc.emit("close", 0);
 
-<<<<<<< HEAD
 		await expect(stopped).resolves.toBe("C:\\GlitchRecord\\fallback.mp4");
-=======
-		await expect(stopped).resolves.toBe("C:\\GlitchGrab\\fallback.mp4");
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		expect(proc.kill).not.toHaveBeenCalled();
 	});
 

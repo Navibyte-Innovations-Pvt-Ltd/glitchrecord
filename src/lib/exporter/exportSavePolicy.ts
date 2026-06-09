@@ -39,15 +39,8 @@ export function describeBlockedInMemoryExportSave({
 }): string {
 	const normalizedExtension = normalizeExportExtension(extension) || "export";
 	if (isExportTooLargeForInMemorySave(blobSize)) {
-<<<<<<< HEAD
 		return `The ${normalizedExtension.toUpperCase()} export is too large to save through the legacy in-memory path. Please retry the export so GlitchRecord can save it through the temp-file streaming path.`;
 	}
 
 	return `The ${normalizedExtension.toUpperCase()} export could not be saved through the temp-file streaming path, and GlitchRecord will not fall back to the legacy in-memory path for MP4 exports. Please retry the export.`;
-=======
-		return `The ${normalizedExtension.toUpperCase()} export is too large to save through the legacy in-memory path. Please retry the export so GlitchGrab can save it through the temp-file streaming path.`;
-	}
-
-	return `The ${normalizedExtension.toUpperCase()} export could not be saved through the temp-file streaming path, and GlitchGrab will not fall back to the legacy in-memory path for MP4 exports. Please retry the export.`;
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 }

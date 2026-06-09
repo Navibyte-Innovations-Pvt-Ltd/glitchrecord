@@ -20,11 +20,7 @@ const cudaProbe: NvidiaCudaExportCapabilityProbe = {
 	packagedAutoCandidateEnabled: true,
 	packagedAutoCandidateActive: true,
 	windowsGpuCompositorEnabled: true,
-<<<<<<< HEAD
 	wrapperPath: "C:\\GlitchRecord\\run-mp4-pipeline.mjs",
-=======
-	wrapperPath: "C:\\GlitchGrab\\run-mp4-pipeline.mjs",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	hasNvidiaGpu: true,
 	audioMode: "copy-source",
 	audioSkipReason: null,
@@ -35,11 +31,7 @@ const cudaProbe: NvidiaCudaExportCapabilityProbe = {
 const d3d11Probe: WindowsD3D11ExportCapabilityProbe = {
 	platform: "win32",
 	windowsGpuCompositorEnabled: true,
-<<<<<<< HEAD
 	helperPath: "C:\\GlitchRecord\\recordly-gpu-export.exe",
-=======
-	helperPath: "C:\\GlitchGrab\\recordly-gpu-export.exe",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	adapterIndexOverride: null,
 	preferHighPerformanceAdapter: true,
 	nvencSdkRequested: false,

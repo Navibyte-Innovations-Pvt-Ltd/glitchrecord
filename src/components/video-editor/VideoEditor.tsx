@@ -1717,13 +1717,7 @@ export default function VideoEditor() {
 			currentProjectPath?.split(/[\\/]/).pop() ??
 			currentSourcePath?.split(/[\\/]/).pop() ??
 			"";
-<<<<<<< HEAD
 		const withoutExtension = fileName.replace(/\.(?:glitchrecord|recordly)$/i, "").replace(/\.[^.]+$/, "");
-=======
-		const withoutExtension = fileName
-			.replace(/\.(?:glitchgrab|recordly)$/i, "")
-			.replace(/\.[^.]+$/, "");
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		return withoutExtension || t("editor.project.untitled", "Untitled");
 	}, [currentProjectPath, currentSourcePath, t]);
 
@@ -5060,11 +5054,7 @@ export default function VideoEditor() {
 			return;
 		}
 
-<<<<<<< HEAD
 		// When smoke-export opens a .glitchrecord project, the cursor telemetry
-=======
-		// When smoke-export opens a .glitchgrab project, the cursor telemetry
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		// sidecar is loaded asynchronously after the editor state applies.
 		// Without this gate the auto-export fires before telemetry arrives and
 		// produces a video with no cursor/zoom animations.
@@ -5456,11 +5446,7 @@ export default function VideoEditor() {
 					<DialogDescription className="text-muted-foreground">
 						{t(
 							"editor.nativeCaptureUnavailable.description",
-<<<<<<< HEAD
 							"Your device does not support native capture. This could be for a variety of reasons we haven’t figured out yet. This doesn’t break GlitchRecord, but it does make cursor smoothing impossible.",
-=======
-							"Your device does not support native capture. This could be for a variety of reasons we haven’t figured out yet. This doesn’t break GlitchGrab, but it does make cursor smoothing impossible.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 						)}
 					</DialogDescription>
 				</DialogHeader>
@@ -5603,11 +5589,7 @@ export default function VideoEditor() {
 								aria-label={t("editor.project.renameInput", "Project name")}
 							/>
 							<span className="shrink-0 text-xs font-medium tracking-tight text-muted-foreground/70">
-<<<<<<< HEAD
 								.glitchrecord
-=======
-								.glitchgrab
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 							</span>
 						</form>
 					) : (
@@ -5625,11 +5607,7 @@ export default function VideoEditor() {
 								{projectDisplayName}
 							</span>
 							<span className="shrink-0 text-xs font-medium tracking-tight text-muted-foreground/70">
-<<<<<<< HEAD
 								.glitchrecord
-=======
-								.glitchgrab
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 							</span>
 						</button>
 					)}

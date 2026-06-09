@@ -1,12 +1,7 @@
 {
 	"app": {
-<<<<<<< HEAD
 		"name": "GlitchRecord",
 		"editorTitle": "GlitchRecord 편집기",
-=======
-		"name": "GlitchGrab",
-		"editorTitle": "GlitchGrab 편집기",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"subtitle": "화면 녹화 및 편집",
 		"language": "언어",
 		"manageRecordings": "녹화 폴더 열기"

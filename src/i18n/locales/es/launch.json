@@ -50,13 +50,8 @@
 			"checkingTitle": "Buscando actualizaciones...",
 			"downloadingTitle": "Descargando actualización...",
 			"errorTitle": "La comprobación de actualizaciones falló. Haz clic para reintentar.",
-<<<<<<< HEAD
 			"upToDateTitle": "GlitchRecord {{version}} está actualizado.",
 			"availableTitle": "GlitchRecord {{version}} está disponible.",
-=======
-			"upToDateTitle": "GlitchGrab {{version}} está actualizado.",
-			"availableTitle": "GlitchGrab {{version}} está disponible.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			"availableGenericTitle": "Hay una actualización disponible."
 		}
 	},
@@ -72,17 +67,10 @@
 		"share": "Compartir"
 	},
 	"permissions": {
-<<<<<<< HEAD
 		"screenRecordingNeeded": "GlitchRecord necesita permiso de grabación de pantalla antes de comenzar. Se ha abierto Configuración del sistema. Después de habilitarlo, cierra y vuelve a abrir GlitchRecord.",
 		"screenRecordingMissing": "El permiso de grabación de pantalla aún falta. Se ha abierto Configuración del sistema nuevamente. Habilítalo, luego cierra y vuelve a abrir GlitchRecord antes de grabar.",
 		"accessibilityNeeded": "GlitchRecord también necesita permiso de accesibilidad para el seguimiento del cursor. Se ha abierto Configuración del sistema. Después de habilitarlo, cierra y vuelve a abrir GlitchRecord.",
 		"accessibilityMissing": "El permiso de accesibilidad aún falta. Se ha abierto Configuración del sistema nuevamente. Habilítalo, luego cierra y vuelve a abrir GlitchRecord antes de grabar.",
-=======
-		"screenRecordingNeeded": "GlitchGrab necesita permiso de grabación de pantalla antes de comenzar. Se ha abierto Configuración del sistema. Después de habilitarlo, cierra y vuelve a abrir GlitchGrab.",
-		"screenRecordingMissing": "El permiso de grabación de pantalla aún falta. Se ha abierto Configuración del sistema nuevamente. Habilítalo, luego cierra y vuelve a abrir GlitchGrab antes de grabar.",
-		"accessibilityNeeded": "GlitchGrab también necesita permiso de accesibilidad para el seguimiento del cursor. Se ha abierto Configuración del sistema. Después de habilitarlo, cierra y vuelve a abrir GlitchGrab.",
-		"accessibilityMissing": "El permiso de accesibilidad aún falta. Se ha abierto Configuración del sistema nuevamente. Habilítalo, luego cierra y vuelve a abrir GlitchGrab antes de grabar.",
->>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"selectSource": "Por favor selecciona una fuente para grabar",
 		"systemAudioUnavailable": "El audio del sistema no está disponible para esta fuente. La grabación continuará sin audio del sistema.",
 		"microphoneDenied": "Se denegó el acceso al micrófono. La grabación continuará sin audio del micrófono.",
