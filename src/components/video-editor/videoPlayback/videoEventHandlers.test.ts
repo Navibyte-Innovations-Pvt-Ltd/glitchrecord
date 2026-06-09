@@ -80,7 +80,10 @@ describe("createVideoEventHandlers", () => {
 		handlers.handlePlay();
 		expect(onPlayStateChange).toHaveBeenCalledWith(true);
 		expect(video.requestVideoFrameCallback).toHaveBeenCalledTimes(1);
-		expect(requestAnimationFrameMock).not.toHaveBeenCalled();
+		// A stall-watchdog rAF is armed alongside rVFC so the loop can never die
+		// silently at a region boundary, but timing still comes from the presented
+		// frame below — not from polling currentTime on the rAF.
+		expect(requestAnimationFrameMock).toHaveBeenCalledTimes(1);
 
 		presentedFrameCallback?.(0, { mediaTime: 1.25 });
 
