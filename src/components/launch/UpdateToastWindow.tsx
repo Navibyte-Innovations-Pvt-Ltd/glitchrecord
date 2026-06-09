@@ -48,6 +48,7 @@ function getToastTitle(payload: UpdateToastPayload) {
 
 	switch (payload.phase) {
 		case "available":
+<<<<<<< HEAD
 			return `GlitchRecord ${payload.version} is available`;
 		case "downloading":
 			return `Installing GlitchRecord ${payload.version}`;
@@ -57,6 +58,17 @@ function getToastTitle(payload: UpdateToastPayload) {
 			return payload.primaryAction === "retry-check"
 				? "Could not check for updates"
 				: `GlitchRecord ${payload.version} needs attention`;
+=======
+			return `GlitchGrab ${payload.version} is available`;
+		case "downloading":
+			return `Installing GlitchGrab ${payload.version}`;
+		case "ready":
+			return `GlitchGrab ${payload.version} is ready`;
+		case "error":
+			return payload.primaryAction === "retry-check"
+				? "Could not check for updates"
+				: `GlitchGrab ${payload.version} needs attention`;
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	}
 }
 
