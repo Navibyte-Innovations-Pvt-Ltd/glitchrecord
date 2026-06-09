@@ -14,7 +14,11 @@ import {
 } from "electron";
 import { showCursor } from "../../cursorHider";
 import { getMonitorHandles } from "../monitorResolver";
+<<<<<<< HEAD
 import { ALLOW_GLITCHRECORD_WINDOW_CAPTURE } from "../constants";
+=======
+import { ALLOW_GLITCHGRAB_WINDOW_CAPTURE } from "../constants";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
@@ -688,15 +692,26 @@ export function registerRecordingHandlers(
 				const appName = normalizeDesktopSourceName(String(source?.appName ?? ""));
 				const ownAppName = normalizeDesktopSourceName(app.getName());
 				if (
+<<<<<<< HEAD
 					!ALLOW_GLITCHRECORD_WINDOW_CAPTURE &&
 					source?.id?.startsWith("window:") &&
 					appName &&
 					(appName === ownAppName || appName === "glitchrecord")
+=======
+					!ALLOW_GLITCHGRAB_WINDOW_CAPTURE &&
+					source?.id?.startsWith("window:") &&
+					appName &&
+					(appName === ownAppName || appName === "glitchgrab")
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 				) {
 					return {
 						success: false,
 						message:
+<<<<<<< HEAD
 							"Cannot record GlitchRecord windows. Please select another app window.",
+=======
+							"Cannot record GlitchGrab windows. Please select another app window.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 					};
 				}
 
@@ -805,8 +820,13 @@ export function registerRecordingHandlers(
 						type: "warning",
 						title: "Screen Recording Permission Required",
 						message:
+<<<<<<< HEAD
 							"GlitchRecord needs screen recording permission to capture your screen.",
 						detail: "Please open System Settings > Privacy & Security > Screen Recording, make sure GlitchRecord is toggled ON, then try recording again.",
+=======
+							"GlitchGrab needs screen recording permission to capture your screen.",
+						detail: "Please open System Settings > Privacy & Security > Screen Recording, make sure GlitchGrab is toggled ON, then try recording again.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 						buttons: ["Open System Settings", "Cancel"],
 						defaultId: 0,
 						cancelId: 1,
@@ -838,8 +858,13 @@ export function registerRecordingHandlers(
 					const { response } = await dialog.showMessageBox({
 						type: "warning",
 						title: "Microphone Permission Required",
+<<<<<<< HEAD
 						message: "GlitchRecord needs microphone permission to record audio.",
 						detail: "Please open System Settings > Privacy & Security > Microphone, make sure GlitchRecord is toggled ON, then try recording again.",
+=======
+						message: "GlitchGrab needs microphone permission to record audio.",
+						detail: "Please open System Settings > Privacy & Security > Microphone, make sure GlitchGrab is toggled ON, then try recording again.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 						buttons: ["Open System Settings", "Cancel"],
 						defaultId: 0,
 						cancelId: 1,
