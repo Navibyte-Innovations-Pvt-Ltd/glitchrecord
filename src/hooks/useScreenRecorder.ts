@@ -572,8 +572,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			await window.electronAPI.openScreenRecordingPreferences();
 			alert(
 				options.startup
+<<<<<<< HEAD
 					? "GlitchRecord needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen GlitchRecord."
 					: "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen GlitchRecord before recording.",
+=======
+					? "GlitchGrab needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen GlitchGrab."
+					: "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen GlitchGrab before recording.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			);
 			return false;
 		}
@@ -595,8 +600,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		await window.electronAPI.openAccessibilityPreferences();
 		alert(
 			options.startup
+<<<<<<< HEAD
 				? "GlitchRecord also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen GlitchRecord."
 				: "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen GlitchRecord before recording.",
+=======
+				? "GlitchGrab also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen GlitchGrab."
+				: "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen GlitchGrab before recording.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		);
 
 		return false;
@@ -1870,7 +1880,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					cursorPresentation.nativeCaptureUnavailable;
 				if (cursorPresentation.nativeCaptureUnavailable) {
 					console.warn(
+<<<<<<< HEAD
 						"Linux portal did not confirm cursor-hidden capture; disabling GlitchRecord cursor overlay for this recording.",
+=======
+						"Linux portal did not confirm cursor-hidden capture; disabling GlitchGrab cursor overlay for this recording.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 						{
 							actualCursor,
 							requestedCursor: browserCursorPolicy.streamCursor,
