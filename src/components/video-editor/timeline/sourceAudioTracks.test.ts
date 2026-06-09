@@ -20,10 +20,10 @@ const labels = {
 
 describe("timeline source audio tracks", () => {
 	it("builds candidates for Windows and macOS sidecar containers", () => {
-		expect(buildSourceSidecarPathCandidates("C:\\Recordly\\recording-1.mp4", "mic")).toEqual([
-			"C:/Recordly/recording-1.mic.wav",
-			"C:/Recordly/recording-1.mic.m4a",
-			"C:/Recordly/recording-1.mic.webm",
+		expect(buildSourceSidecarPathCandidates("C:\\GlitchRecord\\recording-1.mp4", "mic")).toEqual([
+			"C:/GlitchRecord/recording-1.mic.wav",
+			"C:/GlitchRecord/recording-1.mic.m4a",
+			"C:/GlitchRecord/recording-1.mic.webm",
 		]);
 	});
 
