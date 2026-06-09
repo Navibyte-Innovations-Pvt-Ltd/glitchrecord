@@ -1,5 +1,9 @@
 /**
+<<<<<<< HEAD
  * GlitchRecord Extension System — Core Types
+=======
+ * GlitchGrab Extension System — Core Types
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
  *
  * Extensions are renderer-loaded modules that can hook into the render pipeline,
  * bundle assets, register UI panels, and respond to playback/timeline events.
@@ -24,7 +28,11 @@ export interface ExtensionManifest {
 	homepage?: string;
 	/** License identifier (SPDX) */
 	license?: string;
+<<<<<<< HEAD
 	/** Minimum GlitchRecord version required */
+=======
+	/** Minimum GlitchGrab version required */
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	engine?: string;
 	/** Icon path relative to extension root */
 	icon?: string;
@@ -48,7 +56,11 @@ export type ExtensionPermission =
 /**
  * Optional manifest metadata for packaged assets.
  *
+<<<<<<< HEAD
  * GlitchRecord does not auto-register these entries at runtime today.
+=======
+ * GlitchGrab does not auto-register these entries at runtime today.
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
  * Extensions still need to wire behavior from activate() via host APIs like
  * registerFrame(), registerSettingsPanel(), resolveAsset(), and playSound().
  */
@@ -415,7 +427,11 @@ export interface ExtensionSettingsPanel {
 // Extension API — The API object passed to extension activate()
 // ---------------------------------------------------------------------------
 
+<<<<<<< HEAD
 export interface GlitchRecordExtensionAPI {
+=======
+export interface GlitchGrabExtensionAPI {
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	/** Register a render hook at a specific pipeline phase */
 	registerRenderHook(phase: RenderHookPhase, hook: RenderHookFn): () => void;
 
@@ -591,9 +607,15 @@ export interface GlitchRecordExtensionAPI {
 // Extension Module — what the extension's main JS file must export
 // ---------------------------------------------------------------------------
 
+<<<<<<< HEAD
 export interface GlitchRecordExtensionModule {
 	/** Called when the extension is activated */
 	activate(api: GlitchRecordExtensionAPI): void | Promise<void>;
+=======
+export interface GlitchGrabExtensionModule {
+	/** Called when the extension is activated */
+	activate(api: GlitchGrabExtensionAPI): void | Promise<void>;
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	/** Called when the extension is deactivated */
 	deactivate?(): void | Promise<void>;
 }
