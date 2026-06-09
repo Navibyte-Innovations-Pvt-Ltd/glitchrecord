@@ -22,10 +22,13 @@ import {
 // These tests encode the CORRECT (contiguous, content-preserving) behavior, so
 // they fail against the current model and pass once it's fixed.
 describe("slow-mo clip playback (repro)", () => {
-	// 0.75x over timeline 0..15000, then normal clip to the end of a 108s source.
+	// A 0.75x clip slows its source, so it grows on the timeline (planClipSpeedChange
+	// does this): 15000ms of source stretches to 20000ms of timeline. The next clip
+	// shifts right and stays contiguous. Together they still cover the full 108s
+	// source — nothing is dropped.
 	const clips: ClipRegion[] = [
-		{ id: "c1", startMs: 0, endMs: 15000, speed: 0.75 },
-		{ id: "c2", startMs: 15000, endMs: 108000, speed: 1 },
+		{ id: "c1", startMs: 0, endMs: 20000, speed: 0.75 }, // source [0..15000]
+		{ id: "c2", startMs: 20000, endMs: 113000, speed: 1 }, // source [15000..108000]
 	];
 
 	it("does NOT create a skip/trim gap for a contiguous slow-mo clip", () => {
@@ -46,11 +49,11 @@ describe("slow-mo clip playback (repro)", () => {
 	});
 
 	it("keeps source contiguous: the normal clip resumes where the slow clip's source ended", () => {
-		// Slow clip 0..15000 timeline at 0.75x consumes 11250ms of source.
-		// The next clip must continue from source 11250, not jump to 15000.
-		const sourceAtBoundary = mapTimelineTimeToSourceTime(15000, clips);
-		expect(sourceAtBoundary).toBe(11250);
-		const sourceJustAfter = mapTimelineTimeToSourceTime(16000, clips);
-		expect(sourceJustAfter).toBe(12250);
+		// Slow clip 0..20000 timeline at 0.75x consumes 15000ms of source.
+		// The next clip must continue from source 15000, not jump to 20000.
+		const sourceAtBoundary = mapTimelineTimeToSourceTime(20000, clips);
+		expect(sourceAtBoundary).toBe(15000);
+		const sourceJustAfter = mapTimelineTimeToSourceTime(21000, clips);
+		expect(sourceJustAfter).toBe(16000);
 	});
 });
