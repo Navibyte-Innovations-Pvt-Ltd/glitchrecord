@@ -1,11 +1,39 @@
-import { useCallback, useEffect, useState } from "react";
-import { VideoCamera, ArrowClockwise, Trash } from "@phosphor-icons/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	VideoCamera,
+	ArrowClockwise,
+	Trash,
+	SignOut,
+	SparkleIcon,
+	GitBranchIcon,
+	CaretDownIcon,
+} from "@phosphor-icons/react";
 import { toFileUrl } from "../video-editor/projectPersistence";
 import type { ProjectLibraryEntry } from "../video-editor/ProjectBrowserDialog";
+import { bareName } from "./repoName";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
 type RecordingEntry = { path: string; name: string; sizeBytes: number; mtimeMs: number };
+
+interface AuthStatus {
+	loggedIn: boolean;
+	name: string | null;
+	userId: string | null;
+	selectedRepoId: string | null;
+	selectedRepoName: string | null;
+}
+
+interface GlitchgrabAPI {
+	login: () => Promise<{ ok: boolean }>;
+	status: () => Promise<AuthStatus>;
+	logout: () => Promise<{ ok: boolean }>;
+	onAuthChanged: (cb: (status: AuthStatus) => void) => () => void;
+}
+
+function gg(): GlitchgrabAPI | null {
+	return (window as unknown as { glitchgrab?: GlitchgrabAPI }).glitchgrab ?? null;
+}
 
 function fmtSize(bytes: number): string {
 	const mb = bytes / (1024 * 1024);
@@ -15,6 +43,93 @@ function fmtSize(bytes: number): string {
 function api() {
 	return (window as unknown as { electronAPI?: Record<string, (...a: unknown[]) => unknown> })
 		.electronAPI;
+}
+
+/** Login button when signed out; avatar + name pill with a logout menu when signed in. */
+function AuthControl() {
+	const [status, setStatus] = useState<AuthStatus | null>(null);
+	const [menuOpen, setMenuOpen] = useState(false);
+	const wrapRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		void gg()?.status().then(setStatus);
+		const unsub = gg()?.onAuthChanged(setStatus);
+		return () => unsub?.();
+	}, []);
+
+	// Close the menu on any outside click.
+	useEffect(() => {
+		if (!menuOpen) return;
+		const onDown = (e: MouseEvent) => {
+			if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setMenuOpen(false);
+		};
+		document.addEventListener("mousedown", onDown);
+		return () => document.removeEventListener("mousedown", onDown);
+	}, [menuOpen]);
+
+	if (!gg()) return null; // not inside GlitchRecord
+
+	const loggedIn = status?.loggedIn ?? false;
+
+	if (!loggedIn) {
+		return (
+			<button
+				type="button"
+				onClick={() => void gg()?.login()}
+				style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+				className="flex items-center gap-2 rounded-xl border border-foreground/15 bg-foreground/5 px-3 py-2 text-[12px] font-semibold text-foreground/80 transition hover:bg-foreground/10"
+			>
+				<SparkleIcon className="h-4 w-4" /> Connect Glitchgrab
+			</button>
+		);
+	}
+
+	const name = status?.name ?? "Account";
+	const initial = name.trim().charAt(0).toUpperCase() || "?";
+	const repo = status?.selectedRepoName ? bareName(status.selectedRepoName) : null;
+
+	return (
+		<div
+			ref={wrapRef}
+			className="relative"
+			style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+		>
+			<button
+				type="button"
+				onClick={() => setMenuOpen((v) => !v)}
+				className="flex items-center gap-2 rounded-xl border border-foreground/10 bg-foreground/5 py-1.5 pl-1.5 pr-2.5 transition hover:bg-foreground/10"
+				title={name}
+			>
+				<span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">
+					{initial}
+				</span>
+				<span className="max-w-[120px] truncate text-[12px] font-semibold text-foreground/85">
+					{name}
+				</span>
+				<CaretDownIcon className="h-3 w-3 text-foreground/40" />
+			</button>
+
+			{menuOpen && (
+				<div className="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[200px] rounded-xl border border-foreground/10 bg-editor-dialog-alt p-1 shadow-[0_14px_34px_rgba(0,0,0,0.45)]">
+					<div className="px-2.5 py-1.5 text-[12px] font-semibold text-foreground/85">{name}</div>
+					<div className="flex items-center gap-1.5 px-2.5 pb-2 text-[11px] text-foreground/45">
+						<GitBranchIcon className="h-3.5 w-3.5 shrink-0" />
+						<span className="truncate">{repo ?? "No repo selected"}</span>
+					</div>
+					<button
+						type="button"
+						onClick={() => {
+							setMenuOpen(false);
+							void gg()?.logout();
+						}}
+						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] text-foreground/80 transition hover:bg-foreground/5"
+					>
+						<SignOut className="h-4 w-4" /> Logout
+					</button>
+				</div>
+			)}
+		</div>
+	);
 }
 
 export function HomeWindow() {
@@ -138,6 +253,7 @@ export function HomeWindow() {
 				>
 					<ArrowClockwise className="h-4 w-4" />
 				</button>
+				<AuthControl />
 			</div>
 
 			{/* Body */}
