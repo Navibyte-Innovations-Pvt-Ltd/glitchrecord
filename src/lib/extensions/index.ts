@@ -21,8 +21,13 @@ export type {
 	MarketplaceExtension,
 	MarketplaceReviewStatus,
 	MarketplaceSearchResult,
+<<<<<<< HEAD
 	GlitchRecordExtensionAPI,
 	GlitchRecordExtensionModule,
+=======
+	GlitchGrabExtensionAPI,
+	GlitchGrabExtensionModule,
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	RenderHookContext,
 	RenderHookFn,
 	RenderHookPhase,
