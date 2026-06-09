@@ -16,7 +16,11 @@ function getSessionCachePath() {
 // Both the Chrome extension (via WS "log" messages) and GlitchRecord itself
 // append here, so the whole capture pipeline is inspectable in one file:
 //   <userData>/glitchgrab-debug.log
+<<<<<<< HEAD
 // Dev userData is ~/Library/Application Support/GlitchRecord-dev on macOS.
+=======
+// Dev userData is ~/Library/Application Support/GlitchGrab-dev on macOS.
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 function getDebugLogPath() {
   return path.join(app.getPath("userData"), "glitchgrab-debug.log");
 }
