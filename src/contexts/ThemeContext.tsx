@@ -13,7 +13,11 @@ interface ThemeContextValue {
 	toggleTheme: () => void;
 }
 
+<<<<<<< HEAD
 const THEME_STORAGE_KEY = "glitchrecord.theme";
+=======
+const THEME_STORAGE_KEY = "glitchgrab.theme";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
