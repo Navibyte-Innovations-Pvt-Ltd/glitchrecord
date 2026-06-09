@@ -15,7 +15,11 @@ import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcut
 import { formatShortcut } from "@/utils/platformUtils";
 import { toast } from "sonner";
 
+<<<<<<< HEAD
 export const RECORDLY_ISSUES_URL = "https://github.com/webadderallorg/GlitchRecord/issues";
+=======
+export const RECORDLY_ISSUES_URL = "https://github.com/webadderallorg/GlitchGrab/issues";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 const RECORDLY_DISCORD_URL = "https://discord.gg/sdv2FBVNgE";
 const RECORDLY_X_URL = "https://x.com/webadderall";
 const CONTACT_EMAIL = "youngchen3442@gmail.com";
