@@ -28,7 +28,17 @@ interface CaptureEvent {
 	note?: string;
 }
 
+interface GlitchgrabAuthStatus {
+	loggedIn: boolean;
+	name?: string;
+	selectedRepoId?: string;
+	selectedRepoName?: string;
+}
+
 interface GlitchgrabAPI {
+	login?: () => Promise<{ ok: boolean }>;
+	status?: () => Promise<GlitchgrabAuthStatus>;
+	onAuthChanged?: (cb: (status: GlitchgrabAuthStatus) => void) => () => void;
 	getEvents?: () => Promise<{ events: CaptureEvent[]; sessionId: string | null }>;
 	onLiveEvent: (cb: (event: CaptureEvent) => void) => () => void;
 	onEventsReady?: (cb: (data: { sessionId: string; count: number }) => void) => () => void;
@@ -198,6 +208,9 @@ export function GlitchgrabLogPanel({
 	// On-demand "generate script from events" (DeepSeek) state.
 	const [scriptLoading, setScriptLoading] = useState(false);
 	const [scriptError, setScriptError] = useState<string | null>(null);
+	// GlitchGrab login state — script writer needs an account; surface a Connect
+	// button here so login is reachable from the editor (not just the recorder HUD).
+	const [loggedIn, setLoggedIn] = useState<boolean>(false);
 	// The script writer lives in a roomy right-side drawer (script is a big chunk).
 	const [scriptOpen, setScriptOpen] = useState(false);
 	// Per-note clarifying questions (asked before generating, when notes exist).
@@ -233,6 +246,18 @@ export function GlitchgrabLogPanel({
 
 	useEffect(() => {
 		electronAPI()?.narrationKeyStatus?.().then((s) => setHasSavedKey(!!s?.hasSarvamKey)).catch(() => {});
+	}, []);
+
+	// Track GlitchGrab login so we can show a Connect button + clear the
+	// "log in first" error the moment auth lands (no relaunch needed).
+	useEffect(() => {
+		const api = gg();
+		api?.status?.().then((s) => setLoggedIn(!!s?.loggedIn)).catch(() => {});
+		const unsub = api?.onAuthChanged?.((s) => {
+			setLoggedIn(!!s?.loggedIn);
+			if (s?.loggedIn) setScriptError(null);
+		});
+		return () => unsub?.();
 	}, []);
 
 	// Keep voice valid for the selected engine; persist all choices.
@@ -996,6 +1021,11 @@ export function GlitchgrabLogPanel({
 			<button type="button" onClick={generateScriptFromEvents} disabled={scriptLoading} className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40" title="Use AI to write a narration script from the captured events">
 			{scriptLoading ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Writing script…</>) : (<><Sparkle className="h-3.5 w-3.5" /> Generate script from events</>)}
 			</button>
+			{!loggedIn && (
+				<button type="button" onClick={() => gg()?.login?.()} className="flex items-center justify-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20" title="Log in to GlitchGrab to generate scripts and create issues">
+				<Sparkle className="h-3.5 w-3.5" /> Connect GlitchGrab
+				</button>
+			)}
 			{scriptError && <p className="text-[11px] text-red-400/80">{scriptError}</p>}
 			{noteQuestions && noteQuestions.length > 0 && (
 				<div className="flex flex-col gap-3 rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-3">
