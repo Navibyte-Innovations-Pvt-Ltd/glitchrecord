@@ -19,14 +19,23 @@ import type {
 	ExtensionInfo,
 	ExtensionSettingsPanel,
 	FrameInstance,
+<<<<<<< HEAD
 	GlitchRecordExtensionAPI,
 	GlitchRecordExtensionModule,
+=======
+	GlitchGrabExtensionAPI,
+	GlitchGrabExtensionModule,
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	RenderHookContext,
 	RenderHookFn,
 	RenderHookPhase,
 } from "./types";
 
+<<<<<<< HEAD
 const EXTENSION_SETTINGS_STORAGE_KEY = "glitchrecord.extension-settings.v1";
+=======
+const EXTENSION_SETTINGS_STORAGE_KEY = "glitchgrab.extension-settings.v1";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 // ---------------------------------------------------------------------------
 // Security: Hide electronAPI from extension code
@@ -118,7 +127,11 @@ interface RegisteredCursorStyle {
 
 interface ActiveExtension {
 	info: ExtensionInfo;
+<<<<<<< HEAD
 	module: GlitchRecordExtensionModule;
+=======
+	module: GlitchGrabExtensionModule;
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	disposables: (() => void)[];
 }
 
@@ -203,14 +216,22 @@ export class ExtensionHost {
 		}
 
 		const disposables: (() => void)[] = [];
+<<<<<<< HEAD
 		let mod: GlitchRecordExtensionModule | null = null;
+=======
+		let mod: GlitchGrabExtensionModule | null = null;
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		try {
 			this.ensureExtensionSettingsLoaded(info.manifest.id);
 
 			// Block electronAPI access while extension code executes
 			_extensionActivationDepth++;
 			try {
+<<<<<<< HEAD
 				const loaded: GlitchRecordExtensionModule = await import(/* @vite-ignore */ moduleUrl);
+=======
+				const loaded: GlitchGrabExtensionModule = await import(/* @vite-ignore */ moduleUrl);
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 				mod = loaded;
 				const api = this.createAPI(
 					info.manifest.id,
@@ -645,7 +666,11 @@ export class ExtensionHost {
 		extensionPath: string,
 		permissions: string[],
 		disposables: (() => void)[],
+<<<<<<< HEAD
 	): GlitchRecordExtensionAPI {
+=======
+	): GlitchGrabExtensionAPI {
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		const host = this;
 		const perms = new Set(permissions);
 
