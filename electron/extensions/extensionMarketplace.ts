@@ -2,7 +2,7 @@
  * Extension Marketplace — Main Process
  *
  * Handles fetching, downloading, and installing extensions from the
- * Recordly marketplace API. Also provides admin review endpoints.
+ * GlitchRecord marketplace API. Also provides admin review endpoints.
  */
 
 import { createWriteStream, existsSync } from "node:fs";
@@ -77,8 +77,8 @@ async function marketplaceFetch<T>(
 	try {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
-			"X-Recordly-Version": app.getVersion(),
-			"X-Recordly-Platform": process.platform,
+			"X-GlitchRecord-Version": app.getVersion(),
+			"X-GlitchRecord-Platform": process.platform,
 		};
 
 		// Attach admin key for privileged endpoints
@@ -197,7 +197,7 @@ export async function downloadAndInstallExtension(
 			response = await fetch(downloadUrl, {
 				signal: controller.signal,
 				headers: {
-					"X-Recordly-Version": app.getVersion(),
+					"X-GlitchRecord-Version": app.getVersion(),
 				},
 			});
 		} finally {
@@ -285,7 +285,7 @@ export async function downloadAndInstallExtension(
 		// Track download count (fire-and-forget — CDN may cache the GET, so POST separately)
 		fetch(`${getMarketplaceUrl()}/extensions/${encodeURIComponent(extensionId)}/download`, {
 			method: "POST",
-			headers: { "X-Recordly-Version": app.getVersion() },
+			headers: { "X-GlitchRecord-Version": app.getVersion() },
 		}).catch(() => undefined);
 
 		return { success: true };
