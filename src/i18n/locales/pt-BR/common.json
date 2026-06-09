@@ -1,7 +1,12 @@
 {
 	"app": {
+<<<<<<< HEAD
 		"name": "GlitchRecord",
 		"editorTitle": "Editor do GlitchRecord",
+=======
+		"name": "GlitchGrab",
+		"editorTitle": "Editor do GlitchGrab",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"subtitle": "Gravação e edição de tela",
 		"language": "Idioma",
 		"manageRecordings": "Abrir pasta de gravações"
