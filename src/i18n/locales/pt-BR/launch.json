@@ -50,8 +50,13 @@
 			"checkingTitle": "Verificando atualizações...",
 			"downloadingTitle": "Baixando atualização...",
 			"errorTitle": "Falha ao verificar atualizações. Clique para tentar novamente.",
+<<<<<<< HEAD
 			"upToDateTitle": "GlitchRecord {{version}} está atualizado.",
 			"availableTitle": "GlitchRecord {{version}} está disponível.",
+=======
+			"upToDateTitle": "GlitchGrab {{version}} está atualizado.",
+			"availableTitle": "GlitchGrab {{version}} está disponível.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			"availableGenericTitle": "Há uma atualização disponível."
 		}
 	},
@@ -67,10 +72,17 @@
 		"share": "Compartilhar"
 	},
 	"permissions": {
+<<<<<<< HEAD
 		"screenRecordingNeeded": "O GlitchRecord precisa da permissão de Gravação de Tela antes de iniciar. Ajustes do Sistema foram abertos. Depois de ativar, feche e reabra o GlitchRecord.",
 		"screenRecordingMissing": "A permissão de Gravação de Tela ainda está ausente. Ajustes do Sistema foram abertos novamente. Ative e depois feche e reabra o GlitchRecord antes de gravar.",
 		"accessibilityNeeded": "O GlitchRecord também precisa da permissão de Acessibilidade para rastrear o cursor. Ajustes do Sistema foram abertos. Depois de ativar, feche e reabra o GlitchRecord.",
 		"accessibilityMissing": "A permissão de Acessibilidade ainda está ausente. Ajustes do Sistema foram abertos novamente. Ative e depois feche e reabra o GlitchRecord antes de gravar.",
+=======
+		"screenRecordingNeeded": "O GlitchGrab precisa da permissão de Gravação de Tela antes de iniciar. Ajustes do Sistema foram abertos. Depois de ativar, feche e reabra o GlitchGrab.",
+		"screenRecordingMissing": "A permissão de Gravação de Tela ainda está ausente. Ajustes do Sistema foram abertos novamente. Ative e depois feche e reabra o GlitchGrab antes de gravar.",
+		"accessibilityNeeded": "O GlitchGrab também precisa da permissão de Acessibilidade para rastrear o cursor. Ajustes do Sistema foram abertos. Depois de ativar, feche e reabra o GlitchGrab.",
+		"accessibilityMissing": "A permissão de Acessibilidade ainda está ausente. Ajustes do Sistema foram abertos novamente. Ative e depois feche e reabra o GlitchGrab antes de gravar.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"selectSource": "Selecione uma fonte para gravar",
 		"systemAudioUnavailable": "O áudio do sistema não está disponível para esta fonte. A gravação continuará sem áudio do sistema.",
 		"microphoneDenied": "O acesso ao microfone foi negado. A gravação continuará sem áudio do microfone.",
