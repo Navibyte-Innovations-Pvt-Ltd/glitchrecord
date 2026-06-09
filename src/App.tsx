@@ -53,8 +53,8 @@ export default function App() {
 	useEffect(() => {
 		document.title =
 			windowType === "editor"
-				? t("app.editorTitle", "Recordly Editor")
-				: t("app.name", "Recordly");
+				? t("app.editorTitle", "GlitchRecord Editor")
+				: t("app.name", "GlitchRecord");
 	}, [windowType, t]);
 
 	switch (windowType) {
@@ -91,12 +91,12 @@ export default function App() {
 					<div className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 px-6 py-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
 						<img
 							src={appIconSrc}
-							alt={t("app.name", "Recordly")}
+							alt={t("app.name", "GlitchRecord")}
 							className="h-12 w-12 rounded-xl"
 						/>
 						<div>
 							<h1 className="text-xl font-semibold tracking-tight">
-								{t("app.name", "Recordly")}
+								{t("app.name", "GlitchRecord")}
 							</h1>
 							<p className="text-sm text-foreground/65">
 								{t("app.subtitle", "Screen recording and editing")}
