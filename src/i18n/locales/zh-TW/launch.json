@@ -50,8 +50,13 @@
 		"checkingTitle": "正在檢查更新...",
 		"downloadingTitle": "正在下載更新...",
 		"errorTitle": "檢查更新失敗，點一下重試。",
+<<<<<<< HEAD
 		"upToDateTitle": "GlitchRecord {{version}} 已是最新版本。",
 		"availableTitle": "GlitchRecord {{version}} 已推出新版本。",
+=======
+		"upToDateTitle": "GlitchGrab {{version}} 已是最新版本。",
+		"availableTitle": "GlitchGrab {{version}} 已推出新版本。",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"availableGenericTitle": "有可用更新。"
 		}
 	},
@@ -67,10 +72,17 @@
 		"share": "分享"
 	},
 	"permissions": {
+<<<<<<< HEAD
 		"screenRecordingNeeded": "GlitchRecord 需要「螢幕錄製」權限才能開始。已開啟系統設定。啟用後，請結束並重新開啟 GlitchRecord。",
 		"screenRecordingMissing": "仍未取得「螢幕錄製」權限。已再次開啟系統設定。請先啟用，再結束並重新開啟 GlitchRecord 後再錄製。",
 		"accessibilityNeeded": "GlitchRecord 也需要「輔助使用」權限以追蹤游標。已開啟系統設定。啟用後，請結束並重新開啟 GlitchRecord。",
 		"accessibilityMissing": "仍未取得「輔助使用」權限。已再次開啟系統設定。請先啟用，再結束並重新開啟 GlitchRecord 後再錄製。",
+=======
+		"screenRecordingNeeded": "GlitchGrab 需要「螢幕錄製」權限才能開始。已開啟系統設定。啟用後，請結束並重新開啟 GlitchGrab。",
+		"screenRecordingMissing": "仍未取得「螢幕錄製」權限。已再次開啟系統設定。請先啟用，再結束並重新開啟 GlitchGrab 後再錄製。",
+		"accessibilityNeeded": "GlitchGrab 也需要「輔助使用」權限以追蹤游標。已開啟系統設定。啟用後，請結束並重新開啟 GlitchGrab。",
+		"accessibilityMissing": "仍未取得「輔助使用」權限。已再次開啟系統設定。請先啟用，再結束並重新開啟 GlitchGrab 後再錄製。",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"selectSource": "請選擇要錄製的來源",
 		"systemAudioUnavailable": "此來源不支援系統音訊，將在沒有系統音訊的情況下繼續錄製。",
 		"microphoneDenied": "麥克風存取遭拒，將在沒有麥克風音訊的情況下繼續錄製。",
