@@ -565,16 +565,28 @@ describe("resolveExperimentalNvidiaCudaExportScriptPath", () => {
 				return;
 			}
 
+<<<<<<< HEAD
 			const resourcesPath = "C:\\GlitchRecord\\resources";
 			const unpackedScriptPath =
 				"C:\\GlitchRecord\\resources\\app.asar.unpacked\\electron\\native\\nvidia-cuda-compositor\\run-mp4-pipeline.mjs";
 			const asarScriptPath =
 				"C:\\GlitchRecord\\resources\\app.asar\\electron\\native\\nvidia-cuda-compositor\\run-mp4-pipeline.mjs";
+=======
+			const resourcesPath = "C:\\GlitchGrab\\resources";
+			const unpackedScriptPath =
+				"C:\\GlitchGrab\\resources\\app.asar.unpacked\\electron\\native\\nvidia-cuda-compositor\\run-mp4-pipeline.mjs";
+			const asarScriptPath =
+				"C:\\GlitchGrab\\resources\\app.asar\\electron\\native\\nvidia-cuda-compositor\\run-mp4-pipeline.mjs";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			Object.defineProperty(process, "resourcesPath", {
 				configurable: true,
 				value: resourcesPath,
 			});
+<<<<<<< HEAD
 			electronAppMock.getAppPath.mockReturnValue("C:\\GlitchRecord\\resources\\app.asar");
+=======
+			electronAppMock.getAppPath.mockReturnValue("C:\\GlitchGrab\\resources\\app.asar");
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			fsMocks.access.mockImplementation(async (candidate: string) => {
 				if (candidate === unpackedScriptPath || candidate === asarScriptPath) {
 					return;
