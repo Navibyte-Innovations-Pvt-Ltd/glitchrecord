@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 
 export const NVIDIA_CUDA_EXPORT_OPT_IN_SETTING_KEY =
+<<<<<<< HEAD
 	"glitchrecord.export.experimentalNvidiaCuda";
+=======
+	"glitchgrab.export.experimentalNvidiaCuda";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 
 type NativeExportCapabilitiesResult = {
 	capabilities?: {
