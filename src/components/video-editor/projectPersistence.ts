@@ -126,7 +126,7 @@ export interface ProjectEditorState {
 	cursorSway: number;
 	borderRadius: number;
 	padding: Padding;
-	/** Selected frame ID (e.g. "recordly.frames/browser-dark"), or null for none */
+	/** Selected frame ID (e.g. "glitchrecord.frames/browser-dark"), or null for none */
 	frame: string | null;
 	cropRegion: CropRegion;
 	zoomRegions: ZoomRegion[];
@@ -213,7 +213,11 @@ function normalizeZoomTransitionEasing(
 	value: unknown,
 	fallback: ZoomTransitionEasing,
 ): ZoomTransitionEasing {
-	return value === "recordly" ||
+	// Legacy projects stored the default easing as "recordly"; map it forward.
+	if (value === "recordly") {
+		return "glitchrecord";
+	}
+	return value === "glitchrecord" ||
 		value === "glide" ||
 		value === "smooth" ||
 		value === "snappy" ||
