@@ -50,8 +50,13 @@
 			"checkingTitle": "正在检查更新...",
 			"downloadingTitle": "正在下载更新...",
 			"errorTitle": "检查更新失败。点击重试。",
+<<<<<<< HEAD
 			"upToDateTitle": "GlitchRecord {{version}} 已是最新版本。",
 			"availableTitle": "GlitchRecord {{version}} 可更新。",
+=======
+			"upToDateTitle": "GlitchGrab {{version}} 已是最新版本。",
+			"availableTitle": "GlitchGrab {{version}} 可更新。",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			"availableGenericTitle": "有可用更新。"
 		}
 	},
@@ -67,10 +72,17 @@
 		"share": "共享"
 	},
 	"permissions": {
+<<<<<<< HEAD
 		"screenRecordingNeeded": "GlitchRecord 需要屏幕录制权限才能开始。系统设置已打开。启用后请退出并重新打开 GlitchRecord。",
 		"screenRecordingMissing": "屏幕录制权限仍然缺失。系统设置已再次打开。请启用权限，然后退出并重新打开 GlitchRecord。",
 		"accessibilityNeeded": "GlitchRecord 还需要辅助功能权限以跟踪光标。系统设置已打开。启用后请退出并重新打开 GlitchRecord。",
 		"accessibilityMissing": "辅助功能权限仍然缺失。系统设置已再次打开。请启用权限，然后退出并重新打开 GlitchRecord。",
+=======
+		"screenRecordingNeeded": "GlitchGrab 需要屏幕录制权限才能开始。系统设置已打开。启用后请退出并重新打开 GlitchGrab。",
+		"screenRecordingMissing": "屏幕录制权限仍然缺失。系统设置已再次打开。请启用权限，然后退出并重新打开 GlitchGrab。",
+		"accessibilityNeeded": "GlitchGrab 还需要辅助功能权限以跟踪光标。系统设置已打开。启用后请退出并重新打开 GlitchGrab。",
+		"accessibilityMissing": "辅助功能权限仍然缺失。系统设置已再次打开。请启用权限，然后退出并重新打开 GlitchGrab。",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"selectSource": "请选择要录制的源",
 		"systemAudioUnavailable": "此源不支持系统音频。将继续录制但不包含系统音频。",
 		"microphoneDenied": "麦克风访问被拒绝。将继续录制但不包含麦克风音频。",
