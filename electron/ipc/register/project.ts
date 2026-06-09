@@ -316,10 +316,17 @@ export function registerProjectHandlers() {
       const defaultName = `${safeName}.${PROJECT_FILE_EXTENSION}`
 
       const result = await dialog.showSaveDialog({
+<<<<<<< HEAD
         title: 'Save GlitchRecord Project',
         defaultPath: path.join(projectsDir, defaultName),
         filters: [
           { name: 'GlitchRecord Project', extensions: [PROJECT_FILE_EXTENSION] },
+=======
+        title: 'Save GlitchGrab Project',
+        defaultPath: path.join(projectsDir, defaultName),
+        filters: [
+          { name: 'GlitchGrab Project', extensions: [PROJECT_FILE_EXTENSION] },
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
           { name: 'JSON', extensions: ['json'] }
         ],
         properties: ['createDirectory', 'showOverwriteConfirmation']
@@ -435,10 +442,17 @@ export function registerProjectHandlers() {
     try {
       const projectsDir = await getProjectsDir()
       const result = await dialog.showOpenDialog({
+<<<<<<< HEAD
         title: 'Open GlitchRecord Project',
         defaultPath: projectsDir,
         filters: [
           { name: 'GlitchRecord Project', extensions: [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS] },
+=======
+        title: 'Open GlitchGrab Project',
+        defaultPath: projectsDir,
+        filters: [
+          { name: 'GlitchGrab Project', extensions: [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS] },
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
           { name: 'JSON', extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] }
         ],
