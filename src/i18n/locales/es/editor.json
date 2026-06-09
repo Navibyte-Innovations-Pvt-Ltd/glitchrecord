@@ -115,7 +115,11 @@
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Nada está roto, pero no podremos renderizar una superposición de cursor animada.",
+<<<<<<< HEAD
 		"description": "Tu dispositivo no es compatible con la captura nativa. Esto puede deberse a varias razones que todavía no hemos identificado. GlitchRecord seguirá funcionando, pero hará imposible el suavizado del cursor.",
+=======
+		"description": "Tu dispositivo no es compatible con la captura nativa. Esto puede deberse a varias razones que todavía no hemos identificado. GlitchGrab seguirá funcionando, pero hará imposible el suavizado del cursor.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"confirm": "Entendido"
 	},
 	"exportStatus": {
