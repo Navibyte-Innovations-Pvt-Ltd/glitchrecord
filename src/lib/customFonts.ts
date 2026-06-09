@@ -7,7 +7,11 @@ export interface CustomFont {
 	importUrl: string; // Google Fonts @import URL
 }
 
+<<<<<<< HEAD
 const STORAGE_KEY = "glitchrecord_custom_fonts";
+=======
+const STORAGE_KEY = "glitchgrab_custom_fonts";
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 const LEGACY_STORAGE_KEY = "openscreen_custom_fonts";
 const loadedFonts = new Set<string>();
 
