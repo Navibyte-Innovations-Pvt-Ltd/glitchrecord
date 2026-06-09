@@ -14,7 +14,7 @@ import {
 } from "electron";
 import { showCursor } from "../../cursorHider";
 import { getMonitorHandles } from "../monitorResolver";
-import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
+import { ALLOW_GLITCHRECORD_WINDOW_CAPTURE } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
@@ -688,15 +688,15 @@ export function registerRecordingHandlers(
 				const appName = normalizeDesktopSourceName(String(source?.appName ?? ""));
 				const ownAppName = normalizeDesktopSourceName(app.getName());
 				if (
-					!ALLOW_RECORDLY_WINDOW_CAPTURE &&
+					!ALLOW_GLITCHRECORD_WINDOW_CAPTURE &&
 					source?.id?.startsWith("window:") &&
 					appName &&
-					(appName === ownAppName || appName === "recordly")
+					(appName === ownAppName || appName === "glitchrecord")
 				) {
 					return {
 						success: false,
 						message:
-							"Cannot record Recordly windows. Please select another app window.",
+							"Cannot record GlitchRecord windows. Please select another app window.",
 					};
 				}
 
@@ -805,8 +805,8 @@ export function registerRecordingHandlers(
 						type: "warning",
 						title: "Screen Recording Permission Required",
 						message:
-							"Recordly needs screen recording permission to capture your screen.",
-						detail: "Please open System Settings > Privacy & Security > Screen Recording, make sure Recordly is toggled ON, then try recording again.",
+							"GlitchRecord needs screen recording permission to capture your screen.",
+						detail: "Please open System Settings > Privacy & Security > Screen Recording, make sure GlitchRecord is toggled ON, then try recording again.",
 						buttons: ["Open System Settings", "Cancel"],
 						defaultId: 0,
 						cancelId: 1,
@@ -838,8 +838,8 @@ export function registerRecordingHandlers(
 					const { response } = await dialog.showMessageBox({
 						type: "warning",
 						title: "Microphone Permission Required",
-						message: "Recordly needs microphone permission to record audio.",
-						detail: "Please open System Settings > Privacy & Security > Microphone, make sure Recordly is toggled ON, then try recording again.",
+						message: "GlitchRecord needs microphone permission to record audio.",
+						detail: "Please open System Settings > Privacy & Security > Microphone, make sure GlitchRecord is toggled ON, then try recording again.",
 						buttons: ["Open System Settings", "Cancel"],
 						defaultId: 0,
 						cancelId: 1,
