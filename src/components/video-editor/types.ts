@@ -226,6 +226,44 @@ export function getClipSourceEndMs(clip: ClipRegion): number {
 	return Math.round(clip.startMs + displayDurationMs * speed);
 }
 
+export interface ClipSourceSpan {
+	clip: ClipRegion;
+	/** Where this clip's footage begins in the ORIGINAL recording (ms). */
+	sourceStartMs: number;
+	/** Where this clip's footage ends in the ORIGINAL recording (ms). */
+	sourceEndMs: number;
+}
+
+/**
+ * Walk clips in timeline order, accumulating their position in the SOURCE
+ * recording. Each clip consumes `displayDuration * speed` of source. A timeline
+ * GAP between clips (a cut) is treated as removed source at 1× — so the next
+ * clip's source picks up past the removed footage. This single rule reconciles
+ * cuts (gaps → source advances) with speed changes (slow-mo grows the clip on
+ * the timeline but keeps source contiguous), so a slow-mo clip never leaves a
+ * phantom gap that the player would try to skip.
+ */
+export function getClipSourceSpans(clips: ClipRegion[]): ClipSourceSpan[] {
+	const sorted = sortClipRegions(clips);
+	let timelineCursor = 0;
+	let sourceCursor = 0;
+	return sorted.map((clip) => {
+		// A timeline gap before this clip is a cut → that source is removed.
+		if (clip.startMs > timelineCursor) {
+			sourceCursor += clip.startMs - timelineCursor;
+		}
+		const sourceStartMs = sourceCursor;
+		const sourceDurationMs = Math.max(0, clip.endMs - clip.startMs) * getSafeClipSpeed(clip);
+		sourceCursor = sourceStartMs + sourceDurationMs;
+		timelineCursor = clip.endMs;
+		return {
+			clip,
+			sourceStartMs: Math.round(sourceStartMs),
+			sourceEndMs: Math.round(sourceCursor),
+		};
+	});
+}
+
 export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: number): number {
 	const baseDurationMs = Math.max(0, Math.round(sourceDurationMs));
 	if (clips.length === 0) {
@@ -248,17 +286,17 @@ function getSafeClipSpeed(clip: ClipRegion) {
 
 function clampToNearestClipBoundary(
 	timeMs: number,
-	clips: ClipRegion[],
+	spans: ClipSourceSpan[],
 	kind: "timeline" | "source",
 ) {
 	let nearestTimeMs = Math.round(timeMs);
 	let nearestDistance = Number.POSITIVE_INFINITY;
 
-	for (const clip of clips) {
+	for (const { clip, sourceStartMs, sourceEndMs } of spans) {
 		const boundaries =
 			kind === "timeline"
 				? [clip.startMs, clip.endMs]
-				: [clip.startMs, getClipSourceEndMs(clip)];
+				: [sourceStartMs, sourceEndMs];
 
 		for (const boundary of boundaries) {
 			const distance = Math.abs(timeMs - boundary);
@@ -274,41 +312,40 @@ function clampToNearestClipBoundary(
 
 export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[]): number {
 	const roundedTimeMs = Math.round(timeMs);
-	const sortedClips = sortClipRegions(clips);
+	const spans = getClipSourceSpans(clips);
 
-	for (const clip of sortedClips) {
+	for (const { clip, sourceStartMs } of spans) {
 		if (roundedTimeMs < clip.startMs || roundedTimeMs > clip.endMs) {
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip));
+		return Math.round(sourceStartMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip));
 	}
 
-	if (sortedClips.length === 0) {
+	if (spans.length === 0) {
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
+	return clampToNearestClipBoundary(roundedTimeMs, spans, "timeline");
 }
 
 export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[]): number {
 	const roundedTimeMs = Math.round(timeMs);
-	const sortedClips = sortClipRegions(clips);
+	const spans = getClipSourceSpans(clips);
 
-	for (const clip of sortedClips) {
-		const sourceEndMs = getClipSourceEndMs(clip);
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > sourceEndMs) {
+	for (const { clip, sourceStartMs, sourceEndMs } of spans) {
+		if (roundedTimeMs < sourceStartMs || roundedTimeMs > sourceEndMs) {
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) / getSafeClipSpeed(clip));
+		return Math.round(clip.startMs + (roundedTimeMs - sourceStartMs) / getSafeClipSpeed(clip));
 	}
 
-	if (sortedClips.length === 0) {
+	if (spans.length === 0) {
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "source");
+	return clampToNearestClipBoundary(roundedTimeMs, spans, "source");
 }
 
 export function findClipAtTimelineTime(timeMs: number, clips: ClipRegion[]): ClipRegion | null {
@@ -349,18 +386,24 @@ export function extendAutoFullTrackClip(
 	return [{ ...clip, endMs: nextTotalDurationMs }];
 }
 
-/** Convert clip regions (kept segments) to trim regions (gaps to remove). */
+/**
+ * Convert clip regions (kept segments) to trim regions (source ranges to remove).
+ * Trims are emitted in SOURCE time. A timeline gap between two clips is a real cut
+ * → the source it skipped is trimmed. Clips that are contiguous on the timeline
+ * (e.g. a slow-mo clip and the next clip) leave NO source gap, so they produce no
+ * trim — which is what stops the playback freeze at a slow-mo boundary.
+ */
 export function clipsToTrims(clips: ClipRegion[], totalDurationMs: number): TrimRegion[] {
 	if (clips.length === 0) return [];
-	const sorted = [...clips].sort((a, b) => a.startMs - b.startMs);
+	const spans = getClipSourceSpans(clips);
 	const trims: TrimRegion[] = [];
 	let cursor = 0;
 	let trimId = 1;
-	for (const clip of sorted) {
-		if (clip.startMs > cursor) {
-			trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: clip.startMs });
+	for (const { sourceStartMs, sourceEndMs } of spans) {
+		if (sourceStartMs > cursor) {
+			trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: sourceStartMs });
 		}
-		cursor = getClipSourceEndMs(clip);
+		cursor = sourceEndMs;
 	}
 	if (cursor < totalDurationMs) {
 		trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: totalDurationMs });
