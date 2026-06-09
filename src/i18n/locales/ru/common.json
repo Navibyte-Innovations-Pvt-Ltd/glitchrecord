@@ -1,7 +1,12 @@
 {
 	"app": {
+<<<<<<< HEAD
 		"name": "GlitchRecord",
 		"editorTitle": "GlitchRecord Editor",
+=======
+		"name": "GlitchGrab",
+		"editorTitle": "GlitchGrab Editor",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"subtitle": "Запись экрана и редактирование видео",
 		"language": "Язык",
 		"manageRecordings": "Открыть папку с записями"
