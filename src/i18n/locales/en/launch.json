@@ -50,8 +50,13 @@
 			"checkingTitle": "Checking for updates...",
 			"downloadingTitle": "Downloading update...",
 			"errorTitle": "Update check failed. Click to retry.",
+<<<<<<< HEAD
 			"upToDateTitle": "GlitchRecord {{version}} is up to date.",
 			"availableTitle": "GlitchRecord {{version}} is available.",
+=======
+			"upToDateTitle": "GlitchGrab {{version}} is up to date.",
+			"availableTitle": "GlitchGrab {{version}} is available.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 			"availableGenericTitle": "An update is available."
 		}
 	},
@@ -67,10 +72,17 @@
 		"share": "Share"
 	},
 	"permissions": {
+<<<<<<< HEAD
 		"screenRecordingNeeded": "GlitchRecord needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen GlitchRecord.",
 		"screenRecordingMissing": "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen GlitchRecord before recording.",
 		"accessibilityNeeded": "GlitchRecord also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen GlitchRecord.",
 		"accessibilityMissing": "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen GlitchRecord before recording.",
+=======
+		"screenRecordingNeeded": "GlitchGrab needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen GlitchGrab.",
+		"screenRecordingMissing": "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen GlitchGrab before recording.",
+		"accessibilityNeeded": "GlitchGrab also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen GlitchGrab.",
+		"accessibilityMissing": "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen GlitchGrab before recording.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		"selectSource": "Please select a source to record",
 		"systemAudioUnavailable": "System audio is not available for this source. Recording will continue without system audio.",
 		"microphoneDenied": "Microphone access was denied. Recording will continue without microphone audio.",
