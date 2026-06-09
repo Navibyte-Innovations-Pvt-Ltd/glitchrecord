@@ -206,7 +206,7 @@ import {
 	type EditorEffectSection,
 	extendAutoFullTrackClip,
 	type FigureData,
-	getClipSourceEndMs,
+	getClipSourceSpans,
 	getTimelineDurationMs,
 	type Padding,
 	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
@@ -1151,13 +1151,13 @@ export default function VideoEditor() {
 					autoCaptions,
 					autoCaptionSettings,
 					speedRegions: (() => {
-						const clipDerived: SpeedRegion[] = clipRegions
-							.filter((clip) => clip.speed !== 1)
-							.map((clip) => ({
-								id: `clip-speed-${clip.id}`,
-								startMs: clip.startMs,
-								endMs: getClipSourceEndMs(clip),
-								speed: clip.speed as SpeedRegion["speed"],
+						const clipDerived: SpeedRegion[] = getClipSourceSpans(clipRegions)
+							.filter((span) => span.clip.speed !== 1)
+							.map((span) => ({
+								id: `clip-speed-${span.clip.id}`,
+								startMs: span.sourceStartMs,
+								endMs: span.sourceEndMs,
+								speed: span.clip.speed as SpeedRegion["speed"],
 							}));
 						if (clipDerived.length === 0) return speedRegions;
 						const result = [...speedRegions];
@@ -3362,13 +3362,13 @@ export default function VideoEditor() {
 	// overlay speedRegions state is no longer used so it can't apply invisibly.
 	const effectiveSpeedRegions = useMemo<SpeedRegion[]>(
 		() =>
-			clipRegions
-				.filter((clip) => clip.speed !== 1)
-				.map((clip) => ({
-					id: `clip-speed-${clip.id}`,
-					startMs: clip.startMs,
-					endMs: getClipSourceEndMs(clip),
-					speed: clip.speed as SpeedRegion["speed"],
+			getClipSourceSpans(clipRegions)
+				.filter((span) => span.clip.speed !== 1)
+				.map((span) => ({
+					id: `clip-speed-${span.clip.id}`,
+					startMs: span.sourceStartMs,
+					endMs: span.sourceEndMs,
+					speed: span.clip.speed as SpeedRegion["speed"],
 				})),
 		[clipRegions],
 	);
