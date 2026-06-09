@@ -71,7 +71,11 @@ export async function resolveWhisperExecutablePath(preferredPath?: string | null
 	}
 
 	throw new Error(
+<<<<<<< HEAD
 		"No Whisper runtime was found. GlitchRecord looked for a bundled binary first, then checked common system install locations.",
+=======
+		"No Whisper runtime was found. GlitchGrab looked for a bundled binary first, then checked common system install locations.",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 	);
 }
 
