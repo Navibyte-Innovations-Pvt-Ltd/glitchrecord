@@ -903,7 +903,11 @@ export function createEditorWindow(): BrowserWindow {
 		resizable: true,
 		alwaysOnTop: false,
 		skipTaskbar: false,
+<<<<<<< HEAD
 		title: "GlitchRecord",
+=======
+		title: "GlitchGrab",
+>>>>>>> 6fc7bbcbdb19e82c384b1fc0ff8de872093c645c
 		show: false,
 		backgroundColor: "#000000",
 		webPreferences: {
