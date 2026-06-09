@@ -42,6 +42,10 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 	} = params;
 	const presentedFrameVideo = video as PresentedFrameVideoElement;
 	let videoFrameRequestId: number | null = null;
+	// Watchdog state: timestamp of the last presented frame + how long the loop may
+	// go without one before the rAF fallback re-pumps it (see scheduleNextUpdate).
+	let lastPresentedAtMs = performance.now();
+	const STALL_THRESHOLD_MS = 200;
 	enablePitchPreservingPlayback(video);
 
 	const emitTime = (timeValue: number) => {
@@ -107,9 +111,40 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 			videoFrameRequestId = presentedFrameVideo.requestVideoFrameCallback(
 				(_now, metadata) => {
 					videoFrameRequestId = null;
+					// A frame was presented → cancel the stall watchdog below.
+					if (timeUpdateAnimationRef.current !== null) {
+						cancelAnimationFrame(timeUpdateAnimationRef.current);
+						timeUpdateAnimationRef.current = null;
+					}
+					lastPresentedAtMs = performance.now();
 					updateTime(metadata);
 				},
 			);
+			// Watchdog: requestVideoFrameCallback ONLY fires when Chromium presents a
+			// new frame. At a speed/trim-region boundary the seek can stop presenting
+			// frames, so rVFC never re-fires and this loop dies *silently* — the video
+			// freezes while playback stays "playing" (no pause) and the separate audio
+			// element free-runs. A parallel rAF re-pumps the loop if no frame has
+			// presented for STALL_THRESHOLD_MS, so it can never get stuck.
+			const watchdogTick = () => {
+				timeUpdateAnimationRef.current = null;
+				if (video.paused || video.ended) {
+					return;
+				}
+				if (performance.now() - lastPresentedAtMs >= STALL_THRESHOLD_MS) {
+					if (
+						videoFrameRequestId !== null &&
+						typeof presentedFrameVideo.cancelVideoFrameCallback === "function"
+					) {
+						presentedFrameVideo.cancelVideoFrameCallback(videoFrameRequestId);
+						videoFrameRequestId = null;
+					}
+					updateTime();
+					return;
+				}
+				timeUpdateAnimationRef.current = requestAnimationFrame(watchdogTick);
+			};
+			timeUpdateAnimationRef.current = requestAnimationFrame(watchdogTick);
 			return;
 		}
 
@@ -153,6 +188,7 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 
 		isPlayingRef.current = true;
 		onPlayStateChange(true);
+		lastPresentedAtMs = performance.now();
 		cancelScheduledUpdate();
 		scheduleNextUpdate();
 	};
