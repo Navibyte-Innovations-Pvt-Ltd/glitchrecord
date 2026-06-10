@@ -32,8 +32,9 @@ export function getRetimeGroup(clips: ClipRegion[], groupId: string): RetimeGrou
 		return null;
 	}
 	const [left, right] = members;
-	// Must be contiguous on the timeline to be a valid speed point.
-	if (left.endMs !== right.startMs) {
+	// Must be (near-)contiguous on the timeline to be a valid speed point;
+	// tolerate sub-ms rounding drift from repeated boundary drags.
+	if (Math.abs(left.endMs - right.startMs) > 1) {
 		return null;
 	}
 	return { groupId, left, right };
