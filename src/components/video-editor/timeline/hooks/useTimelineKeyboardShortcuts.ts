@@ -65,7 +65,25 @@ export function useTimelineKeyboardShortcuts({
 			}
 
 			if (!isTimelineFocusedRef.current) {
-				return;
+				// Allow Delete/Backspace to act on a selected timeline item even when
+				// focus has moved off the timeline (e.g. to the clip settings panel
+				// after selecting a clip). The text-input guards above already prevent
+				// hijacking Delete while typing. Other shortcuts still require focus.
+				const isDeleteKey =
+					e.key === "Delete" ||
+					e.key === "Backspace" ||
+					matchesShortcut(e, keyShortcuts.deleteSelected, isMac);
+				const hasSelection = Boolean(
+					selectAllBlocksActive ||
+						selectedKeyframeId ||
+						selectedZoomId ||
+						selectedClipId ||
+						selectedAnnotationId ||
+						selectedAudioId,
+				);
+				if (!(isDeleteKey && hasSelection)) {
+					return;
+				}
 			}
 
 			if (matchesShortcut(e, { key: "a", ctrl: true }, isMac)) {
