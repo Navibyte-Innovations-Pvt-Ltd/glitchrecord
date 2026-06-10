@@ -395,6 +395,7 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						onSelectId={onSelectClip}
 						variant="clip"
 						speedValue={item.speedValue}
+						retimeGroupId={item.retimeGroupId}
 					>
 						{item.label}
 					</Item>
