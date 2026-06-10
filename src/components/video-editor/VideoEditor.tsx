@@ -12,6 +12,7 @@ import {
 	Pause,
 	Camera as PhCameraRegular,
 	Play,
+	Gauge,
 	Plus,
 	PuzzlePiece,
 	Record as RecordIcon,
@@ -88,6 +89,7 @@ import {
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
 import { planClipSpeedChange } from "./clipSpeedChange";
+import { planRetimeDrag, planSpeedPointInsert, resolveInternalBoundaryDrag } from "./clipRetime";
 import { ExtensionIcon } from "./ExtensionIcon";
 import { calculateMp4ExportDimensions, calculateMp4SourceDimensions } from "./exportDimensions";
 import { resolveSavingExportProgress } from "./exportProgressState";
@@ -3829,11 +3831,60 @@ export default function VideoEditor() {
 		[selectedClipId],
 	);
 
+	// Add a DaVinci-style speed point at the playhead: split the clip into a
+	// linked retime pair (both at the current speed) whose seam can then be
+	// dragged to redistribute time while keeping the total duration constant.
+	const handleAddSpeedPoint = useCallback(
+		(markerMs: number) => {
+			setClipRegions((prev) => {
+				const target = prev.find((c) => markerMs > c.startMs && markerMs < c.endMs);
+				// Only split a plain clip — don't nest speed points inside an existing group.
+				if (!target || target.retimeGroupId) return prev;
+				const rightId = `clip-${nextClipIdRef.current++}`;
+				const groupId = `retime-${nextClipIdRef.current++}`;
+				const result = planSpeedPointInsert({
+					clip: target,
+					markerMs,
+					rightClipId: rightId,
+					groupId,
+				});
+				if (!result) return prev;
+				if (selectedClipId === target.id) {
+					setSelectedClipId(result.left.id);
+				}
+				return prev.flatMap((c) => (c.id === target.id ? [result.left, result.right] : [c]));
+			});
+		},
+		[selectedClipId],
+	);
+
 	const handleClipSpanChange = useCallback(
 		(id: string, span: Span) => {
 			const oldClip = clipRegions.find((c) => c.id === id);
 			const newStart = Math.round(span.start);
 			const newEnd = Math.round(span.end);
+
+			// Speed-point (retime) boundary drag — MUST run before the right-edge
+			// speed-change path below. Dragging the seam between a retime group's two
+			// zones redistributes time between them at constant total duration; it
+			// must NOT reflow following clips.
+			const retimeDrag = resolveInternalBoundaryDrag({
+				clips: clipRegions,
+				draggedId: id,
+				newStartMs: newStart,
+				newEndMs: newEnd,
+			});
+			if (retimeDrag) {
+				const next = planRetimeDrag({
+					clips: clipRegions,
+					groupId: retimeDrag.groupId,
+					newBoundaryMs: retimeDrag.newBoundaryMs,
+				});
+				if (next) {
+					setClipRegions(next);
+				}
+				return;
+			}
 
 			// Right-edge resize → treat as a SPEED change (stretch = slower, squeeze =
 			// faster) and reflow the following clips, instead of trimming. Keeps the
@@ -6436,6 +6487,15 @@ export default function VideoEditor() {
 								>
 									<Scissors className="w-4 h-4" />
 								</Button>
+								<Button
+									onClick={() => timelineRef.current?.addSpeedPoint()}
+									variant="ghost"
+									size="icon"
+									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+									title={t("editor.toolbar.addSpeedPoint", "Add speed point (retime) at playhead")}
+								>
+									<Gauge className="w-4 h-4" />
+								</Button>
 							</div>
 							{/* Playback controls - centered */}
 							<div className="z-10 flex items-center justify-center">
@@ -6562,6 +6622,7 @@ export default function VideoEditor() {
 						trimRegions={trimRegions}
 						clipRegions={clipRegions}
 						onClipSplit={handleClipSplit}
+						onAddSpeedPoint={handleAddSpeedPoint}
 						onShiftMarker={handleShiftMarker}
 						pendingMarkerMs={pendingMarkerMs}
 						onClipSpanChange={handleClipSpanChange}
