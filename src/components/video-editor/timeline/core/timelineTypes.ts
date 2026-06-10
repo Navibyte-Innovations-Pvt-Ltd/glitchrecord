@@ -39,6 +39,8 @@ export interface TimelineRenderItem {
 	zoomDepth?: number;
 	zoomMode?: ZoomMode;
 	speedValue?: number;
+	/** Set on both members of a DaVinci-style speed-point (retime) pair. */
+	retimeGroupId?: string;
 	showSourceAudio?: boolean;
 	muted?: boolean;
 	variant: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio";
