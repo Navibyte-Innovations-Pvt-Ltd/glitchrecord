@@ -218,6 +218,14 @@ export interface ClipRegion {
 	speed: number;
 	muted?: boolean;
 	showSourceAudio?: boolean;
+	/**
+	 * Two contiguous clips sharing a `retimeGroupId` form one DaVinci-style "speed
+	 * point": a marker inside a single clip with two speed zones. Dragging the
+	 * internal boundary redistributes time between the zones while keeping the
+	 * group's total timeline duration (and total source consumed) constant.
+	 * Optional — legacy projects/clips simply have no group.
+	 */
+	retimeGroupId?: string;
 }
 
 export function getClipSourceEndMs(clip: ClipRegion): number {
