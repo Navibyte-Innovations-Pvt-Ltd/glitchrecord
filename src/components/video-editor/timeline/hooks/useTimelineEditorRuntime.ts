@@ -41,6 +41,7 @@ interface UseTimelineEditorRuntimeParams {
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	clipRegions: ClipRegion[];
 	onClipSplit?: (splitMs: number) => void;
+	onAddSpeedPoint?: (markerMs: number) => void;
 	onClipSpanChange?: (id: string, span: Span) => void;
 	onClipDelete?: (id: string) => void;
 	selectedClipId?: string | null;
@@ -85,6 +86,7 @@ export function useTimelineEditorRuntime({
 	onTrimSpanChange,
 	clipRegions,
 	onClipSplit,
+	onAddSpeedPoint,
 	onClipSpanChange,
 	onClipDelete,
 	selectedClipId,
@@ -207,6 +209,13 @@ export function useTimelineEditorRuntime({
 		onClipSplit(currentTimeMs);
 	}, [videoDuration, totalMs, currentTimeMs, onClipSplit]);
 
+	const handleAddSpeedPoint = useCallback(() => {
+		if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onAddSpeedPoint) {
+			return;
+		}
+		onAddSpeedPoint(currentTimeMs);
+	}, [videoDuration, totalMs, currentTimeMs, onAddSpeedPoint]);
+
 	const { handleAddAudio } = useTimelineAudioActions({
 		timeline: { videoDuration, totalMs, currentTimeMs },
 		regions: { audio: audioRegions },
@@ -263,6 +272,7 @@ export function useTimelineEditorRuntime({
 			addZoom: handleAddZoom,
 			suggestZooms: handleSuggestZooms,
 			splitClip: handleSplitClip,
+			addSpeedPoint: handleAddSpeedPoint,
 			addAnnotation: handleAddAnnotation,
 			addAudio: handleAddAudio,
 			keyframes,
@@ -273,6 +283,7 @@ export function useTimelineEditorRuntime({
 			handleAddZoom,
 			handleSuggestZooms,
 			handleSplitClip,
+			handleAddSpeedPoint,
 			keyframes,
 		],
 	);
