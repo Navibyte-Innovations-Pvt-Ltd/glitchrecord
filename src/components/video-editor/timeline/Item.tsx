@@ -30,6 +30,7 @@ interface ItemProps {
 	zoomDepth?: number;
 	zoomMode?: "auto" | "manual";
 	speedValue?: number;
+	retimeGroupId?: string;
 	waveformPeaks?: AudioPeaksData | null;
 	waveformSegmentSpan?: Span;
 	waveformGain?: number;
@@ -71,6 +72,7 @@ export default function Item({
 	zoomDepth = 1,
 	zoomMode = "auto",
 	speedValue,
+	retimeGroupId,
 	waveformPeaks = null,
 	waveformSegmentSpan,
 	waveformGain = 1,
@@ -248,6 +250,13 @@ export default function Item({
 										<span className="rounded-[4px] bg-black/10 px-1 text-[9px] font-bold tabular-nums text-black/65 dark:bg-white/15 dark:text-white/80">
 											{clipSpeedLabel}
 										</span>
+									)}
+									{retimeGroupId && (
+										<Gauge
+											className="w-3 h-3 shrink-0 text-black/55 dark:text-white/70"
+											weight="bold"
+											aria-label="Speed point"
+										/>
 									)}
 								</>
 							) : isSpeed ? (
