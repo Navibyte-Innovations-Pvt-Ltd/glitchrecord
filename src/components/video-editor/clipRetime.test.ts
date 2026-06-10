@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	RETIME_MAX_SPEED,
 	RETIME_MIN_SPEED,
+	dissolveRetimeGroup,
 	getRetimeGroup,
 	planRetimeDrag,
 	planSpeedPointInsert,
@@ -130,6 +131,32 @@ describe("clipRetime", () => {
 			expect(
 				resolveInternalBoundaryDrag({ clips: groupClips, draggedId: "c2", newStartMs: 10_000, newEndMs: 25_000 }),
 			).toBeNull();
+		});
+
+		it("dissolveRetimeGroup merges a 1x-origin group back into one 1x clip", () => {
+			// groupClips were inserted on a 1x clip, then (here) left undragged at 1x.
+			const merged = dissolveRetimeGroup(groupClips, "g1");
+			expect(merged).not.toBeNull();
+			if (!merged) return;
+			// One merged clip [0..10000] at 1x, plus the trailing clip — no group left.
+			const groupMembers = merged.filter((c) => c.retimeGroupId);
+			expect(groupMembers).toHaveLength(0);
+			const m = merged.find((c) => c.startMs === 0);
+			expect(m).toMatchObject({ startMs: 0, endMs: 10_000 });
+			expect(m?.speed).toBeCloseTo(1, 5);
+			expect(merged.find((c) => c.id === "c2")).toBeTruthy();
+		});
+
+		it("dissolveRetimeGroup after a drag still merges to the original average speed", () => {
+			// Drag the seam — zones get odd speeds (e.g. 2x / 0.75x) but total source
+			// consumed is unchanged, so the merged speed returns to 1x.
+			const dragged = planRetimeDrag({ clips: groupClips, groupId: "g1", newBoundaryMs: 2_000 });
+			expect(dragged).not.toBeNull();
+			const merged = dissolveRetimeGroup(dragged ?? [], "g1");
+			const m = merged?.find((c) => c.startMs === 0);
+			expect(m?.endMs).toBe(10_000);
+			expect(m?.speed).toBeCloseTo(1, 5);
+			expect(merged?.some((c) => c.retimeGroupId)).toBe(false);
 		});
 
 		it("returns null for a non-existent or non-contiguous group", () => {
