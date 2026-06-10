@@ -121,7 +121,15 @@ export function buildResolvedAudioPlan(input: {
 		hasEmbeddedSourceAudio,
 		pathsByTrack,
 		playbackPaths,
-		muteEmbeddedPreview: hasDedicatedTracks && !includeEmbeddedInExport,
+		// Mute the preview <video>'s embedded audio whenever a sidecar already
+		// supplies the source audio (system or mixed) — otherwise the embedded
+		// track AND the sidecar both play the same voice (double audio), which
+		// becomes audible the moment a clip speed change desyncs the two paths.
+		// `includeEmbeddedInExport` is false exactly when system/mixed exists, so
+		// this mirrors export: if embedded isn't exported, don't preview it either.
+		// (mic-only sidecars keep embedded — there the embedded is the system audio
+		// and the mic is complementary, not a duplicate.)
+		muteEmbeddedPreview: !includeEmbeddedInExport,
 		includeEmbeddedInExport,
 		tracks,
 		masterGain: clampGain(input.masterGain ?? 1, 1),
