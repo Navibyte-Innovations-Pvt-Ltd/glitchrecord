@@ -72,6 +72,7 @@ export function buildTimelineItems(params: {
 			sourceSpan: { start: region.startMs, end: sourceEndMs },
 			label: speedLabel ? `Clip ${index + 1} ${speedLabel}` : `Clip ${index + 1}`,
 			speedValue: speedLabel ? speed : undefined,
+			retimeGroupId: region.retimeGroupId,
 			showSourceAudio: region.showSourceAudio,
 			muted: Boolean(region.muted),
 			variant: "clip",
