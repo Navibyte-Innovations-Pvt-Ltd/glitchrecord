@@ -532,6 +532,9 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 							typeof region.showSourceAudio === "boolean"
 								? region.showSourceAudio
 								: false,
+						...(typeof region.retimeGroupId === "string"
+							? { retimeGroupId: region.retimeGroupId }
+							: {}),
 					};
 				})
 		: [];
