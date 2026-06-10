@@ -89,7 +89,13 @@ import {
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
 import { planClipSpeedChange } from "./clipSpeedChange";
-import { planRetimeDrag, planSpeedPointInsert, resolveInternalBoundaryDrag } from "./clipRetime";
+import {
+	dissolveRetimeGroup,
+	getRetimeGroup,
+	planRetimeDrag,
+	planSpeedPointInsert,
+	resolveInternalBoundaryDrag,
+} from "./clipRetime";
 import { ExtensionIcon } from "./ExtensionIcon";
 import { calculateMp4ExportDimensions, calculateMp4SourceDimensions } from "./exportDimensions";
 import { resolveSavingExportProgress } from "./exportProgressState";
@@ -4043,6 +4049,31 @@ export default function VideoEditor() {
 	const handleClipDelete = useCallback(
 		(id: string) => {
 			const deletedClip = clipRegions.find((clip) => clip.id === id);
+			// Deleting a SPEED-POINT (retime) zone removes the whole effect: dissolve
+			// the linked pair back to one clip, then reset it to 1× like any speed clip.
+			if (deletedClip?.retimeGroupId) {
+				const group = getRetimeGroup(clipRegions, deletedClip.retimeGroupId);
+				const merged = dissolveRetimeGroup(clipRegions, deletedClip.retimeGroupId);
+				if (group && merged) {
+					// dissolveRetimeGroup keeps the left member's id for the merged clip.
+					const plan = planClipSpeedChange({
+						clipRegions: merged,
+						zoomRegions,
+						selectedClipId: group.left.id,
+						speed: 1,
+					});
+					if (plan && !("blockedReason" in plan)) {
+						setClipRegions(plan.clipRegions);
+						setZoomRegions(plan.zoomRegions);
+					} else {
+						setClipRegions(merged);
+					}
+				} else if (merged) {
+					setClipRegions(merged);
+				}
+				if (selectedClipId === id) setSelectedClipId(null);
+				return;
+			}
 			// Deleting a SPEED segment removes the speed EFFECT (revert to 1× and reflow
 			// the timeline back) instead of cutting the footage out.
 			if (deletedClip && deletedClip.speed !== 1) {
