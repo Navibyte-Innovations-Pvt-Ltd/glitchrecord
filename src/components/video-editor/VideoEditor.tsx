@@ -4068,11 +4068,11 @@ export default function VideoEditor() {
 					} else {
 						setClipRegions(merged);
 					}
-				} else if (merged) {
-					setClipRegions(merged);
+					if (selectedClipId === id) setSelectedClipId(null);
+					return;
 				}
-				if (selectedClipId === id) setSelectedClipId(null);
-				return;
+				// Group is malformed (partner missing / not contiguous): fall through to
+				// the generic speed-reset below so delete never silently does nothing.
 			}
 			// Deleting a SPEED segment removes the speed EFFECT (revert to 1× and reflow
 			// the timeline back) instead of cutting the footage out.
