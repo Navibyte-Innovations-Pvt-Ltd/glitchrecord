@@ -18,13 +18,16 @@ describe("resolveSourceTrackRoutingPolicy", () => {
 		expect(policy.includeEmbeddedInExport).toBe(false);
 	});
 
-	it("falls back to mixed when dedicated tracks are absent", () => {
+	it("mutes embedded preview for a mixed sidecar (no double voice)", () => {
+		// The mixed sidecar duplicates the embedded audio. If the preview <video>
+		// is NOT muted, both play the same voice → audible double when a clip
+		// speed change desyncs them. The sidecar plays it; embedded must be muted.
 		const policy = resolveSourceTrackRoutingPolicy("/tmp/recording.mp4", [
 			"/tmp/recording.mixed.wav",
 		]);
 
 		expect(policy.playbackPaths).toEqual(["/tmp/recording.mixed.wav"]);
-		expect(policy.muteEmbeddedPreview).toBe(false);
+		expect(policy.muteEmbeddedPreview).toBe(true);
 		expect(policy.includeEmbeddedInExport).toBe(false);
 	});
 
