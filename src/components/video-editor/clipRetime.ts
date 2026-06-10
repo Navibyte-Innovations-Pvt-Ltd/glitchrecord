@@ -114,6 +114,40 @@ export function resolveInternalBoundaryDrag(params: {
 	return null;
 }
 
+/**
+ * Dissolve a speed point back into ONE clip (remove the marker). The merged clip
+ * keeps the group's original effective speed = total source consumed / total
+ * timeline span — which is exactly the speed of the clip the point was inserted
+ * into (1× if it was a normal clip). Returns the full updated clip array, or null
+ * if the group isn't a valid pair.
+ */
+export function dissolveRetimeGroup(clips: ClipRegion[], groupId: string): ClipRegion[] | null {
+	const group = getRetimeGroup(clips, groupId);
+	if (!group) {
+		return null;
+	}
+	const spans = getClipSourceSpans(clips);
+	const leftSpan = spans.find((span) => span.clip.id === group.left.id);
+	const rightSpan = spans.find((span) => span.clip.id === group.right.id);
+	if (!leftSpan || !rightSpan) {
+		return null;
+	}
+	const timelineSpan = group.right.endMs - group.left.startMs;
+	const sourceSpan = rightSpan.sourceEndMs - leftSpan.sourceStartMs;
+	const mergedSpeed = timelineSpan > 0 ? sourceSpan / timelineSpan : 1;
+	const merged: ClipRegion = {
+		...group.left,
+		endMs: group.right.endMs,
+		speed: mergedSpeed,
+		retimeGroupId: undefined,
+	};
+	return clips.flatMap((clip) => {
+		if (clip.id === group.left.id) return [merged];
+		if (clip.id === group.right.id) return [];
+		return [clip];
+	});
+}
+
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
 }
