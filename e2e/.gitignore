@@ -1,0 +1,6 @@
+# Throwaway local demo/recording scripts — produce videos, hardcode /tmp + abhyasika.
+# NOT tests. Do not commit.
+record-all.mjs
+record-routine.mjs
+record-flow.mjs
+live-capture.mjs
