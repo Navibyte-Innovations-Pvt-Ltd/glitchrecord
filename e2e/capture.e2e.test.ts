@@ -144,4 +144,42 @@ describe("GlitchRecord capture pipeline (real browser + extension + bridge)", ()
     },
     90_000,
   );
+
+  // ADVERSARIAL PROBE — the #1 documented silent-failure gotcha: a page that
+  // LOADS mid-recording (full navigation) gets a fresh content script that
+  // missed the one-time CAPTURE_START. The re-arm on tabs.onUpdated "complete"
+  // must catch it, or the new page captures NOTHING. Written to fail loudly if
+  // that path ever regresses.
+  it(
+    "still captures a click on a page navigated to DURING recording",
+    async () => {
+      const page = await harness.context.newPage();
+      await page.goto(harness.fixtureUrl("playground.html"), { waitUntil: "load" });
+      await page.waitForTimeout(3000); // SW → bridge connect
+
+      const sessionId = broadcastRecordingStart("repo-e2e-nav", "glitchgrab/e2e");
+      await page.waitForTimeout(1500);
+      await page.click("#cta"); // confirm capture is live on page 1
+
+      // Full navigation mid-recording → brand-new content script on page 2.
+      await page.goto(harness.fixtureUrl("playground2.html"), { waitUntil: "load" });
+      await page.waitForTimeout(1500); // let the onUpdated re-arm resend CAPTURE_START
+      await page.click("#page2cta");
+      await page.click("#page2cta"); // twice — second lands even if the first raced the re-arm
+
+      broadcastRecordingStop(sessionId, { cutRanges: [] });
+      await waitUntil(() => (getCurrentSession()?.events.length ?? 0) > 0, {
+        timeoutMs: 8000,
+        label: "events:upload after mid-recording navigation",
+      });
+
+      const events = getCurrentSession()?.events ?? [];
+      // The decisive assertion: an event captured on the SECOND page.
+      const onPage2 = events.some(
+        (e) => /playground2/.test(e.url ?? "") || /Second Page Action/i.test(e.label ?? ""),
+      );
+      expect(onPage2).toBe(true);
+    },
+    90_000,
+  );
 });
