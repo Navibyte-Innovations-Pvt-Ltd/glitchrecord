@@ -145,7 +145,12 @@ export async function resolveSupportedMp4EncoderPath(
 	};
 
 	for (const hardwareAcceleration of ["prefer-hardware", "prefer-software"] as const) {
-		const support = await VideoEncoder.isConfigSupported({
+		// Lazily import the worker-backed encoder proxy. In this Electron build the
+		// global `VideoEncoder` is undefined on the main renderer frame, so support
+		// probing must round-trip to a worker. Dynamic import keeps the `?worker`
+		// asset out of the static module graph (e.g. node-env unit tests).
+		const { WorkerVideoEncoder } = await import("./workerVideoEncoder");
+		const support = await WorkerVideoEncoder.isConfigSupported({
 			...baseConfig,
 			hardwareAcceleration,
 		});
