@@ -91,6 +91,7 @@ import type {
 	ExportRenderBackend,
 	ExportResult,
 } from "./types";
+import { WorkerVideoEncoder } from "./workerVideoEncoder";
 
 interface VideoExporterConfig extends ExportConfig {
 	videoUrl: string;
@@ -308,7 +309,7 @@ export class ModernVideoExporter {
 	private config: VideoExporterConfig;
 	private streamingDecoder: StreamingVideoDecoder | null = null;
 	private renderer: ModernFrameRenderer | null = null;
-	private encoder: VideoEncoder | null = null;
+	private encoder: WorkerVideoEncoder | null = null;
 	private muxer: VideoMuxer | null = null;
 	private audioProcessor: AudioProcessor | null = null;
 	private cancelled = false;
@@ -337,7 +338,7 @@ export class ModernVideoExporter {
 	private nativeStaticLayoutSkipReason: string | null = null;
 	private nativeStaticLayoutSkipReasons: string[] = [];
 	private nativeStaticLayoutBackgroundSkipReason: string | null = null;
-	private nativeH264Encoder: VideoEncoder | null = null;
+	private nativeH264Encoder: WorkerVideoEncoder | null = null;
 	private nativeEncoderError: Error | null = null;
 	private effectiveDurationSec = 0;
 	private totalExportStartTimeMs = 0;
@@ -2534,8 +2535,7 @@ export class ModernVideoExporter {
 				timelineSegments,
 				chunkDurationSec: STATIC_LAYOUT_CHUNK_DURATION_SEC,
 				experimentalWindowsGpuCompositor: this.config.experimentalNativeExport === true,
-				experimentalNvidiaCudaExport:
-					this.config.experimentalNvidiaCudaExport === true,
+				experimentalNvidiaCudaExport: this.config.experimentalNvidiaCudaExport === true,
 				audioOptions: {
 					...audioOptions,
 					outputDurationSec: effectiveDuration,
@@ -2631,10 +2631,7 @@ export class ModernVideoExporter {
 			return false;
 		}
 
-		if (
-			typeof VideoEncoder === "undefined" ||
-			typeof VideoEncoder.isConfigSupported !== "function"
-		) {
+		if (typeof WorkerVideoEncoder.isConfigSupported !== "function") {
 			this.lastNativeExportError = `${NATIVE_EXPORT_ENGINE_NAME} export requires WebCodecs VideoEncoder support.`;
 			return false;
 		}
@@ -2650,7 +2647,7 @@ export class ModernVideoExporter {
 		};
 
 		try {
-			const support = await VideoEncoder.isConfigSupported(encoderConfig);
+			const support = await WorkerVideoEncoder.isConfigSupported(encoderConfig);
 			if (!support.supported) {
 				this.lastNativeExportError = `H.264 Annex B encoding is not supported at ${this.config.width}x${this.config.height}.`;
 				return false;
@@ -2692,7 +2689,7 @@ export class ModernVideoExporter {
 		this.pendingNativeWriteBytes = 0;
 
 		const sessionId = result.sessionId;
-		const encoder = new VideoEncoder({
+		const encoder = new WorkerVideoEncoder({
 			output: (chunk) => {
 				if (this.cancelled || !this.nativeExportSessionId) {
 					return;
@@ -3388,7 +3385,7 @@ export class ModernVideoExporter {
 			queueLimit: this.webCodecsEncodeQueueLimit,
 		});
 
-		this.encoder = new VideoEncoder({
+		this.encoder = new WorkerVideoEncoder({
 			output: (chunk, meta) => {
 				// Capture decoder config metadata from encoder output
 				if (meta?.decoderConfig?.description && !videoDescription) {
@@ -3475,7 +3472,7 @@ export class ModernVideoExporter {
 					hardwareAcceleration: candidate.hardwareAcceleration,
 					latencyMode,
 				};
-				const support = await VideoEncoder.isConfigSupported(config);
+				const support = await WorkerVideoEncoder.isConfigSupported(config);
 				if (support.supported) {
 					resolvedCodec = candidate.codec;
 					this.encodeBackend = "webcodecs";
