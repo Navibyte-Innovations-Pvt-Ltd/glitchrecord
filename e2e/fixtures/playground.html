@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GlitchRecord E2E Playground</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; }
+      .tall { height: 2400px; }
+      button, input, select { font-size: 16px; padding: 8px 12px; margin: 8px 0; display: block; }
+      h1 { margin-top: 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Capture Playground</h1>
+
+    <!-- click target: stable id + accessible name so describeElement() labels it -->
+    <button id="cta" type="button" aria-label="Start Free Trial">Start Free Trial</button>
+
+    <!-- input target: typing here emits an "input" capture event (value previewed) -->
+    <label for="lib">Library name</label>
+    <input id="lib" name="library" type="text" placeholder="Study Times Library" />
+
+    <!-- select target -->
+    <label for="plan">Plan</label>
+    <select id="plan" name="plan">
+      <option value="">Choose…</option>
+      <option value="small">Small — ₹349/mo</option>
+      <option value="pro">Pro — ₹549/mo</option>
+    </select>
+
+    <!-- long region so a scroll gesture emits a "scroll" capture event -->
+    <div class="tall">Scroll region</div>
+    <button id="bottom" type="button">Bottom button</button>
+
+    <script>
+      // Reflect clicks into the title so the test can also assert via DOM if needed.
+      document.getElementById("cta").addEventListener("click", () => {
+        document.title = "clicked-cta";
+      });
+    </script>
+  </body>
+</html>
