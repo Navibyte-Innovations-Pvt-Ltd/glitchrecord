@@ -3749,11 +3749,17 @@ export default function VideoEditor() {
 		pendingMarkerRef.current = null;
 		setPendingMarkerMs(null);
 		if (b - a >= 100) {
+			// Pre-mint the carved id so we can auto-SELECT it. The seam between the
+			// carved segment and its right neighbour is invisible (clips render as one
+			// continuous bar); auto-selecting lets the seam-drag reroute the resize to
+			// THIS segment's right edge instead of trimming the neighbour.
+			const carvedId = `clip-${nextClipIdRef.current++}`;
 			setClipRegions((regions) =>
-				carveSpeedRegion(regions, a, b, 2, () => `clip-${nextClipIdRef.current++}`),
+				carveSpeedRegion(regions, a, b, 2, () => `clip-${nextClipIdRef.current++}`, carvedId),
 			);
+			handleSelectClip(carvedId);
 		}
-	}, []);
+	}, [handleSelectClip]);
 
 	// Drag a speed region's edge: stretch wider → slower, squeeze narrower → faster.
 	// speed = sourceMs / timelineWidth, snapped to the nearest allowed PlaybackSpeed.
@@ -3847,6 +3853,47 @@ export default function VideoEditor() {
 			const oldClip = clipRegions.find((c) => c.id === id);
 			const newStart = Math.round(span.start);
 			const newEnd = Math.round(span.end);
+
+			// Seam-drag reroute — MUST run first. The carved segment and its right
+			// neighbour render as one continuous bar, so a user "stretching the marked
+			// clip" actually grabs the neighbour's LEFT edge at the shared seam. Left
+			// untouched that trims the neighbour (destroys footage) and ripples the
+			// carved clip wider at a STALE speed. If the SELECTED clip is the left
+			// neighbour at this seam, reroute to its proven right-edge speed-change
+			// path (planClipSpeedChange → reflow, footage conserved).
+			if (
+				oldClip &&
+				newEnd === oldClip.endMs &&
+				newStart !== oldClip.startMs &&
+				selectedClipId &&
+				selectedClipId !== id &&
+				!oldClip.retimeGroupId
+			) {
+				const selected = clipRegions.find((c) => c.id === selectedClipId);
+				if (
+					selected &&
+					!selected.retimeGroupId &&
+					Math.abs(selected.endMs - oldClip.startMs) <= 1
+				) {
+					const oldSpeed = selected.speed && selected.speed > 0 ? selected.speed : 1;
+					const sourceContent = (selected.endMs - selected.startMs) * oldSpeed;
+					const newWidth = newStart - selected.startMs;
+					if (newWidth >= 50) {
+						const speed = snapStretchSpeed(sourceContent, newWidth);
+						const plan = planClipSpeedChange({
+							clipRegions,
+							zoomRegions,
+							selectedClipId,
+							speed,
+						});
+						if (plan && !("blockedReason" in plan)) {
+							setClipRegions(plan.clipRegions);
+							setZoomRegions(plan.zoomRegions);
+						}
+						return;
+					}
+				}
+			}
 
 			// Speed-point (retime) boundary drag — MUST run before the right-edge
 			// speed-change path below. Dragging the seam between a retime group's two
@@ -3962,7 +4009,7 @@ export default function VideoEditor() {
 				}),
 			);
 		},
-		[clipRegions, zoomRegions],
+		[clipRegions, zoomRegions, selectedClipId],
 	);
 
 	const handleClipSpeedChange = useCallback(
