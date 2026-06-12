@@ -1,3 +1,14 @@
+> **RESOLVED (both walls down).** Headless mp4 export now works end-to-end.
+> 1. WebCodecs encode/decode moved into Workers (the original bug below).
+> 2. The render backend is threaded from export options (was hardcoded to a
+>    WebGPU-defaulting `undefined`). WebGPU can't configure a canvas without a
+>    real display; **WebGL renders fine headlessly**. Force it with
+>    `RECORDLY_SMOKE_EXPORT_RENDER_BACKEND=webgl` (or `preferredRenderBackend:
+>    "webgl"` in export options). Verified: `bun run test:e2e:export` BASELINE
+>    produces a real h264 mp4 with no display. The GUI default is unchanged.
+>
+> Historical context below.
+
 # BUG: mp4 export uses main-thread `VideoEncoder` → fails in headless/automation
 
 ## Symptom
