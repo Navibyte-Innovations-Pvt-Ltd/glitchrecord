@@ -1,6 +1,57 @@
 import { describe, expect, it } from "vitest";
 
-import { formatClipSpeedLabel, planClipSpeedChange } from "./clipSpeedChange";
+import {
+	CLIP_SPEEDS,
+	formatClipSpeedLabel,
+	planClipSpeedChange,
+	snapStretchSpeed,
+} from "./clipSpeedChange";
+
+// Right-edge stretch → speed. Models the timeline gesture from the editor:
+// drag a clip's right handle wider to slow it down, squeeze it to speed up.
+// Source content stays fixed; speed = source / timeline-width, snapped to CLIP_SPEEDS.
+describe("snapStretchSpeed (drag right handle → speed)", () => {
+	it("matches the editor screenshot: 4.825s source over a 19.3s clip → 0.25x", () => {
+		// Clip shown as 0.1s–19.4s at 0.25x ⇒ source = 19.3s * 0.25 = 4.825s.
+		expect(snapStretchSpeed(4825, 19_300)).toBe(0.25);
+	});
+
+	it("stretching to the right lowers the speed (slow-mo)", () => {
+		const source = 5000;
+		expect(snapStretchSpeed(source, 6667)).toBe(0.75); // 5000/6667 ≈ 0.75
+		expect(snapStretchSpeed(source, 10_000)).toBe(0.5); // wider → slower
+		expect(snapStretchSpeed(source, 20_000)).toBe(0.25); // widest → slowest allowed
+	});
+
+	it("squeezing back to the left raises the speed (fast-forward)", () => {
+		const source = 5000;
+		expect(snapStretchSpeed(source, 4000)).toBe(1.25); // 5000/4000 = 1.25
+		expect(snapStretchSpeed(source, 2500)).toBe(2); // narrower → faster
+		expect(snapStretchSpeed(source, 1250)).toBe(4); // narrowest → fastest allowed
+	});
+
+	it("stretch right then make it lower again round-trips to the same speed", () => {
+		const source = 5000;
+		const original = snapStretchSpeed(source, 2500); // 2x
+		const stretchedWider = snapStretchSpeed(source, 10_000); // 0.5x
+		const squeezedBack = snapStretchSpeed(source, 2500); // back to 2x
+		expect(stretchedWider).toBeLessThan(original);
+		expect(squeezedBack).toBe(original);
+	});
+
+	it("speed decreases monotonically as the clip is stretched wider", () => {
+		const source = 5000;
+		const speeds = [2000, 4000, 6000, 10_000, 20_000].map((w) => snapStretchSpeed(source, w));
+		for (let i = 1; i < speeds.length; i++) {
+			expect(speeds[i]).toBeLessThanOrEqual(speeds[i - 1]);
+		}
+	});
+
+	it("always returns an allowed snap speed and clamps degenerate sizes", () => {
+		expect(CLIP_SPEEDS).toContain(snapStretchSpeed(0, 0));
+		expect(CLIP_SPEEDS).toContain(snapStretchSpeed(123_456, 7));
+	});
+});
 
 describe("formatClipSpeedLabel", () => {
 	it("returns labels only for non-default positive speeds", () => {
