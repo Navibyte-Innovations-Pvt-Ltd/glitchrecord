@@ -166,6 +166,7 @@ export default function Item({
 			{...listeners}
 			{...attributes}
 			data-timeline-item="true"
+			data-item-kind={isClip ? "clip" : isZoom ? "zoom" : isTrim ? "trim" : isAudio ? "audio" : "item"}
 			onPointerDownCapture={handleSelect}
 			className="group h-full"
 		>
@@ -201,11 +202,13 @@ export default function Item({
 						className={cn(glassStyles.zoomEndCap, glassStyles.left)}
 						style={{ cursor: "col-resize", pointerEvents: "auto" }}
 						title="Resize left"
+						data-testid="timeline-resize-left"
 					/>
 					<div
 						className={cn(glassStyles.zoomEndCap, glassStyles.right)}
 						style={{ cursor: "col-resize", pointerEvents: "auto" }}
 						title="Resize right"
+						data-testid="timeline-resize-right"
 					/>
 					{showAudioWaveform && waveformPeaks && (
 						<AudioWaveform
@@ -247,7 +250,7 @@ export default function Item({
 										Clip
 									</span>
 									{clipSpeedLabel && (
-										<span className="rounded-[4px] bg-black/10 px-1 text-[9px] font-bold tabular-nums text-black/65 dark:bg-white/15 dark:text-white/80">
+										<span data-testid="clip-speed-badge" className="rounded-[4px] bg-black/10 px-1 text-[9px] font-bold tabular-nums text-black/65 dark:bg-white/15 dark:text-white/80">
 											{clipSpeedLabel}
 										</span>
 									)}
