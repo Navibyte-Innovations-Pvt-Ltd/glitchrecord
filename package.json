@@ -45,7 +45,7 @@
 		"test:watch": "vitest",
 		"test:e2e": "vitest run --config vitest.e2e.config.ts",
 		"test:e2e:capture": "vitest run --config vitest.e2e.config.ts e2e/capture.e2e.test.ts",
-		"test:e2e:ui": "vitest run --config vitest.e2e.config.ts e2e/editor-launch.e2e.test.ts e2e/script-panel.e2e.test.ts e2e/clip-speed.e2e.test.ts e2e/editing-flow.e2e.test.ts"
+		"test:e2e:ui": "vitest run --config vitest.e2e.config.ts e2e/editor-launch.e2e.test.ts e2e/script-panel.e2e.test.ts e2e/clip-speed.e2e.test.ts e2e/editing-flow.e2e.test.ts e2e/editor-features.e2e.test.ts"
 	},
 	"dependencies": {
 		"@phosphor-icons/react": "^2.1.10",
