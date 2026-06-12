@@ -1,53 +1,50 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
+!.vscode/extensions.json
+# Editor directories and files
+# Local debug helpers
+# Logs
+# Native capture build artifacts
+# Platform-compiled native binaries (rebuilt per machine by npm postinstall)
+# npx electron-builder --mac --win
+*.kiro/
+*.local
+*.log
+*.njsproj
+*.ntvs*
+*.sln
+*.suo
+*.sw?
+*.tsbuildinfo
+.DS_Store
+.history/
+.idea
+.tmp-*.ps1
+.tmp/
+.vscode/*
+demo-videos/
 dist
 dist-electron
 dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-release/**
-*.kiro/
-# npx electron-builder --mac --win
-.tmp/
-.history/
-extension-sources/
-*.tsbuildinfo
-vite.config.js
-vite.config.d.ts
-
-# Native capture build artifacts
-electron/native/wgc-capture/build/
-electron/native/cursor-monitor/build/
-electron/native/gpu-export-probe/build/
-electron/native/nvidia-cuda-compositor/build/
 electron/native/bin/*/whisper-*
 electron/native/bin/*/whisper-runtime.json
-
-# Platform-compiled native binaries (rebuilt per machine by npm postinstall)
 electron/native/bin/darwin-arm64/
 electron/native/bin/darwin-x64/
 electron/native/bin/linux-x64/
 electron/native/bin/win32-x64/
-
-# Local debug helpers
-tmp-*.ps1
-.tmp-*.ps1
+electron/native/cursor-monitor/build/
+electron/native/gpu-export-probe/build/
+electron/native/nvidia-cuda-compositor/build/
+electron/native/wgc-capture/build/
+extension-sources/
 gpu-export-probe.mp4
+lerna-debug.log*
+logs
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+release/**
+tmp-*.ps1
+vite.config.d.ts
+vite.config.js
+yarn-debug.log*
+yarn-error.log*
