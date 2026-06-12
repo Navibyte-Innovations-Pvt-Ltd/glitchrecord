@@ -1,6 +1,23 @@
-import type { ClipRegion, ZoomRegion } from "./types";
+import type { ClipRegion, PlaybackSpeed, ZoomRegion } from "./types";
 
 export type ClipSpeedChangeBlockReason = "clip-overlap" | "zoom-overlap";
+
+// The speeds a clip's right-edge resize can snap to. Stretching the clip wider
+// lowers the speed (slow-mo); squeezing it narrower raises the speed.
+export const CLIP_SPEEDS: PlaybackSpeed[] = [
+	0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2, 2.5, 3, 4,
+];
+
+// Right-edge resize → playback speed. The clip's SOURCE content is fixed; the
+// new timeline width sets the speed (speed = source / width), snapped to the
+// nearest allowed speed. Stretch right (wider) → lower speed; squeeze (narrower)
+// → higher speed. Clamps mirror the editor: source ≥ 1ms, width ≥ 50ms.
+export function snapStretchSpeed(sourceContentMs: number, newWidthMs: number): PlaybackSpeed {
+	const source = Math.max(1, sourceContentMs);
+	const width = Math.max(50, newWidthMs);
+	const raw = source / width;
+	return CLIP_SPEEDS.reduce((p, c) => (Math.abs(c - raw) < Math.abs(p - raw) ? c : p));
+}
 
 export interface ClipSpeedChangePlan {
 	clipRegions: ClipRegion[];
