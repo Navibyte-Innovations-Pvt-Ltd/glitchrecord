@@ -88,8 +88,9 @@ import {
 	getAspectRatioLabel,
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
-import { planClipSpeedChange } from "./clipSpeedChange";
+import { planClipSpeedChange, snapStretchSpeed } from "./clipSpeedChange";
 import {
+	carveSpeedRegion,
 	dissolveRetimeGroup,
 	getRetimeGroup,
 	planRetimeDrag,
@@ -372,29 +373,6 @@ function getErrorMessage(error: unknown): string {
 // (gaps render as the base 1× clip). Used by the Shift-marker speed gesture.
 // Split the clip at [a,b] and set the middle segment to `speed` — a clip-speed
 // segment, so its timeline duration changes with the speed (time-remap).
-function carveSpeedRegion(
-	regions: ClipRegion[],
-	a: number,
-	b: number,
-	speed: PlaybackSpeed,
-	newId: () => string,
-): ClipRegion[] {
-	const start = Math.round(Math.min(a, b));
-	const end = Math.round(Math.max(a, b));
-	const out: ClipRegion[] = [];
-	for (const r of regions) {
-		if (r.endMs <= start || r.startMs >= end) {
-			out.push(r);
-			continue;
-		}
-		if (r.startMs < start) out.push({ ...r, id: newId(), endMs: start });
-		if (r.endMs > end) out.push({ ...r, id: newId(), startMs: end });
-	}
-	out.push({ id: newId(), startMs: start, endMs: end, speed });
-	out.sort((x, y) => x.startMs - y.startMs);
-	return out;
-}
-
 export default function VideoEditor() {
 	const { t } = useI18n();
 	const smokeExportConfig = useMemo(
@@ -3897,11 +3875,9 @@ export default function VideoEditor() {
 			// clip's source content fixed; derives speed from the new timeline width.
 			if (oldClip && newStart === oldClip.startMs && newEnd !== oldClip.endMs) {
 				const oldSpeed = oldClip.speed && oldClip.speed > 0 ? oldClip.speed : 1;
-				const sourceContent = Math.max(1, (oldClip.endMs - oldClip.startMs) * oldSpeed);
-				const newWidth = Math.max(50, newEnd - oldClip.startMs);
-				const raw = sourceContent / newWidth;
-				const SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
-				const speed = SPEEDS.reduce((p, c) => (Math.abs(c - raw) < Math.abs(p - raw) ? c : p));
+				const sourceContent = (oldClip.endMs - oldClip.startMs) * oldSpeed;
+				const newWidth = newEnd - oldClip.startMs;
+				const speed = snapStretchSpeed(sourceContent, newWidth);
 				const plan = planClipSpeedChange({ clipRegions, zoomRegions, selectedClipId: id, speed });
 				if (plan && !("blockedReason" in plan)) {
 					setClipRegions(plan.clipRegions);
@@ -6061,6 +6037,7 @@ export default function VideoEditor() {
 									<div key={section.id} className="flex items-center">
 										<motion.button
 											type="button"
+											data-testid={`rail-section-${section.id}`}
 											onClick={() => setActiveEffectSection(section.id)}
 											title={section.label}
 											className="group relative flex h-9 w-9 items-center justify-center rounded-lg outline-none focus:outline-none focus-visible:outline-none"
