@@ -10,6 +10,7 @@ export function carveSpeedRegion(
 	b: number,
 	speed: PlaybackSpeed,
 	newId: () => string,
+	carvedId?: string,
 ): ClipRegion[] {
 	const start = Math.round(Math.min(a, b));
 	const end = Math.round(Math.max(a, b));
@@ -22,7 +23,10 @@ export function carveSpeedRegion(
 		if (r.startMs < start) out.push({ ...r, id: newId(), endMs: start });
 		if (r.endMs > end) out.push({ ...r, id: newId(), startMs: end });
 	}
-	out.push({ id: newId(), startMs: start, endMs: end, speed });
+	// The carved region's id is returned to the caller (via `carvedId`) so it can
+	// be auto-selected — selection is what lets the seam-drag reroute know which
+	// segment the user means to re-speed. See handleClipSpanChange.
+	out.push({ id: carvedId ?? newId(), startMs: start, endMs: end, speed });
 	out.sort((x, y) => x.startMs - y.startMs);
 	return out;
 }
