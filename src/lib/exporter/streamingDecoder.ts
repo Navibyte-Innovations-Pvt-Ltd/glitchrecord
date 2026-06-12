@@ -2,6 +2,7 @@ import { WebDemuxer } from "web-demuxer";
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { createReadableMediaResourceFile, resolveMediaResourceUrl } from "./localMediaSource";
+import { WorkerVideoDecoder } from "./workerVideoDecoder";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -70,7 +71,7 @@ export function getDecodedFrameTimelineOffsetUs(
  */
 export class StreamingVideoDecoder {
 	private demuxer: WebDemuxer | null = null;
-	private decoder: VideoDecoder | null = null;
+	private decoder: WorkerVideoDecoder | null = null;
 	private cancelled = false;
 	private metadata: DecodedVideoInfo | null = null;
 	private pendingFrames: VideoFrame[] = [];
@@ -261,7 +262,7 @@ export class StreamingVideoDecoder {
 		let firstDecodedFrameTimestampUs: number | null = null;
 		let decodedFrameTimelineOffsetUs = 0;
 
-		this.decoder = new VideoDecoder({
+		this.decoder = new WorkerVideoDecoder({
 			output: (frame: VideoFrame) => {
 				if (frameResolve) {
 					const resolve = frameResolve;
