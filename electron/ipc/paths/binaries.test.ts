@@ -6,11 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 describe("Windows native helper path resolution", () => {
 	let tempRoot: string;
 	let appPath: string;
+	const originalPlatform = process.platform;
 
 	beforeEach(async () => {
 		tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-helper-paths-"));
 		appPath = path.join(tempRoot, "App");
 		await fs.mkdir(appPath, { recursive: true });
+
+		// Force the win32 code path regardless of host OS — otherwise on
+		// macOS/Linux getNativeArchTag() returns e.g. "darwin-arm64", the prebundled
+		// path never matches the staged win32 helper, and the test fails on any
+		// non-Windows runner.
+		Object.defineProperty(process, "platform", { value: "win32", configurable: true });
 
 		vi.resetModules();
 		vi.doMock("electron", () => ({
@@ -24,6 +31,7 @@ describe("Windows native helper path resolution", () => {
 	afterEach(async () => {
 		vi.resetModules();
 		vi.doUnmock("electron");
+		Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
 		await fs.rm(tempRoot, { recursive: true, force: true });
 	});
 
