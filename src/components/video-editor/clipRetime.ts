@@ -1,4 +1,31 @@
-import { type ClipRegion, getClipSourceSpans, sortClipRegions } from "./types";
+import { type ClipRegion, type PlaybackSpeed, getClipSourceSpans, sortClipRegions } from "./types";
+
+// Shift+click drops two markers; the span between them is carved into its own
+// clip region at `speed`. Any region overlapping [a, b] is split so the carved
+// region sits cleanly in the middle. Markers under 100ms apart are rejected by
+// the caller (handleShiftMarker). Returns the new region list, sorted by start.
+export function carveSpeedRegion(
+	regions: ClipRegion[],
+	a: number,
+	b: number,
+	speed: PlaybackSpeed,
+	newId: () => string,
+): ClipRegion[] {
+	const start = Math.round(Math.min(a, b));
+	const end = Math.round(Math.max(a, b));
+	const out: ClipRegion[] = [];
+	for (const r of regions) {
+		if (r.endMs <= start || r.startMs >= end) {
+			out.push(r);
+			continue;
+		}
+		if (r.startMs < start) out.push({ ...r, id: newId(), endMs: start });
+		if (r.endMs > end) out.push({ ...r, id: newId(), startMs: end });
+	}
+	out.push({ id: newId(), startMs: start, endMs: end, speed });
+	out.sort((x, y) => x.startMs - y.startMs);
+	return out;
+}
 
 // DaVinci-style "speed point" retime math.
 //
