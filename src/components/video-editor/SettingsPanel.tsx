@@ -3432,6 +3432,7 @@ export function SettingsPanel({
 							<Button
 								key={option.speed}
 								type="button"
+								data-testid={`clip-speed-${option.speed}`}
 								onClick={() => onClipSpeedChange?.(option.speed)}
 								className={cn(
 									"h-auto w-full rounded-lg border px-0.5 py-2 text-center shadow-sm transition-all duration-200 ease-out cursor-pointer",
