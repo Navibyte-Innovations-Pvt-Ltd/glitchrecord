@@ -217,7 +217,10 @@ export class VideoExporter {
 			this.renderer = new FrameRenderer({
 				width: this.config.width,
 				height: this.config.height,
-				preferredRenderBackend: undefined,
+				// Respect the configured render backend (automation can force "webgl"
+				// for headless export; undefined keeps the GUI default). See
+				// modernVideoExporter.ts + docs/EXPORT-WEBCODECS-BUG.md.
+				preferredRenderBackend: this.config.preferredRenderBackend,
 				wallpaper: this.config.wallpaper,
 				zoomRegions: this.config.zoomRegions,
 				showShadow: this.config.showShadow,
