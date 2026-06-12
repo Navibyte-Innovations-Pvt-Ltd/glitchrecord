@@ -6,15 +6,16 @@
 //  2. EDIT PERSISTENCE — each edit scenario is applied in the real editor and we
 //     verify the saved .project.json reflects it (clip speeds, carved segments).
 //
-// FIXED: smoke-export no longer crashes with "VideoEncoder is not defined".
-// WebCodecs `VideoEncoder`/`VideoDecoder` are exposed only inside Workers in this
-// Electron build, so encode + decode now run in DedicatedWorkers via
-// WorkerVideoEncoder / WorkerVideoDecoder (see src/lib/exporter/worker*.ts). The
-// pipeline therefore reaches the render/export phase ("export") instead of dying
-// at "exception". The remaining headless blocker is GPU rendering (pixi
-// WebGPU/WebGL canvas can't be configured without a real display), which is a
-// distinct, pre-existing environment limitation — verify the full render in the
-// GUI app or on a real-GPU runner. See docs/EXPORT-WEBCODECS-BUG.md.
+// FULL HEADLESS EXPORT NOW WORKS. Two fixes combined:
+//  1. WebCodecs `VideoEncoder`/`VideoDecoder` are Worker-only in this Electron
+//     build → encode + decode run in DedicatedWorkers (WorkerVideoEncoder /
+//     WorkerVideoDecoder, src/lib/exporter/worker*.ts).
+//  2. The render backend is now threaded from export options instead of being
+//     hardcoded. WebGPU's canvas can't be configured without a real display
+//     (getCurrentTexture: context is not configured), but WebGL renders fine
+//     headlessly — so the BASELINE test forces RENDER_BACKEND=webgl and the full
+//     render→encode→mux pipeline produces a real h264 mp4 with no display.
+// See docs/EXPORT-WEBCODECS-BUG.md.
 //
 // Run: `bun run test:e2e:export` (GlitchRecord dev CLOSED — port 7337).
 
@@ -94,15 +95,21 @@ const clipsOf = (p: { editor: { clipRegions?: unknown[] } }) =>
 	(p.editor.clipRegions ?? []) as Array<{ speed: number; startMs: number; endMs: number }>;
 
 describe("Edit scenarios", () => {
-	it("BASELINE: smoke-export renders the recording to a verified mp4", async () => {
+	it("BASELINE: smoke-export renders the recording to a verified mp4 (WebGL, headless)", async () => {
 		const out = path.join(os.tmpdir(), "scenario-baseline.mp4");
 		fs.rmSync(out, { force: true });
 		fs.rmSync(`${out}.report.json`, { force: true });
+		// Force the WebGL render backend. WebGPU's canvas can't be configured
+		// without a real display (getCurrentTexture: context is not configured), so
+		// the GUI default fails headlessly — but WebGL renders fine under automation
+		// AND on a real display. With WebCodecs encode/decode already in workers,
+		// this exercises the FULL render→encode→mux pipeline headlessly.
 		const { app, udd } = await launchEditor({
 			RECORDLY_SMOKE_EXPORT: "1",
 			RECORDLY_SMOKE_EXPORT_INPUT: VIDEO,
 			RECORDLY_SMOKE_EXPORT_OUTPUT: out,
 			RECORDLY_SMOKE_EXPORT_ENCODING_MODE: "fast",
+			RECORDLY_SMOKE_EXPORT_RENDER_BACKEND: "webgl",
 		});
 		const deadline = Date.now() + 150_000;
 		while (Date.now() < deadline) {
@@ -114,37 +121,29 @@ describe("Edit scenarios", () => {
 		}
 		await kill(app, udd);
 
-		// The export pipeline always runs and writes a report. With WebCodecs encode
-		// + decode moved to workers, the pipeline now reaches the render/export phase
-		// ("export") under automation; headless GPU rendering is still environment-
-		// limited, so success isn't guaranteed — but WHEN it succeeds the output must
-		// be a real h264 mp4. (In the GUI app it succeeds reliably.)
+		// WebGL render works headlessly → the export must SUCCEED and produce a real
+		// h264 mp4. (Regression guard: if someone re-hardcodes the render backend to
+		// WebGPU, or drops the threaded preferredRenderBackend, this fails.)
 		const report = JSON.parse(fs.readFileSync(`${out}.report.json`, "utf8"));
-		expect(["saved", "export", "exception", "load"]).toContain(report.phase);
-		if (report.success) {
-			expect(fs.existsSync(out)).toBe(true);
-			expect(fs.statSync(out).size).toBeGreaterThan(100_000);
-			const codec = execFileSync("ffprobe", [
-				"-v",
-				"error",
-				"-select_streams",
-				"v:0",
-				"-show_entries",
-				"stream=codec_name",
-				"-of",
-				"csv=p=0",
-				out,
-			])
-				.toString()
-				.trim();
-			expect(codec).toBe("h264");
-		} else {
-			// headless WebCodecs/GPU render unavailable — documented limitation, not a
-			// regression. The error names the failed subsystem (encoder path / WebGPU).
-			expect(report.error).toMatch(
-				/VideoEncoder|VideoDecoder|WebCodecs|encoder|GPU|texture/i,
-			);
-		}
+		expect(report.success, report.error ?? "export failed").toBe(true);
+		expect(report.metrics?.renderBackend).toBe("webgl");
+		expect(report.metrics?.frameCount).toBeGreaterThan(0);
+		expect(fs.existsSync(out)).toBe(true);
+		expect(fs.statSync(out).size).toBeGreaterThan(100_000);
+		const codec = execFileSync("ffprobe", [
+			"-v",
+			"error",
+			"-select_streams",
+			"v:0",
+			"-show_entries",
+			"stream=codec_name",
+			"-of",
+			"csv=p=0",
+			out,
+		])
+			.toString()
+			.trim();
+		expect(codec).toBe("h264");
 		fs.rmSync(out, { force: true });
 		fs.rmSync(`${out}.report.json`, { force: true });
 	}, 200_000);
