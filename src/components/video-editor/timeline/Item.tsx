@@ -9,7 +9,7 @@ import {
 	MagnifyingGlassPlus as ZoomIn,
 } from "@phosphor-icons/react";
 import type { Span } from "dnd-timeline";
-import { useItem } from "dnd-timeline";
+import { useItem, useTimelineContext } from "dnd-timeline";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -89,6 +89,7 @@ export default function Item({
 		disabled: disabled || isLoading,
 		data: { rowId },
 	});
+	const { resizeHandleWidth } = useTimelineContext();
 
 	const timeLabel = useMemo(
 		() => `${formatMs(span.start)} – ${formatMs(span.end)}`,
@@ -152,6 +153,25 @@ export default function Item({
 		onSelect?.();
 		onSelectId?.(id);
 	};
+	// Selecting happens on pointerDOWN. A pointerdown that lands in a resize-handle
+	// zone (within resizeHandleWidth/2 of either edge) is the START of a resize, NOT
+	// a select — reselecting here would steal selection from the neighbour the user
+	// means to re-speed at a shared seam, breaking the seam-drag reroute. So skip
+	// selection for edge grabs and let the existing selection drive the resize.
+	const handleSelectPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+		const hw = resizeHandleWidth ?? 0;
+		// Clips only: a clip's resize edge can sit on a shared seam with a neighbour,
+		// where reselecting would break the seam-drag reroute. Other item kinds keep
+		// select-on-grab.
+		if (isClip && hw > 0) {
+			const rect = event.currentTarget.getBoundingClientRect();
+			const nearEdge =
+				Math.abs(event.clientX - rect.left) <= hw / 2 ||
+				Math.abs(event.clientX - rect.right) <= hw / 2;
+			if (nearEdge) return;
+		}
+		handleSelect();
+	};
 	const safeItemStyle = {
 		...itemStyle,
 		minWidth: MIN_ITEM_PX,
@@ -167,7 +187,7 @@ export default function Item({
 			{...attributes}
 			data-timeline-item="true"
 			data-item-kind={isClip ? "clip" : isZoom ? "zoom" : isTrim ? "trim" : isAudio ? "audio" : "item"}
-			onPointerDownCapture={handleSelect}
+			onPointerDownCapture={handleSelectPointerDown}
 			className="group h-full"
 		>
 			<div
