@@ -7,6 +7,14 @@ import "./index.css";
 
 document.documentElement.dataset.platform = /mac/i.test(navigator.platform) ? "macos" : "other";
 
+// Test-only: register the worker-proxy passthrough verifier when explicitly
+// requested. Dynamically imported so it stays out of the normal app path.
+if (new URLSearchParams(window.location.search).get("ggPassthroughTest") === "1") {
+	void import("./lib/exporter/__passthroughTestHook").then((m) => {
+		m.registerPassthroughTestHook();
+	});
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
 	<React.StrictMode>
 		<ThemeProvider>
