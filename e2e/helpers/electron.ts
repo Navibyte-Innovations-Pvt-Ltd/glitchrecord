@@ -22,8 +22,18 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, "../..");
 const MAIN = path.join(APP_ROOT, "dist-electron", "main.cjs");
 const RENDERER = path.join(APP_ROOT, "dist", "index.html");
-// A short video that ships with the app — enough to render a clip on the timeline.
-const SAMPLE_VIDEO = path.join(APP_ROOT, "public", "wallpapers", "wispysky.mp4");
+
+// GlitchRecord auto-saves a `<video>.project.json` NEXT TO the video it opens.
+// So the e2e must never point at a tracked repo asset (that pollutes
+// public/wallpapers). Copy the bundled sample into /tmp once and open that.
+const SAMPLE_SRC = path.join(APP_ROOT, "public", "wallpapers", "wispysky.mp4");
+const SAMPLE_VIDEO = path.join(os.tmpdir(), "gg-e2e-sample.mp4");
+function ensureSampleVideo(): string {
+  if (!fs.existsSync(SAMPLE_VIDEO) && fs.existsSync(SAMPLE_SRC)) {
+    fs.copyFileSync(SAMPLE_SRC, SAMPLE_VIDEO);
+  }
+  return SAMPLE_VIDEO;
+}
 
 // Detect a running GlitchRecord by trying to BIND 7337 the same way its bridge
 // does (Node's default dual-stack `::`). A connect-probe missed it because the
@@ -55,7 +65,7 @@ export async function launchEditor(opts?: { videoPath?: string }): Promise<Edito
     );
   }
   if (await portInUse(7337)) throw new Error(DEV_RUNNING_MSG);
-  const video = opts?.videoPath ?? SAMPLE_VIDEO;
+  const video = opts?.videoPath ?? ensureSampleVideo();
 
   // Private user-data-dir → the app gets its OWN single-instance lock. Without
   // this, ANY other unpackaged Electron app on the machine (e.g. another dev
