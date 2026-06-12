@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	RETIME_MAX_SPEED,
 	RETIME_MIN_SPEED,
+	carveSpeedRegion,
 	dissolveRetimeGroup,
 	getRetimeGroup,
 	planRetimeDrag,
@@ -9,6 +10,54 @@ import {
 	resolveInternalBoundaryDrag,
 } from "./clipRetime";
 import { type ClipRegion, getClipSourceSpans } from "./types";
+
+// Shift+click on a clip drops two markers; the span between them is carved into
+// its own speed region. This is the exact gesture from the editor (two markers,
+// middle segment retimed).
+describe("carveSpeedRegion (shift+click two markers)", () => {
+	let n = 0;
+	const newId = () => `clip-${++n}`;
+
+	it("splits one clip into before / carved / after at the two markers", () => {
+		n = 0;
+		const regions: ClipRegion[] = [{ id: "base", startMs: 0, endMs: 30_000, speed: 1 }];
+		const out = carveSpeedRegion(regions, 10_000, 20_000, 2, newId);
+		expect(out).toHaveLength(3);
+		expect(out.map((r) => [r.startMs, r.endMs])).toEqual([
+			[0, 10_000],
+			[10_000, 20_000],
+			[20_000, 30_000],
+		]);
+		const carved = out.find((r) => r.startMs === 10_000);
+		expect(carved?.speed).toBe(2); // the middle segment is retimed
+		expect(carved?.endMs).toBe(20_000);
+	});
+
+	it("normalizes marker order (b dropped before a) to the same carve", () => {
+		n = 0;
+		const regions: ClipRegion[] = [{ id: "base", startMs: 0, endMs: 30_000, speed: 1 }];
+		const forward = carveSpeedRegion(regions, 10_000, 20_000, 2, () => "x");
+		n = 0;
+		const reversed = carveSpeedRegion(regions, 20_000, 10_000, 2, () => "x");
+		expect(reversed.map((r) => [r.startMs, r.endMs, r.speed])).toEqual(
+			forward.map((r) => [r.startMs, r.endMs, r.speed]),
+		);
+	});
+
+	it("keeps regions that don't overlap the carved span untouched", () => {
+		n = 0;
+		const regions: ClipRegion[] = [
+			{ id: "a", startMs: 0, endMs: 5000, speed: 1 },
+			{ id: "b", startMs: 5000, endMs: 30_000, speed: 1 },
+		];
+		const out = carveSpeedRegion(regions, 10_000, 20_000, 0.5, newId);
+		// region "a" is fully left of the carve → preserved verbatim.
+		expect(out.some((r) => r.id === "a" && r.startMs === 0 && r.endMs === 5000)).toBe(true);
+		// stays sorted by start.
+		const starts = out.map((r) => r.startMs);
+		expect(starts).toEqual([...starts].sort((x, y) => x - y));
+	});
+});
 
 function sourceConsumed(clips: ClipRegion[]): number {
 	const spans = getClipSourceSpans(clips);
