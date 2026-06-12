@@ -42,7 +42,10 @@
 		"checksums:release": "node scripts/write-release-checksums.mjs",
 		"release:create": "node scripts/create-release.mjs",
 		"test": "vitest --run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"test:e2e": "vitest run --config vitest.e2e.config.ts",
+		"test:e2e:capture": "vitest run --config vitest.e2e.config.ts e2e/capture.e2e.test.ts",
+		"test:e2e:ui": "vitest run --config vitest.e2e.config.ts e2e/editor-launch.e2e.test.ts e2e/script-panel.e2e.test.ts e2e/clip-speed.e2e.test.ts"
 	},
 	"dependencies": {
 		"@phosphor-icons/react": "^2.1.10",
@@ -112,6 +115,7 @@
 		"vite": "^5.1.6",
 		"vite-plugin-electron": "^0.28.6",
 		"vite-plugin-electron-renderer": "^0.14.5",
+		"playwright": "^1.60.0",
 		"vitest": "^4.0.16",
 		"web-demuxer": "^4.0.0"
 	},
