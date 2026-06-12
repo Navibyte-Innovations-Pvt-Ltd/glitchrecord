@@ -8,8 +8,8 @@ import type {
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
-	SpeedRegion,
 	SourceAudioTrackSettings,
+	SpeedRegion,
 	TrimRegion,
 	WebcamOverlaySettings,
 	ZoomMotionBlurTuning,
@@ -38,6 +38,7 @@ import type {
 	ExportProgress,
 	ExportResult,
 } from "./types";
+import { WorkerVideoEncoder } from "./workerVideoEncoder";
 
 const DEFAULT_MAX_ENCODE_QUEUE = 240;
 const PROGRESS_SAMPLE_WINDOW_MS = 1_000;
@@ -139,7 +140,7 @@ export class VideoExporter {
 	private config: VideoExporterConfig;
 	private streamingDecoder: StreamingVideoDecoder | null = null;
 	private renderer: FrameRenderer | null = null;
-	private encoder: VideoEncoder | null = null;
+	private encoder: WorkerVideoEncoder | null = null;
 	private muxer: VideoMuxer | null = null;
 	private audioProcessor: AudioProcessor | null = null;
 	private cancelled = false;
@@ -154,7 +155,7 @@ export class VideoExporter {
 	private progressSampleStartFrame = 0;
 	private encoderError: Error | null = null;
 	private nativeExportSessionId: string | null = null;
-	private nativeH264Encoder: VideoEncoder | null = null;
+	private nativeH264Encoder: WorkerVideoEncoder | null = null;
 	private nativePendingWrite: Promise<void> = Promise.resolve();
 	private nativeWritePromises = new Set<Promise<void>>();
 	private nativeWriteError: Error | null = null;
@@ -484,8 +485,7 @@ export class VideoExporter {
 	private shouldUseExperimentalNativeExport(): boolean {
 		return (
 			typeof window !== "undefined" &&
-			typeof VideoEncoder !== "undefined" &&
-			typeof VideoEncoder.isConfigSupported === "function" &&
+			typeof WorkerVideoEncoder.isConfigSupported === "function" &&
 			typeof window.electronAPI?.nativeVideoExportStart === "function" &&
 			typeof window.electronAPI?.nativeVideoExportWriteFrame === "function" &&
 			typeof window.electronAPI?.nativeVideoExportFinish === "function" &&
@@ -695,7 +695,7 @@ export class VideoExporter {
 		};
 
 		try {
-			const support = await VideoEncoder.isConfigSupported(encoderConfig);
+			const support = await WorkerVideoEncoder.isConfigSupported(encoderConfig);
 			if (!support.supported) {
 				console.warn(
 					`[VideoExporter] Native H.264 Annex B encoding is unsupported at ${this.config.width}x${this.config.height}`,
@@ -733,7 +733,7 @@ export class VideoExporter {
 		// Initialize the browser-side H.264 encoder (hardware-accelerated where available).
 		// Encoded Annex B chunks are sent over IPC and FFmpeg stream-copies them into MP4.
 		const sessionId = result.sessionId;
-		const encoder = new VideoEncoder({
+		const encoder = new WorkerVideoEncoder({
 			output: (chunk) => {
 				if (this.cancelled || !this.nativeExportSessionId) return;
 				const buffer = new ArrayBuffer(chunk.byteLength);
@@ -1247,7 +1247,7 @@ export class VideoExporter {
 
 		let resolvedCodec: string | null = null;
 
-		this.encoder = new VideoEncoder({
+		this.encoder = new WorkerVideoEncoder({
 			output: (chunk, meta) => {
 				// Capture decoder config metadata from encoder output
 				if (meta?.decoderConfig?.description && !videoDescription) {
@@ -1328,7 +1328,7 @@ export class VideoExporter {
 				codec: candidateCodec,
 				hardwareAcceleration: "prefer-hardware",
 			};
-			const hwSupport = await VideoEncoder.isConfigSupported(hwConfig);
+			const hwSupport = await WorkerVideoEncoder.isConfigSupported(hwConfig);
 			if (hwSupport.supported) {
 				resolvedCodec = candidateCodec;
 				console.log(
@@ -1343,7 +1343,7 @@ export class VideoExporter {
 				codec: candidateCodec,
 				hardwareAcceleration: "prefer-software",
 			};
-			const swSupport = await VideoEncoder.isConfigSupported(swConfig);
+			const swSupport = await WorkerVideoEncoder.isConfigSupported(swConfig);
 			if (swSupport.supported) {
 				resolvedCodec = candidateCodec;
 				console.log(`[VideoExporter] Using software encoding with codec ${candidateCodec}`);
