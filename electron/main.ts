@@ -829,7 +829,10 @@ function createEditorWindowWrapper() {
 	});
 
 	editorWindow.on("close", (event) => {
-		if (isForceClosing || !editorHasUnsavedChanges) {
+		// GG_E2E: tests open the editor with a dev recording (which marks the
+		// project dirty) and then close it — skip the unsaved-changes prompt so
+		// the window closes directly instead of blocking on a native dialog.
+		if (isForceClosing || !editorHasUnsavedChanges || process.env.GG_E2E === "1") {
 			return;
 		}
 
