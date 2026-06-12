@@ -586,7 +586,11 @@ export class ModernVideoExporter {
 				this.renderer = new ModernFrameRenderer({
 					width: this.config.width,
 					height: this.config.height,
-					preferredRenderBackend: undefined,
+					// Respect the configured render backend (threaded from export
+					// options). Undefined keeps the GUI's existing default; automation/
+					// headless can force "webgl" since WebGPU can't configure a canvas
+					// without a real display (see docs/EXPORT-WEBCODECS-BUG.md).
+					preferredRenderBackend: this.config.preferredRenderBackend,
 					wallpaper: this.config.wallpaper,
 					zoomRegions: this.config.zoomRegions,
 					showShadow: this.config.showShadow,
