@@ -1,10 +1,8 @@
 import { WebDemuxer } from "web-demuxer";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import { createReadableMediaResourceFile, resolveMediaResourceUrl } from "./localMediaSource";
 import { getDecodedFrameTimelineOffsetUs } from "./streamingDecoder";
-import {
-	createReadableMediaResourceFile,
-	resolveMediaResourceUrl,
-} from "./localMediaSource";
+import { WorkerVideoDecoder } from "./workerVideoDecoder";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -27,7 +25,7 @@ export interface ForwardFrameSourceMetadata {
  */
 export class ForwardFrameSource {
 	private demuxer: WebDemuxer | null = null;
-	private decoder: VideoDecoder | null = null;
+	private decoder: WorkerVideoDecoder | null = null;
 	private cancelled = false;
 	private metadata: ForwardFrameSourceMetadata | null = null;
 	private pendingFrames: VideoFrame[] = [];
@@ -111,7 +109,7 @@ export class ForwardFrameSource {
 		const codec = this.metadata.codec.toLowerCase();
 		const shouldPreferSoftwareDecode = codec.includes("av01") || codec.includes("av1");
 
-		this.decoder = new VideoDecoder({
+		this.decoder = new WorkerVideoDecoder({
 			output: (frame: VideoFrame) => {
 				if (this.frameResolve) {
 					const resolve = this.frameResolve;
