@@ -776,6 +776,7 @@ export default function TimelineCanvas({
 				height: `max(100%, ${timelineContentMinHeightPx}px, calc(${TIMELINE_AXIS_HEIGHT_PX}px + (100% - ${TIMELINE_AXIS_HEIGHT_PX}px) * ${timelineViewportStretchFactor}))`,
 			}}
 			className="select-none bg-editor-bg relative cursor-pointer group flex flex-col"
+			data-testid="timeline-canvas"
 			onMouseDown={handleTimelineMouseDown}
 			onClick={handleTimelineClick}
 			onMouseEnter={handleTimelineMouseEnter}
