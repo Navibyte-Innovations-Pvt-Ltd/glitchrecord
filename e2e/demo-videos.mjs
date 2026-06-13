@@ -319,14 +319,18 @@ function buildAndRefineScript(visited) {
     libs[1] ? `Compare options like ${libs[1]}.` : "Compare a few options.",
     libs[2] ? `Check ${libs[2]} too — photos, seats, price.` : "Check photos, seats and price.",
   ];
-  // PASS 3 — polish: short, punchy one-liners (each fits a single caption row),
-  // a hook up front and a closing call-to-action.
+  // PASS 3 — polish: more, SHORTER one-liners (each fits a single caption row) so
+  // the voiceover flows continuously across the video instead of a few lines with
+  // long silent gaps. Hook up front, closing call-to-action.
   const v3 = [
     "Need a quiet place to study?",
     "MyAbhyasika finds rooms near you.",
     "Browse libraries by location.",
+    "Filter by rating and price.",
     `Open ${libs[0]}.`,
+    "See its seats and photos.",
     libs[1] ? `Compare ${libs[1]}.` : "Compare nearby options.",
+    libs[2] ? `Check ${libs[2]} too.` : "Check a few more.",
     "Reserve your spot in seconds.",
   ];
   console.log("  SCRIPT refine pass 1 (draft):", JSON.stringify(v1));
@@ -342,76 +346,78 @@ function ttsLine(text, idx) {
     fs.mkdirSync(AUDIO_DIR, { recursive: true });
     const aiff = path.join(AUDIO_DIR, `cue-${idx}.aiff`);
     const wav = path.join(AUDIO_DIR, `cue-${idx}.wav`);
-    try { execFileSync("say", ["-v", "Samantha", "-r", "180", "-o", aiff, text], { stdio: "ignore" }); }
-    catch { execFileSync("say", ["-r", "180", "-o", aiff, text], { stdio: "ignore" }); }
-    execFileSync("ffmpeg", ["-y", "-i", aiff, "-ar", "44100", "-ac", "2", wav], { stdio: "ignore" });
+    try { execFileSync("say", ["-v", "Samantha", "-r", "175", "-o", aiff, text], { stdio: "ignore" }); }
+    catch { execFileSync("say", ["-r", "175", "-o", aiff, text], { stdio: "ignore" }); }
+    // STRIP leading + trailing silence (say pads clips) so lines pack tight — this
+    // is what kills the "choppy / cutting" gaps. areverse trims the tail.
+    const trim = "silenceremove=start_periods=1:start_duration=0:start_threshold=-45dB:detection=peak,areverse,silenceremove=start_periods=1:start_duration=0:start_threshold=-45dB:detection=peak,areverse";
+    execFileSync("ffmpeg", ["-y", "-i", aiff, "-af", trim, "-ar", "44100", "-ac", "2", wav], { stdio: "ignore" });
     const dur = parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", wav]).toString().trim());
-    return { wav, durMs: Number.isFinite(dur) ? Math.round(dur * 1000) : 1500 };
+    return { wav, durMs: Number.isFinite(dur) && dur > 0.2 ? Math.round(dur * 1000) : 1400 };
   } catch (e) { console.log("  tts failed:", e.message.split("\n")[0]); return null; }
 }
 
-// Write the script into the project as timed, on-screen caption cues spread across
-// the edited timeline, generate a matching TTS voiceover per line, and enable
-// captions so the export renders text + plays the narration.
-function injectCaptions(projectPath, lines, totalMsOverride) {
+// Synthesize every line, then pack them into a CONTINUOUS timeline (each line
+// starts a small GAP after the previous one ends) so the voiceover flows with no
+// long silent holes. Returns the cues (with their wav + word timings) and the
+// total narration length — the video gets trimmed to that.
+function buildNarration(lines) {
+  fs.rmSync(AUDIO_DIR, { recursive: true, force: true });
+  // GAP ≥ 500ms: keeps each caption its own BLOCK (renderer merges cues with
+  // smaller gaps), while a ~0.5s pause between spoken lines is natural, not the
+  // 2.5s holes that read as "cutting".
+  const LEAD = 300, GAP = 520;
+  let cursor = LEAD;
+  const cues = [];
+  lines.forEach((text, i) => {
+    const a = ttsLine(text, i);
+    const dur = a ? a.durMs : 1400;
+    const s = cursor, e = cursor + dur;
+    const toks = text.split(/\s+/).filter(Boolean);
+    const wPer = dur / Math.max(1, toks.length);
+    const words = toks.map((t, wi) => ({ text: t, startMs: Math.round(s + wPer * wi), endMs: Math.round(s + wPer * (wi + 1)), leadingSpace: wi > 0 }));
+    cues.push({ id: `cue-${i}`, startMs: s, endMs: e, text, words, wav: a ? a.wav : null });
+    cursor = e + GAP;
+  });
+  return { cues, totalMs: cursor - GAP };
+}
+
+// Write the prebuilt cues into the project as on-screen caption cues (one short
+// line at a time) and enable captions.
+function injectCaptions(projectPath, cues) {
   if (!fs.existsSync(projectPath)) { console.log("  captions: no project to inject into"); return 0; }
   const project = JSON.parse(fs.readFileSync(projectPath, "utf8"));
   const ed = project.editor || (project.editor = {});
-  const clips = ed.clipRegions || [];
-  // Prefer the REAL rendered duration (measured by a first export pass). The clip
-  // timeline can exceed it when a slow-mo clip claims more timeline than the
-  // footage source fills — timing cues to that would leave a silent/blank tail.
-  const totalMs = totalMsOverride && totalMsOverride > 1000
-    ? totalMsOverride
-    : (clips.length ? Math.max(...clips.map((c) => c.endMs)) : 15000);
-  const startAt = Math.min(500, totalMs * 0.04);
-  const endAt = totalMs - Math.min(400, totalMs * 0.03);
-  const span = Math.max(1000, endAt - startAt);
-  const per = span / lines.length;
-  const cues = lines.map((text, i) => {
-    const s = Math.round(startAt + per * i);
-    // Gap ≥ 500ms so each cue is its own caption BLOCK (renderer merges cues with
-    // smaller gaps into one block shown together — that stacked all 6 before).
-    const e = Math.round(startAt + per * (i + 1) - 650);
-    const toks = text.split(/\s+/).filter(Boolean);
-    const wPer = (e - s) / Math.max(1, toks.length);
-    const words = toks.map((t, wi) => ({ text: t, startMs: Math.round(s + wPer * wi), endMs: Math.round(s + wPer * (wi + 1)), leadingSpace: wi > 0 }));
-    return { id: `cue-${i}`, startMs: s, endMs: e, text, words };
-  });
-  ed.autoCaptions = cues;
+  ed.autoCaptions = cues.map(({ id, startMs, endMs, text, words }) => ({ id, startMs, endMs, text, words }));
   // maxRows: 1 → one short line at a time (a 2-row caption shows the current AND
   // previous cue together, which reads as "stacked").
   ed.autoCaptionSettings = { ...(ed.autoCaptionSettings || {}), enabled: true, maxRows: 1, fontSize: 34, bottomOffset: 8 };
   fs.writeFileSync(projectPath, JSON.stringify(project));
-  console.log(`  captions: ${cues.length} cues across ${totalMs}ms, enabled`);
-  return cues; // caller muxes the voiceover from these timings
+  console.log(`  captions: ${cues.length} cues enabled (continuous timeline)`);
 }
 
-// Mux a TTS voiceover into the exported mp4: synthesize each caption line, delay
-// it to that cue's start time, mix into one track, and replace the (silent) audio.
-// Done with ffmpeg AFTER export rather than via editor audio regions — those get
-// dropped inside time-remapped (speed-edited) clips, leaving a silent tail.
-function muxNarration(videoPath, cues) {
-  if (!fs.existsSync(videoPath) || !cues.length) return;
-  fs.rmSync(AUDIO_DIR, { recursive: true, force: true });
+// Finalize: trim the export to the narration length (no dead tail) AND mux the
+// pre-synthesized voiceover (each line delayed to its cue start, mixed into one
+// track) — both in a single ffmpeg pass. Done after export (not via editor audio
+// regions, which get dropped inside speed-remapped clips, leaving a silent tail).
+function finalizeWithNarration(videoPath, cues, totalMs) {
+  if (!fs.existsSync(videoPath)) return;
+  const withWav = cues.filter((c) => c.wav && fs.existsSync(c.wav));
+  if (!withWav.length) { console.log("  narration: TTS unavailable, leaving as-is"); return; }
   const inputs = [], filters = [], labels = [];
-  let idx = 1; // input 0 is the video
-  cues.forEach((c, i) => {
-    const a = ttsLine(c.text, i);
-    if (!a) return;
-    inputs.push("-i", a.wav);
-    filters.push(`[${idx}:a]adelay=${c.startMs}|${c.startMs}[d${i}]`);
-    labels.push(`[d${i}]`);
-    idx++;
+  withWav.forEach((c, k) => {
+    inputs.push("-i", c.wav);
+    filters.push(`[${k + 1}:a]adelay=${c.startMs}|${c.startMs}[d${k}]`);
+    labels.push(`[d${k}]`);
   });
-  if (!labels.length) { console.log("  narration: TTS unavailable, leaving silent"); return; }
+  const endSec = ((totalMs + 500) / 1000).toFixed(2); // small tail after the last line
   const tmp = `${videoPath}.tmp.mp4`;
   const fc = `${filters.join(";")};${labels.join("")}amix=inputs=${labels.length}:normalize=0[aout]`;
   try {
-    execFileSync("ffmpeg", ["-y", "-i", videoPath, ...inputs, "-filter_complex", fc, "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", tmp], { stdio: "ignore" });
+    execFileSync("ffmpeg", ["-y", "-i", videoPath, ...inputs, "-filter_complex", fc, "-map", "0:v", "-map", "[aout]", "-t", endSec, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "160k", tmp], { stdio: "ignore" });
     fs.renameSync(tmp, videoPath);
-    console.log(`  narration: muxed ${labels.length} voiceover lines into the export`);
-  } catch (e) { console.log("  narration mux failed:", e.message.split("\n")[0]); fs.rmSync(tmp, { force: true }); }
+    console.log(`  narration: muxed ${labels.length} lines + trimmed to ${endSec}s`);
+  } catch (e) { console.log("  narration/trim failed:", e.message.split("\n")[0]); fs.rmSync(tmp, { force: true }); }
 }
 
 await assertPortFree(7337);
@@ -425,14 +431,11 @@ await recordEdits();
 // the whole video instead of cutting out in a silent tail.
 console.log("SCRIPT — writing + refining narration (3 passes)…");
 const script = buildAndRefineScript(visited);
-
-console.log("EXPORT pass 1 — measuring rendered duration…");
-await exportEdited();
-const durMs = fs.existsSync(EXPORTED)
-  ? Math.round(parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", EXPORTED]).toString().trim()) * 1000)
-  : 0;
-console.log(`  measured export duration: ${durMs}ms`);
-const cues = injectCaptions(PROJECT, script, durMs);
+// Synthesize the voiceover + a CONTINUOUS timeline, then put captions on the same
+// timeline. The video is trimmed to the narration length at the end.
+const { cues, totalMs: narrMs } = buildNarration(script);
+console.log(`  narration timeline: ${cues.length} lines, ${narrMs}ms continuous`);
+injectCaptions(PROJECT, cues);
 
 // concat browse + edits → one routine video (video 1)
 const list = path.join(OUT, "_list.txt");
@@ -440,10 +443,10 @@ fs.writeFileSync(list, `file '${BROWSE_MP4}'\nfile '${EDIT_MP4}'\n`);
 execFileSync("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", ROUTINE], { stdio: "ignore" });
 fs.rmSync(list, { force: true });
 
-console.log("EXPORT pass 2 — final export with captions (WebGL)…");
+console.log("EXPORT — final export with captions (WebGL)…");
 await exportEdited();
-console.log("NARRATION — muxing synced voiceover into the export…");
-muxNarration(EXPORTED, cues);
+console.log("NARRATION — muxing continuous voiceover + trimming to narration length…");
+finalizeWithNarration(EXPORTED, cues, narrMs);
 
 const probe = (f) => fs.existsSync(f) ? execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f]).toString().trim() : "MISSING";
 console.log(`\n2 VIDEOS in ${OUT}:`);
