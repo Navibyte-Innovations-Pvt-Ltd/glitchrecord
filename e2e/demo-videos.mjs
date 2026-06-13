@@ -77,9 +77,23 @@ async function recordBrowse() {
   const events = [];
   const wss = new WebSocketServer({ port: 7337 });
   const sid = `demo-${process.pid}`;
+  // The bridge port (7337) is shared: the USER'S real Chrome extension also
+  // connects here, so a recording:start reaches it too and turns its icon red.
+  // Track every chrome client and send recording:stop to ALL of them on teardown
+  // so no extension (demo's or the user's) is left stuck recording.
+  const chromeClients = new Set();
+  const stopAll = () => {
+    for (const c of chromeClients) {
+      try { c.send(JSON.stringify({ type: "recording:stop", sessionId: sid })); } catch { /* */ }
+    }
+  };
   wss.on("connection", (ws, req) => {
     const role = new URL(req.url ?? "/", "http://localhost").searchParams.get("role");
-    if (role === "chrome") ws.send(JSON.stringify({ type: "recording:start", sessionId: sid, repoId: "myabhyasika", repoName: "myabhyasika" }));
+    if (role === "chrome") {
+      chromeClients.add(ws);
+      ws.on("close", () => chromeClients.delete(ws));
+      ws.send(JSON.stringify({ type: "recording:start", sessionId: sid, repoId: "myabhyasika", repoName: "myabhyasika" }));
+    }
     ws.on("message", (r) => { try { const m = JSON.parse(r.toString()); if (m.type === "event:live" && m.event) events.push(m.event); } catch { /* */ } });
   });
 
