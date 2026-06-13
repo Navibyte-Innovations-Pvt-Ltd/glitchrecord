@@ -156,6 +156,10 @@ async function recordBrowse() {
   } catch (e) { console.log("  browse partial:", e.message.split("\n")[0], "at", page.url()); }
   await sleep(1500);
 
+  // Stop recording on every connected extension (incl. the user's real one) and
+  // give the messages a beat to flush BEFORE closing anything → no stuck-red icon.
+  stopAll();
+  await sleep(800);
   const video = page.video();
   await ctx.close(); wss.close();
   const webm = await video.path();
