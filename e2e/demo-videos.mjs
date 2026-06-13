@@ -353,12 +353,17 @@ function ttsLine(text, idx) {
 // Write the script into the project as timed, on-screen caption cues spread across
 // the edited timeline, generate a matching TTS voiceover per line, and enable
 // captions so the export renders text + plays the narration.
-function injectCaptions(projectPath, lines) {
+function injectCaptions(projectPath, lines, totalMsOverride) {
   if (!fs.existsSync(projectPath)) { console.log("  captions: no project to inject into"); return 0; }
   const project = JSON.parse(fs.readFileSync(projectPath, "utf8"));
   const ed = project.editor || (project.editor = {});
   const clips = ed.clipRegions || [];
-  const totalMs = clips.length ? Math.max(...clips.map((c) => c.endMs)) : 15000;
+  // Prefer the REAL rendered duration (measured by a first export pass). The clip
+  // timeline can exceed it when a slow-mo clip claims more timeline than the
+  // footage source fills — timing cues to that would leave a silent/blank tail.
+  const totalMs = totalMsOverride && totalMsOverride > 1000
+    ? totalMsOverride
+    : (clips.length ? Math.max(...clips.map((c) => c.endMs)) : 15000);
   const startAt = Math.min(500, totalMs * 0.04);
   const endAt = totalMs - Math.min(400, totalMs * 0.03);
   const span = Math.max(1000, endAt - startAt);
@@ -377,21 +382,36 @@ function injectCaptions(projectPath, lines) {
   // maxRows: 1 → one short line at a time (a 2-row caption shows the current AND
   // previous cue together, which reads as "stacked").
   ed.autoCaptionSettings = { ...(ed.autoCaptionSettings || {}), enabled: true, maxRows: 1, fontSize: 34, bottomOffset: 8 };
+  fs.writeFileSync(projectPath, JSON.stringify(project));
+  console.log(`  captions: ${cues.length} cues across ${totalMs}ms, enabled`);
+  return cues; // caller muxes the voiceover from these timings
+}
 
-  // VOICEOVER — one TTS clip per line, placed as an audio region at the cue start
-  // so the narration plays in sync with the captions. The export muxes audio
-  // regions into the output.
+// Mux a TTS voiceover into the exported mp4: synthesize each caption line, delay
+// it to that cue's start time, mix into one track, and replace the (silent) audio.
+// Done with ffmpeg AFTER export rather than via editor audio regions — those get
+// dropped inside time-remapped (speed-edited) clips, leaving a silent tail.
+function muxNarration(videoPath, cues) {
+  if (!fs.existsSync(videoPath) || !cues.length) return;
   fs.rmSync(AUDIO_DIR, { recursive: true, force: true });
-  const audioRegions = [];
+  const inputs = [], filters = [], labels = [];
+  let idx = 1; // input 0 is the video
   cues.forEach((c, i) => {
     const a = ttsLine(c.text, i);
-    if (a) audioRegions.push({ id: `narr-${i}`, startMs: c.startMs, endMs: c.startMs + a.durMs, audioPath: a.wav, volume: 1, trackIndex: 0 });
+    if (!a) return;
+    inputs.push("-i", a.wav);
+    filters.push(`[${idx}:a]adelay=${c.startMs}|${c.startMs}[d${i}]`);
+    labels.push(`[d${i}]`);
+    idx++;
   });
-  ed.audioRegions = [...(ed.audioRegions || []), ...audioRegions];
-
-  fs.writeFileSync(projectPath, JSON.stringify(project));
-  console.log(`  captions: ${cues.length} cues + ${audioRegions.length} voiceover clips across ${totalMs}ms, enabled`);
-  return cues.length;
+  if (!labels.length) { console.log("  narration: TTS unavailable, leaving silent"); return; }
+  const tmp = `${videoPath}.tmp.mp4`;
+  const fc = `${filters.join(";")};${labels.join("")}amix=inputs=${labels.length}:normalize=0[aout]`;
+  try {
+    execFileSync("ffmpeg", ["-y", "-i", videoPath, ...inputs, "-filter_complex", fc, "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", tmp], { stdio: "ignore" });
+    fs.renameSync(tmp, videoPath);
+    console.log(`  narration: muxed ${labels.length} voiceover lines into the export`);
+  } catch (e) { console.log("  narration mux failed:", e.message.split("\n")[0]); fs.rmSync(tmp, { force: true }); }
 }
 
 await assertPortFree(7337);
@@ -400,11 +420,19 @@ const visited = await recordBrowse();
 console.log("PART B — GlitchRecord edits on the footage…");
 await recordEdits();
 
-// SCRIPT — author + refine 3×, then attach to the video as on-screen captions so
-// the export narrates the flow (uses the libraries that were actually visited).
+// SCRIPT — author + refine 3×, then attach as captions + TTS voiceover. Timed to
+// the REAL export duration (measured by a first export pass) so narration spans
+// the whole video instead of cutting out in a silent tail.
 console.log("SCRIPT — writing + refining narration (3 passes)…");
 const script = buildAndRefineScript(visited);
-injectCaptions(PROJECT, script);
+
+console.log("EXPORT pass 1 — measuring rendered duration…");
+await exportEdited();
+const durMs = fs.existsSync(EXPORTED)
+  ? Math.round(parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", EXPORTED]).toString().trim()) * 1000)
+  : 0;
+console.log(`  measured export duration: ${durMs}ms`);
+const cues = injectCaptions(PROJECT, script, durMs);
 
 // concat browse + edits → one routine video (video 1)
 const list = path.join(OUT, "_list.txt");
@@ -412,8 +440,10 @@ fs.writeFileSync(list, `file '${BROWSE_MP4}'\nfile '${EDIT_MP4}'\n`);
 execFileSync("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", ROUTINE], { stdio: "ignore" });
 fs.rmSync(list, { force: true });
 
-console.log("PART C — exporting the edited video (WebGL)…");
+console.log("EXPORT pass 2 — final export with captions (WebGL)…");
 await exportEdited();
+console.log("NARRATION — muxing synced voiceover into the export…");
+muxNarration(EXPORTED, cues);
 
 const probe = (f) => fs.existsSync(f) ? execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f]).toString().trim() : "MISSING";
 console.log(`\n2 VIDEOS in ${OUT}:`);
