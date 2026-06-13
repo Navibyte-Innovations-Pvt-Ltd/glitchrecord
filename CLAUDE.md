@@ -35,3 +35,6 @@ Full methodology, lanes, and the bug→test→scenario workflow live in
 - `GLITCHBRIDGE_PORT` overrides the fixed 7337 for isolated unit tests.
 - See the repo-root `CLAUDE.md` for the full GlitchRecord ↔ extension capture
   pipeline, event model, and capture-chain gotchas.
+- Explain gestures (how users mark what the AI narrates — hold Shift on a
+  component, hold Shift across siblings for a cluster, select text + tap Shift):
+  see [docs/EXPLAIN-GESTURES.md](docs/EXPLAIN-GESTURES.md).
