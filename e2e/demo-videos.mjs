@@ -52,6 +52,22 @@ const CURSOR_JS = `(() => {
 })();`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Fail fast with a clear message if the bridge port is taken (GlitchRecord dev
+// running, or a stale run) — otherwise WSS creation throws a raw EADDRINUSE.
+import net from "node:net";
+async function assertPortFree(port) {
+  await new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once("error", (e) =>
+      e.code === "EADDRINUSE"
+        ? reject(new Error(`Port ${port} is in use. Close the GlitchRecord dev app (or kill the stale process: \`lsof -ti :${port} | xargs kill -9\`) and re-run.`))
+        : reject(e),
+    );
+    srv.once("listening", () => srv.close(() => resolve()));
+    srv.listen(port);
+  });
+}
 function toMp4(webm, mp4) {
   execFileSync("ffmpeg", ["-y", "-i", webm, "-vf", "scale=1280:800,setsar=1,fps=30", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4], { stdio: "ignore" });
 }
@@ -84,6 +100,16 @@ async function recordBrowse() {
   try {
     await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 45000 }); await sleep(2500);
     await page.evaluate(CURSOR_JS).catch(() => {});
+    // Dismiss the two on-load modals that overlay the cards (else clicks are
+    // intercepted): the location prompt (decline — don't grant location) and the
+    // language modal behind it.
+    const dismiss = async (re) => {
+      const el = page.getByText(re).first();
+      if (await el.count().catch(() => 0)) { await clickEl(el).catch(() => {}); await sleep(600); }
+    };
+    await dismiss(/^Not Now$/i);            // "Find Libraries Near You" → decline location
+    await dismiss(/Skip,?\s*use English/i); // language modal
+    await sleep(800);
     await scrollBy(600);                  // look down the list of libraries
     // The list re-renders after each navigation, so capture target card hrefs up
     // front, then visit 2–3 of them. Library cards are anchors to /library/<slug>.
@@ -234,6 +260,7 @@ async function exportEdited() {
   }
 }
 
+await assertPortFree(7337);
 console.log("PART A — public browse on", SITE, "…");
 await recordBrowse();
 console.log("PART B — GlitchRecord edits on the footage…");
