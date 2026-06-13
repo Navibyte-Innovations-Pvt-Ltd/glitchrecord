@@ -36,6 +36,31 @@ const CURSOR_JS = `(() => {
   addEventListener('mousemove',e=>{d.style.left=e.clientX+'px';d.style.top=e.clientY+'px';},true);
 })();`;
 
+// Auto-dismiss on-load modals for the WHOLE session (they reappear after each
+// navigation and stay over the page): location "Not Now", language "Skip, use
+// English", library login "Skip for now", and the "Autopilot" promo's ✕.
+const MODAL_DISMISS_JS = `(() => {
+  if (window.__ggModalKiller) return; window.__ggModalKiller = 1;
+  let last = 0;
+  const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const DECLINE = /^(Skip for now|Not Now|Skip, use English|Maybe later|Dismiss|No,? thanks|Close)$/i;
+  const kill = () => {
+    const now = Date.now(); if (now - last < 200) return;
+    for (const el of document.querySelectorAll('button, a, [role="button"], span, div, p')) {
+      const t = (el.textContent || '').trim();
+      if (t.length <= 24 && DECLINE.test(t) && vis(el)) { try { el.click(); } catch (e) {} last = now; return; }
+    }
+    for (const el of document.querySelectorAll('button, [role="button"], [aria-label]')) {
+      const al = (el.getAttribute('aria-label') || '').trim();
+      const t = (el.textContent || '').trim();
+      if ((/^(close|dismiss)$/i.test(al) || /^[✕✖×⨯]$/.test(t)) && vis(el)) { try { el.click(); } catch (e) {} last = now; return; }
+    }
+  };
+  const start = () => { try { new MutationObserver(kill).observe(document.body, { childList: true, subtree: true }); } catch (e) {} kill(); };
+  if (document.body) start(); else addEventListener('DOMContentLoaded', start);
+  setInterval(kill, 800);
+})();`;
+
 // Fail fast if the bridge port is taken; also used as a gate BETWEEN scenarios
 // (wss.close() doesn't release the port synchronously).
 async function assertPortFree(port) {
@@ -119,6 +144,7 @@ async function runScenario(n, name, flow) {
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check"],
   });
   await ctx.addInitScript({ content: CURSOR_JS });
+  await ctx.addInitScript({ content: MODAL_DISMISS_JS });
   let [w] = ctx.serviceWorkers(); if (!w) await ctx.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => {});
   const page = ctx.pages()[0] ?? (await ctx.newPage());
 
