@@ -289,6 +289,72 @@ async function scenarioExplain({ page, scrollBy, dismissModals }) {
   await sleep(800);
 }
 
+// S4 — CLUSTER explain (the key intention test): on the signup page the user
+// shift-hovers EACH auth option (Google, phone OTP, email) within seconds → a
+// CLUSTER of notes on sibling buttons. The scripter must read the INTENTION
+// ("you can sign up three ways — Google, phone, or email"), NOT narrate one or
+// collapse it. Tests the prompt's note-clustering rule.
+async function scenarioCluster({ page, scrollBy, dismissModals }) {
+  await page.goto("https://www.myabhyasika.in/signup", { waitUntil: "domcontentloaded", timeout: 45000 }); await sleep(2500);
+  await page.evaluate(CURSOR_JS).catch(() => {});
+  await dismissModals();
+  await scrollBy(200);
+  const holdShiftOn = async (loc, name) => {
+    if (!(await loc.count().catch(() => 0))) return false;
+    await loc.scrollIntoViewIfNeeded().catch(() => {});
+    const box = await loc.boundingBox().catch(() => null);
+    if (!box) return false;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
+    await sleep(500);
+    await page.keyboard.down("Shift"); await sleep(750); await page.keyboard.up("Shift");
+    await sleep(700);
+    console.log(`  S4 marked: ${name}`);
+    return true;
+  };
+  // sibling auth options — shift-hover EACH within seconds (a cluster, NOT one)
+  const targets = [
+    [page.getByText(/Continue with Google/i).first(), "Google"],
+    [page.getByText(/OTP via WhatsApp|Login with phone/i).first(), "phone"],
+    [page.getByText(/Login with email|Continue with email/i).first(), "email"],
+  ];
+  let marked = 0;
+  for (const [loc, name] of targets) { if (await holdShiftOn(loc, name)) marked++; }
+  console.log(`  S4 cluster: marked ${marked} sibling auth options`);
+}
+
+// S5 — SELECT-TEXT explain: open a library, HIGHLIGHT a specific line (the price
+// / "About the space" text), then TAP Shift → an "explain-selection" note carrying
+// that exact text. Tests whether the scripter explains the highlighted words.
+async function scenarioSelectExplain({ page, scrollBy, dismissModals }) {
+  await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 45000 }); await sleep(2500);
+  await page.evaluate(CURSOR_JS).catch(() => {});
+  await dismissModals();
+  await scrollBy(400);
+  const hrefs = await page.locator('a[href^="/library/"]').evaluateAll(
+    (els) => [...new Set(els.map((e) => e.getAttribute("href")).filter(Boolean))],
+  ).catch(() => []);
+  if (hrefs[0]) await page.goto(new URL(hrefs[0], SITE).href, { waitUntil: "domcontentloaded" }).catch(() => {});
+  await sleep(1800); await page.evaluate(CURSOR_JS).catch(() => {});
+  await dismissModals();
+  await scrollBy(300);
+  // Pick a meaningful text line to highlight (price → about-the-space → any heading).
+  let target = null;
+  for (const re of [/₹.*month/i, /About the space|premier destination|focused study|Welcome to/i, /Study Room Timings|Amenities/i]) {
+    const el = page.getByText(re).first();
+    if (await el.count().catch(() => 0)) { target = el; break; }
+  }
+  if (!target) { console.log("  S5: no text to select"); return; }
+  await target.scrollIntoViewIfNeeded().catch(() => {});
+  await target.selectText().catch(() => {});          // HIGHLIGHT the text
+  await sleep(700);
+  const box = await target.boundingBox().catch(() => null);
+  if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  await sleep(400);
+  await page.keyboard.down("Shift"); await sleep(350); await page.keyboard.up("Shift"); // brief tap WITH selection
+  await sleep(900);
+  console.log("  S5: selected text + tapped Shift");
+}
+
 // ───────────────────────── main ───────────────────────────────────────────────
 const token = readToken();
 if (!token) { console.error("No auth token in", AUTH_SRC, "— log in to GlitchRecord first."); process.exit(1); }
@@ -300,6 +366,8 @@ const scenarios = [
   ["Owner viewing their own library page", scenarioOwner],
   ["Student browsing the site", scenarioStudent],
   ["Explain-this on a component", scenarioExplain],
+  ["Explain-this CLUSTER: signup options", scenarioCluster],
+  ["Explain-this SELECTION: highlight + Shift", scenarioSelectExplain],
 ];
 
 const results = [];
