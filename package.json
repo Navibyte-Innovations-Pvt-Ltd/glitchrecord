@@ -49,7 +49,8 @@
 		"test:e2e:ui": "vitest run --config vitest.e2e.config.ts e2e/editor-launch.e2e.test.ts e2e/script-panel.e2e.test.ts e2e/clip-speed.e2e.test.ts e2e/editing-flow.e2e.test.ts e2e/editor-features.e2e.test.ts e2e/clip-stretch.e2e.test.ts",
 		"test:all": "bun run test && bun run test:e2e:ui && bun run test:e2e:export",
 		"demo:videos": "node e2e/demo-videos.mjs",
-		"script-quality": "node e2e/script-quality.mjs"
+		"script-quality": "node e2e/script-quality.mjs",
+		"script-quality:web": "node e2e/script-quality-web.mjs"
 	},
 	"dependencies": {
 		"@phosphor-icons/react": "^2.1.10",
