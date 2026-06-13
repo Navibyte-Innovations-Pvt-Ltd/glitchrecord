@@ -130,9 +130,17 @@ async function runScenario(n, name, flow) {
   const dismissModals = async () => {
     await dismiss(/^Not Now$/i);            // location prompt — decline (do NOT grant)
     await dismiss(/Skip,?\s*use English/i); // language modal
+    await dismiss(/^Skip for now$/i);       // library-page login modal (intercepts clicks + hold-Shift)
     await sleep(500);
   };
   const helpers = { page, hoverEl, clickEl, scrollBy, dismiss, dismissModals, sleep, SITE, CURSOR_JS };
+
+  // Open the landing page FIRST and wait for the extension to actually be
+  // capturing before driving the flow — otherwise the home navigate (which now
+  // carries the hero tagline that grounds the product framing) is missed.
+  await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+  for (let i = 0; i < 30 && !connected; i++) await sleep(500);
+  await sleep(2500); // recording:start → CAPTURE_START → content script attaches + emits home navigate
 
   try {
     await flow(helpers);
@@ -187,6 +195,7 @@ async function scenarioOwner({ page, clickEl, hoverEl, scrollBy, dismissModals }
     }
   }
   await sleep(1800); await page.evaluate(CURSOR_JS).catch(() => {});
+  await dismissModals();                          // library-page login modal blocks tab clicks
   await scrollBy(500); await sleep(400);          // overview
   for (const tab of [/^AMENITIES$/i, /^REVIEWS$/i, /^LOCATION$/i]) {
     const t = page.getByText(tab).first();
@@ -224,6 +233,7 @@ async function scenarioStudent({ page, clickEl, scrollBy, dismissModals }) {
       await page.goto(new URL(href, SITE).href, { waitUntil: "domcontentloaded" }).catch(() => {});
     }
     await sleep(1600); await page.evaluate(CURSOR_JS).catch(() => {});
+    await dismissModals();               // library-page login modal blocks interactions
     if (first) {
       // On the FIRST library, dig into pricing + seats/timings + Book Seat.
       await scrollBy(450);
@@ -252,6 +262,7 @@ async function scenarioExplain({ page, scrollBy, dismissModals }) {
   const href = hrefs[0];
   if (href) await page.goto(new URL(href, SITE).href, { waitUntil: "domcontentloaded" }).catch(() => {});
   await sleep(1800); await page.evaluate(CURSOR_JS).catch(() => {});
+  await dismissModals();                 // library-page login modal would block the hold-Shift target
   await scrollBy(300);
 
   // Pick a target component, in order of preference.
@@ -265,12 +276,16 @@ async function scenarioExplain({ page, scrollBy, dismissModals }) {
   await target.scrollIntoViewIfNeeded().catch(() => {});
   const box = await target.boundingBox().catch(() => null);
   if (!box) { console.log("  S3: target had no bounding box"); return; }
-  // Move ONTO the target, settle, then HOLD Shift ~900ms with no other key/move.
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 12 });
-  await sleep(600);
+  // Move ONTO the target, settle, then HOLD Shift LONG (~1700ms — a longer hold
+  // signals "explain this in depth"). Linger a beat before + after so the session
+  // has enough duration/word-budget for the model to actually explain it.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 14 });
+  await sleep(1000);
   await page.keyboard.down("Shift");
-  await sleep(900);
+  await sleep(1700);
   await page.keyboard.up("Shift");
+  await sleep(1200);
+  await scrollBy(200); // small context beat after the marked component
   await sleep(800);
 }
 
