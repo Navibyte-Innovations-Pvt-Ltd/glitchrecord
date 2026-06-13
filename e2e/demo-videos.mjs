@@ -52,6 +52,35 @@ const CURSOR_JS = `(() => {
   addEventListener('mouseup',()=>{d.style.width='20px';d.style.height='20px';d.style.background='rgba(255,40,40,.5)';},true);
 })();`;
 
+// Auto-dismiss the on-load modals (location prompt, language picker, and the
+// library-page "Welcome / Login … Skip for now" dialog) for the WHOLE session —
+// they reappear after navigation and a one-shot dismiss misses them, leaving the
+// dialog stuck over the page while we scroll/act. A MutationObserver + 1s tick
+// clicks whichever dismiss control is visible, whenever it appears.
+const MODAL_DISMISS_JS = `(() => {
+  if (window.__ggModalKiller) return; window.__ggModalKiller = 1;
+  let last = 0;
+  const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const DECLINE = /^(Skip for now|Not Now|Skip, use English|Maybe later|Dismiss|No,? thanks|Close)$/i;
+  const kill = () => {
+    const now = Date.now(); if (now - last < 200) return;
+    // 1. text dismiss/decline buttons (location "Not Now", login "Skip for now", language…)
+    for (const el of document.querySelectorAll('button, a, [role="button"], span, div, p')) {
+      const t = (el.textContent || '').trim();
+      if (t.length <= 24 && DECLINE.test(t) && vis(el)) { try { el.click(); } catch (e) {} last = now; return; }
+    }
+    // 2. icon close buttons (the "Autopilot" promo + modal ✕) — aria-label or a lone ✕/×
+    for (const el of document.querySelectorAll('button, [role="button"], [aria-label]')) {
+      const al = (el.getAttribute('aria-label') || '').trim();
+      const t = (el.textContent || '').trim();
+      if ((/^(close|dismiss)$/i.test(al) || /^[✕✖×⨯]$/.test(t)) && vis(el)) { try { el.click(); } catch (e) {} last = now; return; }
+    }
+  };
+  const start = () => { try { new MutationObserver(kill).observe(document.body, { childList: true, subtree: true }); } catch (e) {} kill(); };
+  if (document.body) start(); else addEventListener('DOMContentLoaded', start);
+  setInterval(kill, 800);
+})();`;
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Fail fast with a clear message if the bridge port is taken (GlitchRecord dev
@@ -105,6 +134,7 @@ async function recordBrowse() {
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check"],
   });
   await ctx.addInitScript({ content: CURSOR_JS });
+  await ctx.addInitScript({ content: MODAL_DISMISS_JS });
   let [w] = ctx.serviceWorkers(); if (!w) await ctx.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => {});
   const page = ctx.pages()[0] ?? (await ctx.newPage());
 
