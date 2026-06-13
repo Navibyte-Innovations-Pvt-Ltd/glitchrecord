@@ -35,6 +35,7 @@ const EXPORTED = path.join(OUT, "routine-EXPORTED.mp4");
 // Footage the editor opens + exports (project.json is auto-saved next to it).
 const FOOTAGE = path.join(os.tmpdir(), "demo-footage.mp4");
 const PROJECT = `${FOOTAGE}.project.json`;
+const AUDIO_DIR = path.join(os.tmpdir(), "demo-narration");
 const SITE = "https://www.myabhyasika.in/";
 const SIZE = { width: 1280, height: 800 };
 fs.mkdirSync(OUT, { recursive: true });
@@ -204,25 +205,30 @@ async function recordEdits() {
   let box = await canvas.boundingBox();
   await move(box.x + box.width * 0.25, box.y + 6); await win.mouse.click(box.x + box.width * 0.25, box.y + 6); await sleep(2500);
 
-  // EDIT 1 — drag the clip's RIGHT edge inward → speeds the clip up (real drag)
+  // EDIT 1 — speed the clip up to 2x via the speed panel. (Deterministic: a
+  // pixel-drag's speed depends on the timeline zoom and could blow the duration
+  // up; the drag-stretch gesture itself is covered by clip-stretch.e2e.test.ts.)
   const clip = win.locator('[data-item-kind="clip"]').first();
   await clip.click(); await sleep(800);
-  const cb = await clip.boundingBox();
-  const ex = cb.x + cb.width - 6, ey = cb.y + cb.height / 2;
-  await move(ex, ey); await win.mouse.down(); await sleep(400);
-  const tgt = cb.x + cb.width * 0.5;
-  for (let i = 1; i <= 14; i++) { await win.mouse.move(ex + (tgt - ex) * i / 14, ey, { steps: 2 }); await sleep(55); }
-  await sleep(400); await win.mouse.up(); await sleep(1500);
+  await win.locator('[data-testid="clip-speed-2"]').first().click().catch(() => {});
+  await sleep(1500);
   const sp1 = await win.locator('[data-testid="clip-speed-badge"]').first().textContent().catch(() => "?");
-  console.log("  EDIT1 drag→speed:", sp1);
+  console.log("  EDIT1 speed 2x via panel:", sp1);
 
-  // EDIT 2 — shift+click two points to carve a speed point on a portion
+  // EDIT 2 — shift+click two points to carve a segment, THEN slow it to 0.5x so
+  // the stretch is VISIBLE. (Carving alone keeps the segment at the clip's current
+  // speed — if everything's already 2x, the carved clip looks identical. Changing
+  // its speed is what demonstrates the per-segment stretch.) Carve auto-selects
+  // the carved clip, so the speed panel acts on it.
   box = await canvas.boundingBox();
   await win.keyboard.down("Shift");
-  await move(box.x + box.width * 0.15, box.y + 6); await win.mouse.click(box.x + box.width * 0.15, box.y + 6); await sleep(500);
-  await move(box.x + box.width * 0.3, box.y + 6); await win.mouse.click(box.x + box.width * 0.3, box.y + 6);
+  await move(box.x + box.width * 0.4, box.y + 6); await win.mouse.click(box.x + box.width * 0.4, box.y + 6); await sleep(500);
+  await move(box.x + box.width * 0.55, box.y + 6); await win.mouse.click(box.x + box.width * 0.55, box.y + 6);
   await win.keyboard.up("Shift"); await sleep(1500);
-  console.log("  EDIT2 shift+click speed point done");
+  await win.locator('[data-testid="clip-speed-0.5"]').first().click().catch(() => {});
+  await sleep(1500);
+  const carvedSpeeds = await win.locator('[data-testid="clip-speed-badge"]').allTextContents().catch(() => []);
+  console.log("  EDIT2 carve → slow 0.5x | clip speeds:", JSON.stringify(carvedSpeeds));
 
   // EDIT 3 — ZOOM-IN effects (the "zoom on click" look). Move the playhead to a
   // few moments and click "Add Zoom" → punch-in zoom regions that the exporter
@@ -329,8 +335,24 @@ function buildAndRefineScript(visited) {
   return v3;
 }
 
+// Synthesize a line of narration to a wav using macOS `say` (no API key). Returns
+// { wav, durMs } or null if TTS is unavailable.
+function ttsLine(text, idx) {
+  try {
+    fs.mkdirSync(AUDIO_DIR, { recursive: true });
+    const aiff = path.join(AUDIO_DIR, `cue-${idx}.aiff`);
+    const wav = path.join(AUDIO_DIR, `cue-${idx}.wav`);
+    try { execFileSync("say", ["-v", "Samantha", "-r", "180", "-o", aiff, text], { stdio: "ignore" }); }
+    catch { execFileSync("say", ["-r", "180", "-o", aiff, text], { stdio: "ignore" }); }
+    execFileSync("ffmpeg", ["-y", "-i", aiff, "-ar", "44100", "-ac", "2", wav], { stdio: "ignore" });
+    const dur = parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", wav]).toString().trim());
+    return { wav, durMs: Number.isFinite(dur) ? Math.round(dur * 1000) : 1500 };
+  } catch (e) { console.log("  tts failed:", e.message.split("\n")[0]); return null; }
+}
+
 // Write the script into the project as timed, on-screen caption cues spread across
-// the edited timeline, and enable captions so the export renders them.
+// the edited timeline, generate a matching TTS voiceover per line, and enable
+// captions so the export renders text + plays the narration.
 function injectCaptions(projectPath, lines) {
   if (!fs.existsSync(projectPath)) { console.log("  captions: no project to inject into"); return 0; }
   const project = JSON.parse(fs.readFileSync(projectPath, "utf8"));
@@ -355,8 +377,20 @@ function injectCaptions(projectPath, lines) {
   // maxRows: 1 → one short line at a time (a 2-row caption shows the current AND
   // previous cue together, which reads as "stacked").
   ed.autoCaptionSettings = { ...(ed.autoCaptionSettings || {}), enabled: true, maxRows: 1, fontSize: 34, bottomOffset: 8 };
+
+  // VOICEOVER — one TTS clip per line, placed as an audio region at the cue start
+  // so the narration plays in sync with the captions. The export muxes audio
+  // regions into the output.
+  fs.rmSync(AUDIO_DIR, { recursive: true, force: true });
+  const audioRegions = [];
+  cues.forEach((c, i) => {
+    const a = ttsLine(c.text, i);
+    if (a) audioRegions.push({ id: `narr-${i}`, startMs: c.startMs, endMs: c.startMs + a.durMs, audioPath: a.wav, volume: 1, trackIndex: 0 });
+  });
+  ed.audioRegions = [...(ed.audioRegions || []), ...audioRegions];
+
   fs.writeFileSync(projectPath, JSON.stringify(project));
-  console.log(`  captions: injected ${cues.length} cues across ${totalMs}ms, enabled`);
+  console.log(`  captions: ${cues.length} cues + ${audioRegions.length} voiceover clips across ${totalMs}ms, enabled`);
   return cues.length;
 }
 
