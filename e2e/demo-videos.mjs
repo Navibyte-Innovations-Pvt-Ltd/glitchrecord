@@ -174,7 +174,34 @@ async function recordBrowse() {
   fs.rmSync(PROJECT, { force: true });
   fs.rmSync(udd, { recursive: true, force: true });
   console.log(`  browse recorded → ${BROWSE_MP4} | events captured: ${events.length}`);
-  return visitedNames;
+  return { visitedNames, events };
+}
+
+const API_BASE = process.env.GLITCHGRAB_API_URL ?? "http://localhost:3000";
+const AUTH_SRC = path.join(os.homedir(), "Library/Application Support/GlitchRecord-dev/glitchgrab-auth.json");
+
+// Create a real DB capture session from the browse events (unauthenticated, like
+// the bridge's uploadSession) → returns its id so the editor can generate a script.
+async function uploadSession(events) {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/capture-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ events, meta: { source: "demo", site: "myabhyasika.in" } }),
+    });
+    const data = await res.json().catch(() => null);
+    return data?.success ? (data.data?.sessionId ?? null) : null;
+  } catch (e) { console.log("  uploadSession failed:", e.message); return null; }
+}
+
+// Seed the editor's userData so it launches LOGGED IN with the captured session —
+// the script panel needs the auth token + a sessionId to generate from events.
+function seedEditorUserData(udd, events, sessionId) {
+  try {
+    if (fs.existsSync(AUTH_SRC)) fs.copyFileSync(AUTH_SRC, path.join(udd, "glitchgrab-auth.json"));
+    fs.writeFileSync(path.join(udd, "glitchgrab-last-session.json"), JSON.stringify({ events, sessionId }));
+    return fs.existsSync(AUTH_SRC);
+  } catch (e) { console.log("  seed failed:", e.message); return false; }
 }
 
 // slug → readable name fallback, e.g. "brains-hub-libraryreaders-lounge" → "Brains Hub".
@@ -184,8 +211,9 @@ function slugToName(href) {
 }
 
 // ───────────────────────── PART B: GlitchRecord real edits ─────────────────────
-async function recordEdits() {
+async function recordEdits(events, sessionId) {
   const udd = fs.mkdtempSync(path.join(os.tmpdir(), "demo-ed-"));
+  const loggedIn = seedEditorUserData(udd, events ?? [], sessionId); // log in + load the session
   const vdir = path.join(os.tmpdir(), "demo-ed-vid"); fs.rmSync(vdir, { recursive: true, force: true }); fs.mkdirSync(vdir, { recursive: true });
   const app = await electron.launch({
     executablePath: electronPath,
@@ -249,6 +277,37 @@ async function recordEdits() {
   console.log(`  EDIT3 added ${zoomCount} zoom punches (timeline shows ${zoomsOnTimeline})`);
   await sleep(1000);
 
+  // SCRIPT PANEL — the in-app flow, on camera: open the writer and GENERATE a
+  // narration script FROM the captured events (real Claude via the logged-in
+  // session). Voice defaults to Ritu (F).
+  let aiScript = "";
+  if (loggedIn && sessionId) {
+    // Open the GlitchGrab Log panel from the rail (it hosts the script writer).
+    await win.locator('[title="GlitchGrab Log"]').first().click().catch(() => {});
+    await sleep(1200);
+    await win.locator('[data-testid="gg-script-toggle"]').first().click().catch(() => {});
+    await sleep(1500);
+    await win.locator('[data-testid="gg-generate-script"]').first().click().catch(() => {});
+    const ta = win.locator('[data-testid="gg-narration-textarea"]').first();
+    for (let i = 0; i < 45; i++) { // Claude takes a few seconds
+      aiScript = (await ta.inputValue().catch(() => "")) || "";
+      if (aiScript.trim().length > 20) break;
+      await sleep(1000);
+    }
+    console.log(`  SCRIPT from events (${aiScript.length} chars): ${JSON.stringify(aiScript.slice(0, 240))}`);
+    // Diagnostics: dump the bridge's generate-script log lines + any panel error.
+    try {
+      const dbg = fs.readFileSync(path.join(udd, "glitchgrab-debug.log"), "utf8").split("\n")
+        .filter((l) => /generate-script|note-questions|auth|Log in|currentUser|Connected|token/i.test(l));
+      console.log("  DEBUG:", JSON.stringify(dbg.slice(-8)));
+    } catch { /* no log */ }
+    const errTxt = await win.locator("text=/failed|error|log in|relaunch|balance/i").first().textContent().catch(() => null);
+    if (errTxt) console.log("  PANEL ERROR:", errTxt.trim().slice(0, 160));
+  } else {
+    console.log(`  SCRIPT panel skipped (loggedIn=${loggedIn}, sessionId=${sessionId})`);
+  }
+  await sleep(1500);
+
   // Save so the edits persist into <footage>.project.json → exported video bakes them in.
   await win.keyboard.press("Meta+s").catch(() => {});
   await sleep(2500);
@@ -261,6 +320,67 @@ async function recordEdits() {
   toMp4(webm, EDIT_MP4);
   fs.rmSync(udd, { recursive: true, force: true });
   console.log(`  edits recorded → ${EDIT_MP4}${fs.existsSync(PROJECT) ? " | project saved" : " | (no project saved)"}`);
+  return aiScript;
+}
+
+// Synthesize the Ritu (F) voiceover OFF-CAMERA by running tts/narrate.py directly
+// (same engine the app uses). Keeps the recorded editor session short — the slow
+// TTS synth isn't worth watching. Returns the wav path or "" on failure.
+function ttsNarrate(aiScript) {
+  if (!aiScript || aiScript.trim().length < 10) return "";
+  const py = path.join(APP, "tts", ".venv", "bin", "python");
+  const script = path.join(APP, "tts", "narrate.py");
+  if (!fs.existsSync(py) || !fs.existsSync(script)) { console.log("  narrate.py/venv missing"); return ""; }
+  fs.mkdirSync(AUDIO_DIR, { recursive: true });
+  const txt = path.join(AUDIO_DIR, "ritu-script.txt");
+  const wav = path.join(AUDIO_DIR, "ritu-narration.wav");
+  fs.writeFileSync(txt, aiScript, "utf8");
+  try {
+    execFileSync(py, [script, "--engine", "sarvam", "--lang", "hi", "--voice", "ritu", "--speaker", "ritu", "--text-file", txt, "--out", wav], {
+      cwd: path.join(APP, "tts"), stdio: "ignore", timeout: 180000,
+    });
+    if (fs.existsSync(wav)) { console.log(`  Ritu voiceover synthesized (${fs.statSync(wav).size} bytes)`); return wav; }
+  } catch (e) { console.log("  ttsNarrate failed:", e.message.split("\n")[0]); }
+  return "";
+}
+
+// Build caption cues from the REAL AI script, timed across the Ritu voiceover's
+// duration (so captions and voice are the SAME words, roughly aligned). Splits the
+// script into sentence cues with ≥500ms gaps so each shows as its own line.
+function buildCuesFromScript(aiScript, rituWav) {
+  const dur = parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", rituWav]).toString().trim());
+  const durMs = Number.isFinite(dur) ? Math.round(dur * 1000) : 15000;
+  const LEAD = 250;
+  const parts = aiScript
+    .split(/(?<=[।.!?])\s+|\s+—\s+|\n+/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter((s) => s.length > 1);
+  const lines = parts.length ? parts : [aiScript.trim()];
+  const span = Math.max(1000, durMs);
+  const per = span / lines.length;
+  const cues = lines.map((text, i) => {
+    const s = Math.round(LEAD + per * i);
+    const e = Math.round(LEAD + per * (i + 1) - 520); // ≥500ms gap → separate caption blocks
+    const toks = text.split(/\s+/).filter(Boolean);
+    const wPer = (e - s) / Math.max(1, toks.length);
+    const words = toks.map((t, wi) => ({ text: t, startMs: Math.round(s + wPer * wi), endMs: Math.round(s + wPer * (wi + 1)), leadingSpace: wi > 0 }));
+    return { id: `cue-${i}`, startMs: s, endMs: e, text, words };
+  });
+  return { cues, totalMs: LEAD + durMs, leadMs: LEAD };
+}
+
+// Mux a SINGLE continuous voiceover wav (the Ritu narration) into the export at
+// `leadMs`, and trim the video to the narration length.
+function finalizeWithVoiceWav(videoPath, voiceWav, leadMs, totalMs) {
+  if (!fs.existsSync(videoPath) || !fs.existsSync(voiceWav)) { console.log("  voice mux: missing input"); return; }
+  const endSec = ((totalMs + 500) / 1000).toFixed(2);
+  const tmp = `${videoPath}.tmp.mp4`;
+  const fc = `[1:a]adelay=${leadMs}|${leadMs}[aout]`;
+  try {
+    execFileSync("ffmpeg", ["-y", "-i", videoPath, "-i", voiceWav, "-filter_complex", fc, "-map", "0:v", "-map", "[aout]", "-t", endSec, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "160k", tmp], { stdio: "ignore" });
+    fs.renameSync(tmp, videoPath);
+    console.log(`  voice: muxed Ritu narration + trimmed to ${endSec}s`);
+  } catch (e) { console.log("  voice mux failed:", e.message.split("\n")[0]); fs.rmSync(tmp, { force: true }); }
 }
 
 // ───────────────────────── PART C: real export (WebGL) of the edits ────────────
@@ -422,19 +542,35 @@ function finalizeWithNarration(videoPath, cues, totalMs) {
 
 await assertPortFree(7337);
 console.log("PART A — public browse on", SITE, "…");
-const visited = await recordBrowse();
-console.log("PART B — GlitchRecord edits on the footage…");
-await recordEdits();
+const { visitedNames: visited, events } = await recordBrowse();
 
-// SCRIPT — author + refine 3×, then attach as captions + TTS voiceover. Timed to
-// the REAL export duration (measured by a first export pass) so narration spans
-// the whole video instead of cutting out in a silent tail.
-console.log("SCRIPT — writing + refining narration (3 passes)…");
-const script = buildAndRefineScript(visited);
-// Synthesize the voiceover + a CONTINUOUS timeline, then put captions on the same
-// timeline. The video is trimmed to the narration length at the end.
-const { cues, totalMs: narrMs } = buildNarration(script);
-console.log(`  narration timeline: ${cues.length} lines, ${narrMs}ms continuous`);
+// Upload the captured events as a real DB session so the editor can generate a
+// script FROM them (the in-app AI flow).
+console.log("SESSION — uploading captured events…");
+const sessionId = await uploadSession(events);
+console.log(`  sessionId: ${sessionId} (${events.length} events)`);
+
+console.log("PART B — GlitchRecord edits + AI script from events…");
+const aiScript = await recordEdits(events, sessionId);
+
+// Synthesize the Ritu voiceover off-camera (keeps the editing video short).
+console.log("NARRATION — synthesizing Ritu voiceover (off-camera)…");
+const rituWav = ttsNarrate(aiScript);
+
+// Prefer the REAL pipeline: AI script (from events) + Ritu voiceover. Captions are
+// the same words as the voice → they match. Fall back to an authored script + local
+// `say` TTS only if generation/narration was unavailable.
+const realFlow = aiScript && aiScript.trim().length > 10 && rituWav && fs.existsSync(rituWav);
+let cues, narrMs, rituLeadMs = 0;
+if (realFlow) {
+  console.log("SCRIPT — using AI script from events + Ritu voiceover");
+  ({ cues, totalMs: narrMs, leadMs: rituLeadMs } = buildCuesFromScript(aiScript, rituWav));
+} else {
+  console.log("SCRIPT — fallback: authored script + local say TTS");
+  const script = buildAndRefineScript(visited);
+  ({ cues, totalMs: narrMs } = buildNarration(script));
+}
+console.log(`  ${cues.length} caption cues across ${narrMs}ms`);
 injectCaptions(PROJECT, cues);
 
 // concat browse + edits → one routine video (video 1)
@@ -445,8 +581,9 @@ fs.rmSync(list, { force: true });
 
 console.log("EXPORT — final export with captions (WebGL)…");
 await exportEdited();
-console.log("NARRATION — muxing continuous voiceover + trimming to narration length…");
-finalizeWithNarration(EXPORTED, cues, narrMs);
+console.log("NARRATION — muxing voiceover + trimming to narration length…");
+if (realFlow) finalizeWithVoiceWav(EXPORTED, rituWav, rituLeadMs, narrMs);
+else finalizeWithNarration(EXPORTED, cues, narrMs);
 
 const probe = (f) => fs.existsSync(f) ? execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f]).toString().trim() : "MISSING";
 console.log(`\n2 VIDEOS in ${OUT}:`);
