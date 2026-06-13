@@ -281,6 +281,7 @@ async function recordEdits(events, sessionId) {
   // narration script FROM the captured events (real Claude via the logged-in
   // session). Voice defaults to Ritu (F).
   let aiScript = "";
+  let rituWav = "";
   if (loggedIn && sessionId) {
     // Open the GlitchGrab Log panel from the rail (it hosts the script writer).
     await win.locator('[title="GlitchGrab Log"]').first().click().catch(() => {});
@@ -303,6 +304,30 @@ async function recordEdits(events, sessionId) {
     } catch { /* no log */ }
     const errTxt = await win.locator("text=/failed|error|log in|relaunch|balance/i").first().textContent().catch(() => null);
     if (errTxt) console.log("  PANEL ERROR:", errTxt.trim().slice(0, 160));
+
+    // NARRATION on camera — the narrate + attach controls live in the NARRATION
+    // tab (left panel), not the Script Writer drawer. Close the drawer, switch to
+    // Narration, generate the Ritu voiceover, then add it to the timeline. Detect
+    // "synth done" by the Generate-narration button re-enabling (disabled while
+    // narrating) so we don't hang.
+    if (aiScript.trim().length > 10) {
+      await win.locator('[title="Close"]').first().click().catch(() => {}); // close Script Writer drawer
+      await sleep(800);
+      await win.getByRole("button", { name: /^Narration/ }).first().click().catch(() => {}); // Narration tab
+      await sleep(1000);
+      const narrateBtn = win.getByRole("button", { name: /Generate narration/i }).first();
+      await narrateBtn.click().catch(() => {});
+      await sleep(3000); // let `narrating` flip on (button disables)
+      for (let i = 0; i < 150; i++) {
+        const disabled = await narrateBtn.isDisabled().catch(() => false);
+        if (!disabled) break; // re-enabled → synth finished
+        await sleep(1000);
+      }
+      await sleep(1500);
+      await win.getByRole("button", { name: /Add narration to video/i }).first().click().catch(() => {});
+      await sleep(2500);
+      console.log("  NARRATION (Ritu) generated + added to timeline on camera");
+    }
   } else {
     console.log(`  SCRIPT panel skipped (loggedIn=${loggedIn}, sessionId=${sessionId})`);
   }
@@ -312,6 +337,19 @@ async function recordEdits(events, sessionId) {
   await win.keyboard.press("Meta+s").catch(() => {});
   await sleep(2500);
 
+  // Copy the Ritu narration wav OUT of the (about-to-be-deleted) udd via the audio
+  // region the editor just added — used for the reliable export mux.
+  try {
+    const proj = JSON.parse(fs.readFileSync(PROJECT, "utf8"));
+    const ar = (proj.editor?.audioRegions || []).find((a) => /narration-.*\.wav$/.test(a.audioPath || ""));
+    if (ar && fs.existsSync(ar.audioPath)) {
+      fs.mkdirSync(AUDIO_DIR, { recursive: true });
+      rituWav = path.join(AUDIO_DIR, "ritu-narration.wav");
+      fs.copyFileSync(ar.audioPath, rituWav);
+      console.log(`  ritu wav extracted from timeline (${fs.statSync(rituWav).size} bytes)`);
+    } else { console.log("  ritu wav NOT in project audioRegions"); }
+  } catch (e) { console.log("  ritu extract failed:", e.message.split("\n")[0]); }
+
   const video = win.video();
   const pid = app.process()?.pid;
   await app.close().catch(() => {});
@@ -320,7 +358,7 @@ async function recordEdits(events, sessionId) {
   toMp4(webm, EDIT_MP4);
   fs.rmSync(udd, { recursive: true, force: true });
   console.log(`  edits recorded → ${EDIT_MP4}${fs.existsSync(PROJECT) ? " | project saved" : " | (no project saved)"}`);
-  return aiScript;
+  return { aiScript, rituWav };
 }
 
 // Synthesize the Ritu (F) voiceover OFF-CAMERA by running tts/narrate.py directly
@@ -351,11 +389,21 @@ function buildCuesFromScript(aiScript, rituWav) {
   const dur = parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", rituWav]).toString().trim());
   const durMs = Number.isFinite(dur) ? Math.round(dur * 1000) : 15000;
   const LEAD = 250;
-  const parts = aiScript
-    .split(/(?<=[।.!?])\s+|\s+—\s+|\n+/)
-    .map((s) => s.replace(/\s+/g, " ").trim())
-    .filter((s) => s.length > 1);
-  const lines = parts.length ? parts : [aiScript.trim()];
+  // Greedily pack words into short lines (≤ MAXCHARS) that each fit ONE caption
+  // row, breaking at punctuation. The AI script's sentences are long + uneven, so
+  // splitting only on sentence enders clips at maxRows:1.
+  const MAXCHARS = 38;
+  const words = aiScript.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const cand = cur ? `${cur} ${w}` : w;
+    if (cand.length > MAXCHARS && cur) { lines.push(cur); cur = w; }
+    else cur = cand;
+    if (/[।.!?—,:]$/.test(w) && cur.length >= 14) { lines.push(cur.replace(/[—,]$/, "")); cur = ""; }
+  }
+  if (cur.trim()) lines.push(cur.trim());
+  if (!lines.length) lines.push(aiScript.trim());
   const span = Math.max(1000, durMs);
   const per = span / lines.length;
   const cues = lines.map((text, i) => {
@@ -550,12 +598,16 @@ console.log("SESSION — uploading captured events…");
 const sessionId = await uploadSession(events);
 console.log(`  sessionId: ${sessionId} (${events.length} events)`);
 
-console.log("PART B — GlitchRecord edits + AI script from events…");
-const aiScript = await recordEdits(events, sessionId);
+console.log("PART B — GlitchRecord edits + AI script + Ritu narration on camera…");
+const { aiScript, rituWav: editorWav } = await recordEdits(events, sessionId);
 
-// Synthesize the Ritu voiceover off-camera (keeps the editing video short).
-console.log("NARRATION — synthesizing Ritu voiceover (off-camera)…");
-const rituWav = ttsNarrate(aiScript);
+// Use the on-camera Ritu narration the editor produced; fall back to an off-camera
+// synth only if extracting it failed.
+let rituWav = editorWav;
+if (!rituWav || !fs.existsSync(rituWav)) {
+  console.log("NARRATION — on-camera wav missing, synthesizing off-camera…");
+  rituWav = ttsNarrate(aiScript);
+}
 
 // Prefer the REAL pipeline: AI script (from events) + Ritu voiceover. Captions are
 // the same words as the voice → they match. Fall back to an authored script + local
