@@ -556,6 +556,10 @@ function injectCaptions(projectPath, cues) {
   if (!fs.existsSync(projectPath)) { console.log("  captions: no project to inject into"); return 0; }
   const project = JSON.parse(fs.readFileSync(projectPath, "utf8"));
   const ed = project.editor || (project.editor = {});
+  // Drop any narration audio region — its wav lived in the (now-deleted) editor
+  // userData, so the export would fail with "No decodable audio sources found".
+  // We mux the extracted Ritu wav ourselves after export instead.
+  ed.audioRegions = [];
   ed.autoCaptions = cues.map(({ id, startMs, endMs, text, words }) => ({ id, startMs, endMs, text, words }));
   // maxRows: 1 → one short line at a time (a 2-row caption shows the current AND
   // previous cue together, which reads as "stacked").
