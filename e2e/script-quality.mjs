@@ -250,76 +250,64 @@ async function scenarioStudent({ page, clickEl, scrollBy, dismissModals }) {
   }
 }
 
-// S3 — Explain-this on a component: open a library detail page, then HOLD Shift
-// (~900ms) over a SPECIFIC component (Book Seat → price → View all photos).
+// S3 — Explain-this on a component: on the OVERLAY-FREE home page, HOLD Shift
+// (~1700ms) over ONE library card → a single note on a real, nameable component.
+// (Library DETAIL pages carry a persistent bottom overlay that hijacks the
+// hold-Shift target — home is clean after dismissing the location/language modals.)
 async function scenarioExplain({ page, scrollBy, dismissModals }) {
   await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 45000 }); await sleep(2500);
   await page.evaluate(CURSOR_JS).catch(() => {});
   await dismissModals();
-  const hrefs = await page.locator('a[href^="/library/"]').evaluateAll(
-    (els) => [...new Set(els.map((e) => e.getAttribute("href")).filter(Boolean))],
-  ).catch(() => []);
-  const href = hrefs[0];
-  if (href) await page.goto(new URL(href, SITE).href, { waitUntil: "domcontentloaded" }).catch(() => {});
-  await sleep(1800); await page.evaluate(CURSOR_JS).catch(() => {});
-  await dismissModals();                 // library-page login modal would block the hold-Shift target
-  await scrollBy(300);
-
-  // Pick a target component, in order of preference.
-  let target = null, label = "";
-  for (const [re, name] of [[/Book Seat/i, "Book Seat"], [/₹.*month/i, "price"], [/View all .*photos/i, "View all photos"]]) {
-    const el = page.getByText(re).first();
-    if (await el.count().catch(() => 0)) { target = el; label = name; break; }
-  }
-  if (!target) { console.log("  S3: no explain target found"); return; }
-  console.log(`  S3: explain-this target = "${label}"`);
-  await target.scrollIntoViewIfNeeded().catch(() => {});
-  const box = await target.boundingBox().catch(() => null);
-  if (!box) { console.log("  S3: target had no bounding box"); return; }
-  // Move ONTO the target, settle, then HOLD Shift LONG (~1700ms — a longer hold
-  // signals "explain this in depth"). Linger a beat before + after so the session
-  // has enough duration/word-budget for the model to actually explain it.
+  await scrollBy(350); // bring the library cards into view, below the hero/filters
+  const card = page.locator('a[href^="/library/"]').first();
+  if (!(await card.count().catch(() => 0))) { console.log("  S3: no library card found"); return; }
+  await card.scrollIntoViewIfNeeded().catch(() => {});
+  await sleep(500);
+  const box = await card.boundingBox().catch(() => null);
+  if (!box || box.y < 60) { console.log("  S3: card not in a clean position"); return; }
+  console.log(`  S3: marking library card @ y=${Math.round(box.y)}`);
+  // Move ONTO the card, settle, CLEAR any text selection (so Shift makes a clean
+  // element note, not an explain-selection), then HOLD Shift LONG (~1700ms).
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 14 });
-  await sleep(1000);
+  await sleep(800);
+  await page.evaluate(() => window.getSelection()?.removeAllRanges()).catch(() => {});
+  await sleep(300);
   await page.keyboard.down("Shift");
   await sleep(1700);
   await page.keyboard.up("Shift");
   await sleep(1200);
-  await scrollBy(200); // small context beat after the marked component
+  await scrollBy(200);
   await sleep(800);
 }
 
-// S4 — CLUSTER explain (the key intention test): on the signup page the user
-// shift-hovers EACH auth option (Google, phone OTP, email) within seconds → a
-// CLUSTER of notes on sibling buttons. The scripter must read the INTENTION
-// ("you can sign up three ways — Google, phone, or email"), NOT narrate one or
-// collapse it. Tests the prompt's note-clustering rule.
+// S4 — CLUSTER explain (the key intention test): on the OVERLAY-FREE home page,
+// shift-hover EACH of the filter controls (Price, Rating, Amenities — a reliable
+// sibling cluster, no login, no navigation) within seconds → a CLUSTER of notes.
+// The scripter must read the INTENTION ("you can filter by price, rating and
+// amenities"), NOT narrate one or collapse it.
 async function scenarioCluster({ page, scrollBy, dismissModals }) {
-  await page.goto("https://www.myabhyasika.in/signup", { waitUntil: "domcontentloaded", timeout: 45000 }); await sleep(2500);
+  await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 45000 }); await sleep(2500);
   await page.evaluate(CURSOR_JS).catch(() => {});
   await dismissModals();
-  await scrollBy(200);
+  await sleep(600);
   const holdShiftOn = async (loc, name) => {
     if (!(await loc.count().catch(() => 0))) return false;
     await loc.scrollIntoViewIfNeeded().catch(() => {});
     const box = await loc.boundingBox().catch(() => null);
-    if (!box) return false;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
-    await sleep(500);
-    await page.keyboard.down("Shift"); await sleep(750); await page.keyboard.up("Shift");
-    await sleep(700);
-    console.log(`  S4 marked: ${name}`);
+    if (!box || box.y < 80) return false; // under the sticky header → skip
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+    await sleep(400);
+    await page.keyboard.down("Shift"); await sleep(700); await page.keyboard.up("Shift");
+    await sleep(550);
+    console.log(`  S4 marked filter: ${name}`);
     return true;
   };
-  // sibling auth options — shift-hover EACH within seconds (a cluster, NOT one)
-  const targets = [
-    [page.getByText(/Continue with Google/i).first(), "Google"],
-    [page.getByText(/OTP via WhatsApp|Login with phone/i).first(), "phone"],
-    [page.getByText(/Login with email|Continue with email/i).first(), "email"],
-  ];
+  // sibling filter controls — shift-hover EACH within seconds (a cluster, NOT one)
   let marked = 0;
-  for (const [loc, name] of targets) { if (await holdShiftOn(loc, name)) marked++; }
-  console.log(`  S4 cluster: marked ${marked} sibling auth options`);
+  for (const re of [/Price/i, /Rating/i, /Amenities/i]) {
+    if (await holdShiftOn(page.getByText(re).first(), re.source)) marked++;
+  }
+  console.log(`  S4 cluster: marked ${marked} sibling filter controls`);
 }
 
 // S5 — SELECT-TEXT explain: open a library, HIGHLIGHT a specific line (the price
@@ -366,7 +354,7 @@ const scenarios = [
   ["Owner viewing their own library page", scenarioOwner],
   ["Student browsing the site", scenarioStudent],
   ["Explain-this on a component", scenarioExplain],
-  ["Explain-this CLUSTER: signup options", scenarioCluster],
+  ["Explain-this CLUSTER: library tabs", scenarioCluster],
   ["Explain-this SELECTION: highlight + Shift", scenarioSelectExplain],
 ];
 
