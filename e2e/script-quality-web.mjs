@@ -55,7 +55,13 @@ const CURSOR_JS = `(() => {
 
 function killPort(port) {
   try {
-    execSync(`lsof -ti :${port} | xargs -r kill -9`, { stdio: "ignore", shell: "/bin/bash" });
+    // NEVER kill our own PID — the in-process WS server (ws on :7337) means
+    // lsof reports THIS script. Filter self out (else we SIGKILL the harness;
+    // this was the real site-N crash, not "Chromium pressure"). assertPortFree
+    // then waits out the in-process release.
+    const out = execSync(`lsof -ti :${port}`, { encoding: "utf8", shell: "/bin/bash" });
+    const pids = out.split("\n").map((s) => s.trim()).filter(Boolean).filter((p) => p !== String(process.pid));
+    if (pids.length) execSync(`kill -9 ${pids.join(" ")}`, { stdio: "ignore", shell: "/bin/bash" });
   } catch { /* nothing bound — fine */ }
 }
 
@@ -319,12 +325,11 @@ for (let i = 0; i < SITES.length; i++) {
     if (!sessionId) gen = { error: "uploadSession returned no sessionId" };
     else gen = await generateScript(token, sessionId, durationSec); // ONE generate per site, no retry
   }
-  results.push({ n, url, events, connected, durationSec, sessionId, gen, fatal });
-}
+  const r = { n, url, events, connected, durationSec, sessionId, gen, fatal };
+  results.push(r);
 
-// ───────────────────────── print the deliverable ──────────────────────────────
-console.log(`\n\n############## SCRIPT-QUALITY WEB RESULTS (lang: ${LANG}) ##############`);
-for (const r of results) {
+  // Print THIS site's block IMMEDIATELY after its generate (not batched at the
+  // end) — a crash on a later site then can't lose the scripts already produced.
   console.log(`\n=== SITE ${r.n}: ${r.url} ===`);
   console.log(`events: ${r.events.length} | types: ${typeBreakdown(r.events)}`);
   console.log(`durationSec: ${r.durationSec} | sessionId: ${r.sessionId ?? "(none)"} | ext connected: ${r.connected}${r.fatal ? " | FATAL: " + r.fatal : ""}`);
@@ -334,6 +339,8 @@ for (const r of results) {
     console.log(`SCRIPT GENERATION FAILED/SKIPPED: ${r.gen.error}\n`);
   }
 }
+
+// ───────────────────────── summary (scripts already printed per-site) ──────────
 const ok = results.filter((r) => "script" in r.gen).length;
 console.log(`\n[summary] ${ok}/${results.length} sites produced a script`);
 console.log("########################################################################");
