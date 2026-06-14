@@ -134,13 +134,32 @@ async function recordBrowse() {
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check"],
   });
   await ctx.addInitScript({ content: CURSOR_JS });
-  await ctx.addInitScript({ content: MODAL_DISMISS_JS });
   let [w] = ctx.serviceWorkers(); if (!w) await ctx.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => {});
   const page = ctx.pages()[0] ?? (await ctx.newPage());
 
   const hoverEl = async (loc) => { const box = await loc.boundingBox().catch(() => null); if (box) { await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 18 }); await sleep(250); } };
   const clickEl = async (loc) => { await loc.scrollIntoViewIfNeeded().catch(() => {}); await hoverEl(loc); await loc.click({ timeout: 6000 }).catch(() => {}); await sleep(900); };
   const scrollBy = async (dy) => { for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, dy / 6); await sleep(180); } await sleep(700); };
+  // POLL-dismiss the on-load modals with REAL clicks (location "Not Now", language
+  // "Skip, use English", library login "Skip for now", promo ✕). Loops so LATE +
+  // per-page modals are caught and actually closed — not left over the recording.
+  const dismissModals = async () => {
+    for (let i = 0; i < 6; i++) {
+      let did = false;
+      for (const re of [/^Not Now$/i, /Skip,?\s*use English/i, /^Skip for now$/i, /^Maybe later$/i]) {
+        const el = page.getByText(re).first();
+        if ((await el.count().catch(() => 0)) && (await el.isVisible().catch(() => false))) {
+          await el.click({ timeout: 3000 }).catch(() => {}); did = true; await sleep(400);
+        }
+      }
+      const x = page.getByRole("button", { name: /^close$/i }).first();
+      if ((await x.count().catch(() => 0)) && (await x.isVisible().catch(() => false))) {
+        await x.click({ timeout: 2000 }).catch(() => {}); did = true; await sleep(400);
+      }
+      if (!did) break;
+      await sleep(400);
+    }
+  };
 
   const visitedNames = [];
   try {
@@ -149,13 +168,8 @@ async function recordBrowse() {
     // Dismiss the two on-load modals that overlay the cards (else clicks are
     // intercepted): the location prompt (decline — don't grant location) and the
     // language modal behind it.
-    const dismiss = async (re) => {
-      const el = page.getByText(re).first();
-      if (await el.count().catch(() => 0)) { await clickEl(el).catch(() => {}); await sleep(600); }
-    };
-    await dismiss(/^Not Now$/i);            // "Find Libraries Near You" → decline location
-    await dismiss(/Skip,?\s*use English/i); // language modal
-    await sleep(800);
+    await dismissModals();                // location + language + late library-login modal
+    await sleep(400);
     await scrollBy(600);                  // look down the list of libraries
     // The list re-renders after each navigation, so capture target card hrefs up
     // front, then visit 2–3 of them. Library cards are anchors to /library/<slug>.
@@ -182,6 +196,7 @@ async function recordBrowse() {
         await page.goto(new URL(href, SITE).href, { waitUntil: "domcontentloaded" }).catch(() => {});
       }
       await sleep(1600); await page.evaluate(CURSOR_JS).catch(() => {});
+      await dismissModals();                                // close the library-page login dialog
       await scrollBy(450);                                  // scroll a little inside the card
       await scrollBy(-300);
       visitedNames.push(name);
