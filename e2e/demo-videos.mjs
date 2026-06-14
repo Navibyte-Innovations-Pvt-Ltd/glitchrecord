@@ -18,7 +18,7 @@
 import { chromium, _electron as electron } from "playwright";
 import electronPath from "electron";
 import { WebSocketServer } from "ws";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,17 +28,40 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP = path.resolve(HERE, "..");
 const EXT = path.resolve(APP, "../../packages/extension/dist");
 const OUT = path.join(APP, "demo-videos");
-const BROWSE_MP4 = path.join(OUT, "r1-browse.mp4");
-const EDIT_MP4 = path.join(OUT, "r2-edits.mp4");
-const ROUTINE = path.join(OUT, "routine.mp4");
-const EXPORTED = path.join(OUT, "routine-EXPORTED.mp4");
-// Footage the editor opens + exports (project.json is auto-saved next to it).
-const FOOTAGE = path.join(os.tmpdir(), "demo-footage.mp4");
-const PROJECT = `${FOOTAGE}.project.json`;
 const AUDIO_DIR = path.join(os.tmpdir(), "demo-narration");
-const SITE = "https://www.myabhyasika.in/";
 const SIZE = { width: 1280, height: 800 };
 fs.mkdirSync(OUT, { recursive: true });
+
+// The 10 validated public sites. Each iteration produces TWO videos:
+//   routine-<slug>.mp4   — chrome browse + editing, combined
+//   exported-<slug>.mp4  — the edited export (captions + Ritu narration)
+// → 20 videos per `demo:videos` run.
+const SITES = [
+  "https://stripe.com",
+  "https://vercel.com",
+  "https://tailwindcss.com",
+  "https://news.ycombinator.com",
+  "https://en.wikipedia.org/wiki/Public_library",
+  "https://www.notion.com",
+  "https://linear.app",
+  "https://www.figma.com",
+  "https://www.bbc.com/news",
+  "https://resend.com",
+];
+const slugOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, "").split(".")[0].toLowerCase(); } catch { return "site"; } };
+
+// Per-site paths — reassigned by setSite() at the start of each iteration.
+let SITE, BROWSE_MP4, EDIT_MP4, ROUTINE, EXPORTED, FOOTAGE, PROJECT;
+function setSite(url) {
+  SITE = url;
+  const s = slugOf(url);
+  BROWSE_MP4 = path.join(OUT, `r1-${s}.mp4`);
+  EDIT_MP4 = path.join(OUT, `r2-${s}.mp4`);
+  ROUTINE = path.join(OUT, `routine-${s}.mp4`);
+  EXPORTED = path.join(OUT, `exported-${s}.mp4`);
+  FOOTAGE = path.join(os.tmpdir(), `demo-footage-${s}.mp4`);
+  PROJECT = `${FOOTAGE}.project.json`;
+}
 
 // Playwright video doesn't render the OS pointer — draw a synthetic one that
 // follows the mouse and pulses on press, so the demo shows where it's acting.
@@ -122,7 +145,7 @@ async function recordBrowse() {
     if (role === "chrome") {
       chromeClients.add(ws);
       ws.on("close", () => chromeClients.delete(ws));
-      ws.send(JSON.stringify({ type: "recording:start", sessionId: sid, repoId: "myabhyasika", repoName: "myabhyasika" }));
+      ws.send(JSON.stringify({ type: "recording:start", sessionId: sid, repoId: slugOf(SITE), repoName: slugOf(SITE) }));
     }
     ws.on("message", (r) => { try { const m = JSON.parse(r.toString()); if (m.type === "event:live" && m.event) events.push(m.event); } catch { /* */ } });
   });
@@ -143,67 +166,78 @@ async function recordBrowse() {
   // POLL-dismiss the on-load modals with REAL clicks (location "Not Now", language
   // "Skip, use English", library login "Skip for now", promo ✕). Loops so LATE +
   // per-page modals are caught and actually closed — not left over the recording.
+  // Dismiss on-load modals + cookie/consent banners across ANY site. Prefer
+  // DECLINE for cookies (privacy); also handle app modals + close ✕.
   const dismissModals = async () => {
     for (let i = 0; i < 6; i++) {
       let did = false;
-      for (const re of [/^Not Now$/i, /Skip,?\s*use English/i, /^Skip for now$/i, /^Maybe later$/i]) {
-        const el = page.getByText(re).first();
-        if ((await el.count().catch(() => 0)) && (await el.isVisible().catch(() => false))) {
-          await el.click({ timeout: 3000 }).catch(() => {}); did = true; await sleep(400);
+      const tryClick = async (loc) => {
+        if ((await loc.count().catch(() => 0)) && (await loc.isVisible().catch(() => false))) {
+          await loc.click({ timeout: 2500 }).catch(() => {}); await sleep(400); return true;
         }
+        return false;
+      };
+      // cookie consent — decline first, then accept
+      for (const re of [/^(Reject all|Decline|Only necessary|Reject)$/i, /^(Accept all|Accept|I agree|Got it|Allow all)$/i]) {
+        if (await tryClick(page.getByRole("button", { name: re }).first())) { did = true; break; }
+        if (await tryClick(page.getByText(re).first())) { did = true; break; }
       }
-      const x = page.getByRole("button", { name: /^close$/i }).first();
-      if ((await x.count().catch(() => 0)) && (await x.isVisible().catch(() => false))) {
-        await x.click({ timeout: 2000 }).catch(() => {}); did = true; await sleep(400);
+      // app modals (location/language/login) + close ✕
+      for (const re of [/^Not Now$/i, /Skip,?\s*use English/i, /^Skip for now$/i, /^Maybe later$/i]) {
+        if (await tryClick(page.getByText(re).first())) did = true;
       }
+      if (await tryClick(page.getByRole("button", { name: /^close$/i }).first())) did = true;
       if (!did) break;
-      await sleep(400);
+      await sleep(300);
     }
   };
 
   const visitedNames = [];
   try {
-    await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 45000 }); await sleep(2500);
+    await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 45000 }); await sleep(2800);
     await page.evaluate(CURSOR_JS).catch(() => {});
-    // Dismiss the two on-load modals that overlay the cards (else clicks are
-    // intercepted): the location prompt (decline — don't grant location) and the
-    // language modal behind it.
-    await dismissModals();                // location + language + late library-login modal
+    await dismissModals();                  // cookie/consent/app modals
     await sleep(400);
-    await scrollBy(600);                  // look down the list of libraries
-    // The list re-renders after each navigation, so capture target card hrefs up
-    // front, then visit 2–3 of them. Library cards are anchors to /library/<slug>.
-    const hrefs = await page.locator('a[href^="/library/"]').evaluateAll(
-      (els) => [...new Set(els.map((e) => e.getAttribute("href")).filter(Boolean))],
-    ).catch(() => []);
-    const pick = [hrefs[0], hrefs[4], hrefs[8]].filter(Boolean).slice(0, 3);
-    for (const href of pick) {
-      // Return to the list before each card (goto, not goBack — an SPA back can
-      // land on about:blank).
-      if (!/myabhyasika\.in\/?$/.test(page.url())) {
-        await page.goto(SITE, { waitUntil: "domcontentloaded" }).catch(() => {});
-        await sleep(1500); await page.evaluate(CURSOR_JS).catch(() => {});
+    await scrollBy(700); await scrollBy(-300); // view the page
+    // Click 1–2 visible IN-SITE nav links (same-origin, keyword match).
+    const origin = new URL(page.url()).origin;
+    const navTargets = await page.locator("header a, nav a, a").evaluateAll((els, originArg) => {
+      const re = /product|features|pricing|docs|about|learn|explore|home|blog|sign|get started/i;
+      const out = [], seen = new Set();
+      for (const e of els) {
+        const href = e.getAttribute("href"); const text = (e.textContent || "").trim();
+        if (!href || !text || text.length > 24) continue;
+        let abs; try { abs = new URL(href, location.href).href; } catch { continue; }
+        if (!abs.startsWith(originArg) || abs === location.href) continue;
+        if (!re.test(text) && !re.test(href)) continue;
+        if (seen.has(text)) continue; seen.add(text); out.push(text);
       }
-      const card = page.locator(`a[href="${href}"]`).first();
-      // Capture the library's display NAME for the script. Card text is
-      // "NEW|<rating>\n<Name>\n<address…>" — take the first line that's neither the
-      // NEW badge nor a rating number; fall back to the slug.
-      const ls = (await card.innerText().catch(() => "")).split("\n").map((s) => s.trim()).filter(Boolean);
-      const name = (ls.find((l) => !/^(NEW|\d(\.\d)?)$/i.test(l)) || slugToName(href)).slice(0, 28);
-      await clickEl(card);                                  // visible cursor clicks the card
-      await page.waitForURL((u) => u.pathname.includes("/library/"), { timeout: 8000 }).catch(() => {});
-      if (!page.url().includes("/library/")) {              // click didn't navigate → go directly
-        await page.goto(new URL(href, SITE).href, { waitUntil: "domcontentloaded" }).catch(() => {});
-      }
-      await sleep(1600); await page.evaluate(CURSOR_JS).catch(() => {});
-      await dismissModals();                                // close the library-page login dialog
-      await scrollBy(450);                                  // scroll a little inside the card
-      await scrollBy(-300);
-      visitedNames.push(name);
-      console.log(`  visited card: ${name} (${href})`);
+      return out.slice(0, 4);
+    }, origin).catch(() => []);
+    for (const text of navTargets.slice(0, 2)) {
+      const link = page.getByRole("link", { name: text, exact: true }).first();
+      await clickEl(link).catch(() => {});
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
+      await sleep(1200); await page.evaluate(CURSOR_JS).catch(() => {});
+      await dismissModals();
+      await scrollBy(500);
+      visitedNames.push(text);
     }
-    // …and get out.
-    console.log("  browse FINAL:", page.url(), "| cards visited", visitedNames.length);
+    // hold-Shift on the main heading (or primary CTA) → an "explain this" note.
+    let mark = page.locator("h1").first();
+    if (!(await mark.count().catch(() => 0))) mark = page.getByRole("button").first();
+    if (await mark.count().catch(() => 0)) {
+      await mark.scrollIntoViewIfNeeded().catch(() => {});
+      const b = await mark.boundingBox().catch(() => null);
+      if (b && b.y > 60) {
+        await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+        await sleep(700);
+        await page.keyboard.down("Shift"); await sleep(1100); await page.keyboard.up("Shift");
+        await sleep(800);
+      }
+    }
+    await scrollBy(400);
+    console.log("  browse FINAL:", page.url(), "| nav clicks", visitedNames.length);
   } catch (e) { console.log("  browse partial:", e.message.split("\n")[0], "at", page.url()); }
   await sleep(1500);
 
@@ -334,8 +368,20 @@ async function recordEdits(events, sessionId) {
     await win.locator('[data-testid="gg-script-toggle"]').first().click().catch(() => {});
     await sleep(1500);
     await win.locator('[data-testid="gg-generate-script"]').first().click().catch(() => {});
+    await sleep(2500);
+    // A hold-Shift NOTE triggers a "you marked N spots — what should I explain?"
+    // interstitial that blocks generation until answered. Pick the first suggested
+    // option + click "Write script" so the marked spot gets explained.
+    const writeScriptBtn = win.getByRole("button", { name: /^Write script$/i }).first();
+    if (await writeScriptBtn.count().catch(() => 0)) {
+      await win.getByText(/^Explain /i).first().click().catch(() => {});
+      await sleep(500);
+      await writeScriptBtn.click().catch(() => {});
+      console.log("  note-questions: answered first option + Write script");
+      await sleep(2000);
+    }
     const ta = win.locator('[data-testid="gg-narration-textarea"]').first();
-    for (let i = 0; i < 45; i++) { // Claude takes a few seconds
+    for (let i = 0; i < 50; i++) { // Claude takes a few seconds
       aiScript = (await ta.inputValue().catch(() => "")) || "";
       if (aiScript.trim().length > 20) break;
       await sleep(1000);
@@ -637,56 +683,86 @@ function finalizeWithNarration(videoPath, cues, totalMs) {
   } catch (e) { console.log("  narration/trim failed:", e.message.split("\n")[0]); fs.rmSync(tmp, { force: true }); }
 }
 
-await assertPortFree(7337);
-console.log("PART A — public browse on", SITE, "…");
-const { visitedNames: visited, events } = await recordBrowse();
-
-// Upload the captured events as a real DB session so the editor can generate a
-// script FROM them (the in-app AI flow).
-console.log("SESSION — uploading captured events…");
-const sessionId = await uploadSession(events);
-console.log(`  sessionId: ${sessionId} (${events.length} events)`);
-
-console.log("PART B — GlitchRecord edits + AI script + Ritu narration on camera…");
-const { aiScript, rituWav: editorWav } = await recordEdits(events, sessionId);
-
-// Use the on-camera Ritu narration the editor produced; fall back to an off-camera
-// synth only if extracting it failed.
-let rituWav = editorWav;
-if (!rituWav || !fs.existsSync(rituWav)) {
-  console.log("NARRATION — on-camera wav missing, synthesizing off-camera…");
-  rituWav = ttsNarrate(aiScript);
+function killPort7337() {
+  try { execFileSync("bash", ["-c", "lsof -ti :7337 | xargs -r kill -9"], { stdio: "ignore" }); } catch { /* */ }
 }
-
-// Prefer the REAL pipeline: AI script (from events) + Ritu voiceover. Captions are
-// the same words as the voice → they match. Fall back to an authored script + local
-// `say` TTS only if generation/narration was unavailable.
-const realFlow = aiScript && aiScript.trim().length > 10 && rituWav && fs.existsSync(rituWav);
-let cues, narrMs, rituLeadMs = 0;
-if (realFlow) {
-  console.log("SCRIPT — using AI script from events + Ritu voiceover");
-  ({ cues, totalMs: narrMs, leadMs: rituLeadMs } = buildCuesFromScript(aiScript, rituWav));
-} else {
-  console.log("SCRIPT — fallback: authored script + local say TTS");
-  const script = buildAndRefineScript(visited);
-  ({ cues, totalMs: narrMs } = buildNarration(script));
-}
-console.log(`  ${cues.length} caption cues across ${narrMs}ms`);
-injectCaptions(PROJECT, cues);
-
-// concat browse + edits → one routine video (video 1)
-const list = path.join(OUT, "_list.txt");
-fs.writeFileSync(list, `file '${BROWSE_MP4}'\nfile '${EDIT_MP4}'\n`);
-execFileSync("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", ROUTINE], { stdio: "ignore" });
-fs.rmSync(list, { force: true });
-
-console.log("EXPORT — final export with captions (WebGL)…");
-await exportEdited();
-console.log("NARRATION — muxing voiceover + trimming to narration length…");
-if (realFlow) finalizeWithVoiceWav(EXPORTED, rituWav, rituLeadMs, narrMs);
-else finalizeWithNarration(EXPORTED, cues, narrMs);
-
 const probe = (f) => fs.existsSync(f) ? execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f]).toString().trim() : "MISSING";
-console.log(`\n2 VIDEOS in ${OUT}:`);
-console.log(`  1. routine.mp4          (full flow start→end)  ${probe(ROUTINE)}s`);
-console.log(`  2. routine-EXPORTED.mp4 (edited export)        ${probe(EXPORTED)}s`);
+
+// Run ONE site end-to-end: browse → edit → routine-<slug>.mp4 + exported-<slug>.mp4.
+async function runOneSite(url) {
+  setSite(url);
+  const slug = slugOf(url);
+  killPort7337();
+  await assertPortFree(7337);
+  console.log("PART A — public browse on", SITE, "…");
+  const { visitedNames: visited, events } = await recordBrowse();
+
+  console.log("SESSION — uploading captured events…");
+  const sessionId = await uploadSession(events);
+  console.log(`  sessionId: ${sessionId} (${events.length} events)`);
+
+  console.log("PART B — GlitchRecord edits + AI script + Ritu narration on camera…");
+  const { aiScript, rituWav: editorWav } = await recordEdits(events, sessionId);
+
+  let rituWav = editorWav;
+  if (!rituWav || !fs.existsSync(rituWav)) {
+    console.log("NARRATION — on-camera wav missing, synthesizing off-camera…");
+    rituWav = ttsNarrate(aiScript);
+  }
+
+  const realFlow = aiScript && aiScript.trim().length > 10 && rituWav && fs.existsSync(rituWav);
+  let cues, narrMs, rituLeadMs = 0;
+  if (realFlow) {
+    console.log("SCRIPT — using AI script from events + Ritu voiceover");
+    ({ cues, totalMs: narrMs, leadMs: rituLeadMs } = buildCuesFromScript(aiScript, rituWav));
+  } else {
+    console.log("SCRIPT — fallback: authored script + local say TTS");
+    const script = buildAndRefineScript(visited);
+    ({ cues, totalMs: narrMs } = buildNarration(script));
+  }
+  console.log(`  ${cues.length} caption cues across ${narrMs}ms`);
+  injectCaptions(PROJECT, cues);
+
+  const listf = path.join(OUT, `_list-${slug}.txt`);
+  fs.writeFileSync(listf, `file '${BROWSE_MP4}'\nfile '${EDIT_MP4}'\n`);
+  execFileSync("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", listf, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", ROUTINE], { stdio: "ignore" });
+  fs.rmSync(listf, { force: true });
+
+  console.log("EXPORT — final export with captions (WebGL)…");
+  await exportEdited();
+  console.log("NARRATION — muxing voiceover + trimming…");
+  if (realFlow) finalizeWithVoiceWav(EXPORTED, rituWav, rituLeadMs, narrMs);
+  else finalizeWithNarration(EXPORTED, cues, narrMs);
+  console.log(`  ✓ ${slug}: routine (${probe(ROUTINE)}s) + exported (${probe(EXPORTED)}s)`);
+}
+
+// ── Dispatcher ──────────────────────────────────────────────────────────────
+// SINGLE-SITE mode (spawned by the runner): `node demo-videos.mjs <url>` runs ONE
+// site in its OWN process, then exits — a crash/hang/leak can't derail the others.
+const arg = process.argv[2];
+if (arg && /^https?:/.test(arg)) {
+  try { await runOneSite(arg); }
+  catch (e) { console.log(`  ✗ ${slugOf(arg)} FAILED:`, String(e.message || e).split("\n")[0]); }
+  finally { killPort7337(); }
+  process.exit(0);
+}
+
+// RUNNER mode: spawn one isolated process per site, sequentially (port 7337 is a
+// singleton). Each has a hard timeout so a hung site can't stall the batch.
+const self = fileURLToPath(import.meta.url);
+for (let i = 0; i < SITES.length; i++) {
+  const url = SITES[i];
+  console.log(`\n################ SITE ${i + 1}/${SITES.length}: ${url} (${slugOf(url)}) ################`);
+  killPort7337();
+  const r = spawnSync(process.execPath, [self, url], { stdio: "inherit", timeout: 6 * 60 * 1000 });
+  if (r.status !== 0 || r.signal) console.log(`  ✗ ${slugOf(url)} process ended (status=${r.status} signal=${r.signal || "—"})`);
+  killPort7337();
+}
+
+const done = SITES.map(slugOf).filter((s) =>
+  fs.existsSync(path.join(OUT, `routine-${s}.mp4`)) && fs.existsSync(path.join(OUT, `exported-${s}.mp4`)),
+);
+console.log(`\n################ DONE: ${done.length}/${SITES.length} sites → ${done.length * 2} videos in ${OUT} ################`);
+for (const s of done) {
+  console.log(`  ${s}: routine-${s}.mp4 (${probe(path.join(OUT, `routine-${s}.mp4`))}s) + exported-${s}.mp4 (${probe(path.join(OUT, `exported-${s}.mp4`))}s)`);
+}
