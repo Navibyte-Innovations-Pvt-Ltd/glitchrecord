@@ -144,7 +144,6 @@ async function runScenario(n, name, flow) {
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check"],
   });
   await ctx.addInitScript({ content: CURSOR_JS });
-  await ctx.addInitScript({ content: MODAL_DISMISS_JS });
   let [w] = ctx.serviceWorkers(); if (!w) await ctx.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => {});
   const page = ctx.pages()[0] ?? (await ctx.newPage());
 
@@ -153,11 +152,26 @@ async function runScenario(n, name, flow) {
   const clickEl = async (loc) => { await loc.scrollIntoViewIfNeeded().catch(() => {}); await hoverEl(loc); await loc.click({ timeout: 6000 }).catch(() => {}); await sleep(900); };
   const scrollBy = async (dy) => { for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, dy / 6); await sleep(180); } await sleep(600); };
   const dismiss = async (re) => { const el = page.getByText(re).first(); if (await el.count().catch(() => 0)) { await clickEl(el).catch(() => {}); await sleep(500); } };
+  // POLL-dismiss with REAL Playwright clicks (synthetic el.click() doesn't close
+  // these React modals). Loops a few times so LATE-appearing modals (the location
+  // prompt + the library login dialog pop up after a delay) are caught + actually
+  // closed, then stops once nothing's left (keeps captured clicks to ~1 each).
   const dismissModals = async () => {
-    await dismiss(/^Not Now$/i);            // location prompt — decline (do NOT grant)
-    await dismiss(/Skip,?\s*use English/i); // language modal
-    await dismiss(/^Skip for now$/i);       // library-page login modal (intercepts clicks + hold-Shift)
-    await sleep(500);
+    for (let i = 0; i < 6; i++) {
+      let did = false;
+      for (const re of [/^Not Now$/i, /Skip,?\s*use English/i, /^Skip for now$/i, /^Maybe later$/i]) {
+        const el = page.getByText(re).first();
+        if ((await el.count().catch(() => 0)) && (await el.isVisible().catch(() => false))) {
+          await el.click({ timeout: 3000 }).catch(() => {}); did = true; await sleep(400);
+        }
+      }
+      const x = page.getByRole("button", { name: /^close$/i }).first(); // location/promo ✕
+      if ((await x.count().catch(() => 0)) && (await x.isVisible().catch(() => false))) {
+        await x.click({ timeout: 2000 }).catch(() => {}); did = true; await sleep(400);
+      }
+      if (!did) break;
+      await sleep(500);
+    }
   };
   const helpers = { page, hoverEl, clickEl, scrollBy, dismiss, dismissModals, sleep, SITE, CURSOR_JS };
 
@@ -285,13 +299,22 @@ async function scenarioExplain({ page, scrollBy, dismissModals }) {
   await page.evaluate(CURSOR_JS).catch(() => {});
   await dismissModals();
   await scrollBy(350); // bring the library cards into view, below the hero/filters
-  const card = page.locator('a[href^="/library/"]').first();
-  if (!(await card.count().catch(() => 0))) { console.log("  S3: no library card found"); return; }
-  await card.scrollIntoViewIfNeeded().catch(() => {});
+  // Target a BUTTON, not a card link — buttons reliably emit a note on hold-Shift;
+  // an <a> card often emits none (the earlier note:0). "Book Now" is a meaningful
+  // single component to explain.
+  let target = null;
+  for (const re of [/^Book Now$/i, /^Book Seat$/i, /Near Me/i]) {
+    const el = page.getByText(re).first();
+    if ((await el.count().catch(() => 0)) && (await el.isVisible().catch(() => false))) { target = el; break; }
+  }
+  if (!target) target = page.locator('a[href^="/library/"]').first();
+  if (!(await target.count().catch(() => 0))) { console.log("  S3: no target found"); return; }
+  await target.scrollIntoViewIfNeeded().catch(() => {});
   await sleep(500);
+  const card = target;
   const box = await card.boundingBox().catch(() => null);
-  if (!box || box.y < 60) { console.log("  S3: card not in a clean position"); return; }
-  console.log(`  S3: marking library card @ y=${Math.round(box.y)}`);
+  if (!box || box.y < 60) { console.log("  S3: target not in a clean position"); return; }
+  console.log(`  S3: marking component @ y=${Math.round(box.y)}`);
   // Move ONTO the card, settle, CLEAR any text selection (so Shift makes a clean
   // element note, not an explain-selection), then HOLD Shift LONG (~1700ms).
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 14 });
