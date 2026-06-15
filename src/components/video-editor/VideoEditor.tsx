@@ -18,6 +18,7 @@ import {
 	Record as RecordIcon,
 	ArrowClockwise as Redo2,
 	Scissors,
+	ArrowLineRight as TrimToEndIcon,
 	SkipBack,
 	SkipForward,
 	Sparkle,
@@ -90,6 +91,7 @@ import {
 } from "@/utils/aspectRatioUtils";
 import { rippleAudioRegionsForRemovedSegments } from "./audioRegionRipple";
 import { planClipSpeedChange, snapStretchSpeed } from "./clipSpeedChange";
+import { trimRangesToEnd } from "./trimToEnd";
 import {
 	carveSpeedRegion,
 	dissolveRetimeGroup,
@@ -3833,6 +3835,23 @@ export default function VideoEditor() {
 		[selectedClipId],
 	);
 
+	// Trim to End: delete everything from the playhead to the tail of the timeline
+	// (the "cut the right side fully" gesture). Clips/zooms/annotations/audio/speed
+	// fully past the playhead are removed; a region spanning it is clipped to end
+	// there. Undoable via the editor history like any other edit.
+	const handleTrimToEnd = useCallback(
+		(cutMs: number) => {
+			const cut = Math.round(cutMs);
+			if (cut <= 0) return;
+			setClipRegions((prev) => trimRangesToEnd(prev, cut));
+			setZoomRegions((prev) => trimRangesToEnd(prev, cut));
+			setAnnotationRegions((prev) => trimRangesToEnd(prev, cut));
+			setAudioRegions((prev) => trimRangesToEnd(prev, cut));
+			setSpeedRegions((prev) => trimRangesToEnd(prev, cut));
+		},
+		[],
+	);
+
 	// Add a DaVinci-style speed point at the playhead: split the clip into a
 	// linked retime pair (both at the current speed) whose seam can then be
 	// dragged to redistribute time while keeping the total duration constant.
@@ -6568,6 +6587,15 @@ export default function VideoEditor() {
 									<Scissors className="w-4 h-4" />
 								</Button>
 								<Button
+									onClick={() => timelineRef.current?.trimToEnd()}
+									variant="ghost"
+									size="icon"
+									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+									title="Trim to End — delete everything after the playhead (E)"
+								>
+									<TrimToEndIcon className="w-4 h-4" />
+								</Button>
+								<Button
 									onClick={() => timelineRef.current?.addSpeedPoint()}
 									variant="ghost"
 									size="icon"
@@ -6702,6 +6730,7 @@ export default function VideoEditor() {
 						trimRegions={trimRegions}
 						clipRegions={clipRegions}
 						onClipSplit={handleClipSplit}
+						onTrimToEnd={handleTrimToEnd}
 						onAddSpeedPoint={handleAddSpeedPoint}
 						onShiftMarker={handleShiftMarker}
 						pendingMarkerMs={pendingMarkerMs}
