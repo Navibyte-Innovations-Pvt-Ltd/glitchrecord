@@ -100,7 +100,24 @@ def tts_normalize(text: str, lang: str = "hi") -> str:
     text = re.sub(r"(?<=[\w])-(?=[\w])", " ", text)
     # Slash between words ("WiFi/SMS") is read as "slash" — make it a space.
     text = re.sub(r"(?<=[^\s/])\s*/\s*(?=[^\s/])", " ", text)
+    # ALL-CAPS labels (plan tiers MICRO / SMALL / STANDARD / PRO, headings) are
+    # SPELLED out letter by letter by the engine ("PRO" → "P, R, O"). Title-case
+    # them so they're said as WORDS — except genuine acronyms that SHOULD be
+    # spelled (OTP, SMS, ID …), which stay untouched.
+    text = re.sub(r"\b[A-Z][A-Z]+\b", _decaps_word, text)
     return re.sub(r"\s{2,}", " ", text).strip()
+
+
+# Acronyms the engine SHOULD spell — keep these in capitals.
+_KEEP_CAPS = {
+    "OTP", "SMS", "ID", "QR", "OK", "URL", "API", "AI", "UI", "UX", "FAQ",
+    "PDF", "CSV", "GST", "PAN", "KYC", "PIN", "SIM", "IT", "HR", "USB", "IP",
+}
+
+
+def _decaps_word(m: "re.Match[str]") -> str:
+    word = m.group(0)
+    return word if word in _KEEP_CAPS else word[:1] + word[1:].lower()
 
 
 def clean_script(text: str, lang: str = "en", convert_numbers: bool = True) -> str:
