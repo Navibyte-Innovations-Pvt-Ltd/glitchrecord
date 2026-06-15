@@ -12,7 +12,7 @@ export function useLaunchHudInteractionState({
 	webcamPreviewDragStartRef: RefObject<unknown>;
 }) {
 	const isMouseOverHudRef = useRef(false);
-	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const lastInteractiveReassertAtRef = useRef(0);
 
 	const setHudMouseInteractive = useCallback((force = false) => {
