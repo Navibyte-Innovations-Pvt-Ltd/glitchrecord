@@ -59,14 +59,20 @@ How the launch avoids common traps (in `e2e/helpers/electron.ts`):
 `bun run test:e2e` runs lanes 2 + 3 together. `bun run test` from the repo root
 runs lane 1 across every package via Turbo.
 
-## ✅ Run EVERYTHING — `bun run test:all`
+## ✅ Run tests — `test:fast` (quick) and `test:all` (everything incl. demo)
 
 ```
-bun run test:all      # = lane 1 (unit) + every e2e test, one file at a time
+bun run test:fast     # lane 1 (unit) + every e2e test, one file at a time  (~3 min)
+bun run test:all      # test:fast THEN demo:videos — the full pipeline       (~45–60 min)
 ```
 
-This is the single command to run before declaring any feature or fix done. It is
-**glob-driven, not a hand-maintained list** — so a NEW test file is picked up
+- **`test:fast`** = unit + all e2e. Run this before declaring any feature/fix done.
+- **`test:all`** = `test:fast` + **`demo:videos`** (lane 4 below) — the complete
+  pass, including the real capture→narration→Sarvam→export pipeline producing 20
+  videos (10 sites × 2). Heavy; needs the web API on :3000, a Sarvam key, and a
+  login token. Run it before a release or after touching the narration/export path.
+
+Both are **glob-driven, not a hand-maintained list** — a NEW test file is picked up
 automatically with zero config edits:
 
 - Lane 1 (`vitest.config.ts`) runs every `**/*.test.ts`.
@@ -75,13 +81,22 @@ automatically with zero config edits:
 
 **Never hardcode test file paths into a script** (the old `test:all` did, so new
 e2e files silently never ran). Drop a `*.test.ts` (lane 1) or `*.e2e.test.ts`
-(lanes 2/3) in the right place and `test:all` runs it forever. The per-lane
-scripts (`test:e2e:ui`, `test:e2e:capture`, `test:e2e:export`) stay only as
-targeted shortcuts while iterating on one area.
+(lanes 2/3) in the right place and it runs forever. The per-lane scripts
+(`test:e2e:ui`, `test:e2e:capture`, `test:e2e:export`) stay only as targeted
+shortcuts while iterating on one area.
 
-**Before `test:all` (headed lanes):** quit the dev GlitchRecord (frees port 7337)
-and build the app + extension (`bun run build`; `packages/extension` `bun run
-build`). The harness fails fast with a clear message if 7337 is held.
+**Before the headed lanes:** quit the dev GlitchRecord (frees port 7337) and build
+the app + extension (`bun run build`; `packages/extension` `bun run build`). The
+harness fails fast with a clear message if 7337 is held.
+
+### 4. Full-pipeline demo — `demo:videos`
+`bun run demo:videos` (`e2e/demo-videos.mjs`). Scans 10 real websites, and for each
+runs the WHOLE flow: extension capture → DB session → DeepSeek narration script →
+Sarvam Ritu voice → ffmpeg mux + captions → edited export. Output: 20 videos in
+`demo-videos/` (`routine-<site>.mp4` browse+editing, `exported-<site>.mp4` edited).
+Each site runs in its own spawned process (6-min timeout) so one crash can't cascade.
+This is the end-to-end smoke for the narration/export pipeline; it's slow and needs
+external services, so it's the demo lane of `test:all`, not `test:fast`.
 
 ## Standard for every new feature / fix (do this, every time)
 
