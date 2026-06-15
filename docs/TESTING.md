@@ -59,6 +59,46 @@ How the launch avoids common traps (in `e2e/helpers/electron.ts`):
 `bun run test:e2e` runs lanes 2 + 3 together. `bun run test` from the repo root
 runs lane 1 across every package via Turbo.
 
+## ✅ Run EVERYTHING — `bun run test:all`
+
+```
+bun run test:all      # = lane 1 (unit) + every e2e test, one file at a time
+```
+
+This is the single command to run before declaring any feature or fix done. It is
+**glob-driven, not a hand-maintained list** — so a NEW test file is picked up
+automatically with zero config edits:
+
+- Lane 1 (`vitest.config.ts`) runs every `**/*.test.ts`.
+- Lanes 2 + 3 (`vitest.e2e.config.ts`) run every `e2e/**/*.e2e.test.ts`, serially
+  (`fileParallelism: false`, because the bridge/app bind the fixed port 7337).
+
+**Never hardcode test file paths into a script** (the old `test:all` did, so new
+e2e files silently never ran). Drop a `*.test.ts` (lane 1) or `*.e2e.test.ts`
+(lanes 2/3) in the right place and `test:all` runs it forever. The per-lane
+scripts (`test:e2e:ui`, `test:e2e:capture`, `test:e2e:export`) stay only as
+targeted shortcuts while iterating on one area.
+
+**Before `test:all` (headed lanes):** quit the dev GlitchRecord (frees port 7337)
+and build the app + extension (`bun run build`; `packages/extension` `bun run
+build`). The harness fails fast with a clear message if 7337 is held.
+
+## Standard for every new feature / fix (do this, every time)
+
+1. **Write the test at the lowest lane that proves it** (see the bug→test→scenario
+   workflow below). Pure logic → lane 1 unit test (extract a pure function if it
+   lives inline in a component). UI wiring (a new button/shortcut actually firing)
+   → a lane-3 `*.e2e.test.ts` that clicks the real app.
+2. **Name + ground it** — one assertion per behaviour, real selectors
+   (`data-item-kind`, `data-testid`, titles), a fixture not prose.
+3. **Run `bun run test:all`** and make it green before saying "done". A feature
+   without a test that survives `test:all` is not finished.
+
+Example (the "Trim to End" feature): pure range math →
+`src/components/video-editor/trimToEnd.test.ts` (lane 1); the `E` shortcut + the
+toolbar button actually cutting the tail + Undo restoring it →
+`e2e/trim-to-end.e2e.test.ts` (lane 3). Both run under `test:all` automatically.
+
 ## ⚠️ Headed lanes need the dev app CLOSED
 
 GlitchRecord takes `requestSingleInstanceLock()` and the bridge binds **port
