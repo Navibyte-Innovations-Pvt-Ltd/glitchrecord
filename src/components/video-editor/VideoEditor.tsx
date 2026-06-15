@@ -6731,6 +6731,7 @@ export default function VideoEditor() {
 						onShiftMarker={handleShiftMarker}
 						pendingMarkerMs={pendingMarkerMs}
 						onClipSpanChange={handleClipSpanChange}
+						onClipMutedChange={handleClipMutedChange}
 						selectedClipId={selectedClipId}
 						onSelectClip={handleSelectClip}
 						speedRegions={speedRegions}
