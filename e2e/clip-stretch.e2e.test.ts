@@ -35,7 +35,8 @@ afterEach(async () => {
 	editor = null;
 });
 
-// Carve a 2x segment in the first third, then drag it wider; `grabOffset` selects
+// Carve a neutral (1x) segment in the first third, then drag it wider (→ slow-mo);
+// `grabOffset` selects
 // WHERE on the carved clip's right edge the drag starts (-4 = inside the carved
 // clip, +3 = on the neighbour side of the shared seam). Returns before/after clips.
 async function carveThenStretch(grabOffset: number) {
@@ -84,9 +85,13 @@ async function carveThenStretch(grabOffset: number) {
 }
 
 function assertStretch(beforeClips: Clip[], afterClips: Clip[]) {
-	const carvedBefore = beforeClips.find((c) => c.speed !== 1);
+	// The carve splits the clip into before / carved / after, all NEUTRAL 1x — the
+	// carved segment is the MIDDLE one by timeline position (it starts 1x; the drag
+	// below is what gives it a speed).
+	const carvedBefore = [...beforeClips].sort((a, b) => a.startMs - b.startMs)[1];
 	const carvedAfter = afterClips.find((c) => c.id === carvedBefore?.id);
-	expect(carvedBefore, "a carved (non-1x) segment exists").toBeTruthy();
+	expect(carvedBefore, "a carved middle segment exists").toBeTruthy();
+	expect(carvedBefore.speed, "carve is neutral 1x before the drag").toBe(1);
 	expect(carvedAfter, "the carved segment survives").toBeTruthy();
 
 	// Stretching wider must LOWER the speed and WIDEN the clip…
