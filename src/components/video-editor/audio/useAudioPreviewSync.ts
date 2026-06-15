@@ -8,6 +8,7 @@ import {
   getMediaSyncPlaybackRate,
 } from "@/lib/mediaTiming";
 import type { AudioRegion, SpeedRegion } from "../types";
+import { computeMixHeadroom } from "./mixHeadroom";
 
 const SOURCE_AUDIO_PREVIEW_PLAYING_SEEK_DRIFT_SECONDS = 0.18;
 const SOURCE_AUDIO_PREVIEW_PAUSED_SEEK_DRIFT_SECONDS = 0.01;
@@ -24,6 +25,10 @@ interface UseAudioPreviewSyncParams {
   sourceAudioFallbackStartDelayMsByPath: Record<string, number>;
   isCurrentClipMuted: boolean;
   getSourceTrackPreviewGain: (audioPath: string) => number;
+  // The effective embedded <video> preview volume (after mutes + previewVolume).
+  // Counted into the mix headroom so narration + video can't sum past the device
+  // clip point. Pure number — the hook only reads it for the headroom calc.
+  embeddedVideoPreviewVolume: number;
   onSourceFallbackLoadError: (error: unknown) => void;
 }
 
@@ -39,6 +44,7 @@ export function useAudioPreviewSync({
   sourceAudioFallbackStartDelayMsByPath,
   isCurrentClipMuted,
   getSourceTrackPreviewGain,
+  embeddedVideoPreviewVolume,
   onSourceFallbackLoadError,
 }: UseAudioPreviewSyncParams) {
   const resolvedPlan = useMemo(
@@ -58,6 +64,35 @@ export function useAudioPreviewSync({
     () => resolvedPlan.tracks.filter((track) => track.kind !== "user"),
     [resolvedPlan],
   );
+
+  // Preview anti-clip headroom. Narration + source + embedded video each play as
+  // independent HTMLAudioElements that SUM at the device output with no limiter —
+  // two near-full-scale sources sum past ±1.0 → the device hard-clips ("speaker
+  // tearing"). The raw narration file alone is one source, so it stays clean.
+  // Compute a single multiplier (≤1) that pulls the summed peak back to the
+  // ceiling, applied to every source so the mix balance is preserved (this is the
+  // preview equivalent of the export soft limiter).
+  const previewMixHeadroom = useMemo(() => {
+    const pv = Math.max(0, Math.min(1, previewVolume));
+    const userVols = resolvedUserTracks.map((t) =>
+      Math.max(0, Math.min(1, t.gain * pv)),
+    );
+    const sourceVols = resolvedSourceTracks.map((t) =>
+      Math.max(0, Math.min(1, getSourceTrackPreviewGain(t.sourceRef.path) * (isCurrentClipMuted ? 0 : pv))),
+    );
+    return computeMixHeadroom([
+      ...userVols,
+      ...sourceVols,
+      Math.max(0, Math.min(1, embeddedVideoPreviewVolume)),
+    ]);
+  }, [
+    resolvedUserTracks,
+    resolvedSourceTracks,
+    previewVolume,
+    isCurrentClipMuted,
+    embeddedVideoPreviewVolume,
+    getSourceTrackPreviewGain,
+  ]);
 
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const audioElementRevokersRef = useRef<Map<string, () => void>>(new Map());
@@ -161,13 +196,13 @@ export function useAudioPreviewSync({
         })();
       }
 
-      audio.volume = Math.max(0, Math.min(1, track.gain * previewVolume));
+      audio.volume = Math.max(0, Math.min(1, track.gain * previewVolume * previewMixHeadroom));
     }
 
     return () => {
       cancelled = true;
     };
-  }, [previewVolume, resolvedUserTracks]);
+  }, [previewVolume, resolvedUserTracks, previewMixHeadroom]);
 
   useEffect(() => {
     let cancelled = false;
@@ -250,7 +285,7 @@ export function useAudioPreviewSync({
         })();
       }
 
-      audio.volume = Math.max(0, Math.min(1, getSourceTrackPreviewGain(audioPath) * (isCurrentClipMuted ? 0 : previewVolume)));
+      audio.volume = Math.max(0, Math.min(1, getSourceTrackPreviewGain(audioPath) * (isCurrentClipMuted ? 0 : previewVolume) * previewMixHeadroom));
     }
 
     if (sourceAudioMasterGainRef.current) {
@@ -273,6 +308,7 @@ export function useAudioPreviewSync({
     onSourceFallbackLoadError,
     resolvedSourceTracks,
     previewVolume,
+    previewMixHeadroom,
     playSourceAudioPreview,
   ]);
 
@@ -381,7 +417,7 @@ export function useAudioPreviewSync({
 
     for (const audio of sourceAudioElementsRef.current.values()) {
       const sourceAudioPath = audio.dataset.sourceAudioPath ?? "";
-      audio.volume = Math.max(0, Math.min(1, getSourceTrackPreviewGain(sourceAudioPath) * (isCurrentClipMuted ? 0 : previewVolume)));
+      audio.volume = Math.max(0, Math.min(1, getSourceTrackPreviewGain(sourceAudioPath) * (isCurrentClipMuted ? 0 : previewVolume) * previewMixHeadroom));
 
       enablePitchPreservingPlayback(audio);
       const audioDuration = Number.isFinite(audio.duration) ? audio.duration : null;
@@ -440,6 +476,7 @@ export function useAudioPreviewSync({
     isCurrentClipMuted,
     isPlaying,
     previewVolume,
+    previewMixHeadroom,
     resolvedSourceTracks,
     sourceAudioFallbackStartDelayMsByPath,
     ensureSourceAudioRunning,
@@ -458,5 +495,5 @@ export function useAudioPreviewSync({
     });
   }, [isPlaying, resolvedSourceTracks.length, ensureSourceAudioRunning]);
 
-  return { playSourceAudioPreview };
+  return { playSourceAudioPreview, previewMixHeadroom };
 }
