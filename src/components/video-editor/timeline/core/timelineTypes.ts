@@ -23,6 +23,7 @@ export interface TimelineShortcutBindings {
 	addKeyframe: ShortcutBinding;
 	addZoom: ShortcutBinding;
 	splitClip: ShortcutBinding;
+	trimToEnd: ShortcutBinding;
 	addAnnotation: ShortcutBinding;
 	deleteSelected: ShortcutBinding;
 }
