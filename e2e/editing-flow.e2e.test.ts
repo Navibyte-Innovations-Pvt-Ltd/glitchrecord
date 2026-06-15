@@ -1,7 +1,8 @@
 // Exercises a real EDITING session in the GlitchRecord editor — the gestures the
 // user wants the auto-editor to use: drop two shift+click markers to carve a
-// speed segment, then a SECOND pair of markers to carve another. Verifies that
-// multiple independent speed segments land on the timeline (each with a badge).
+// segment (NEUTRAL 1x by default), then set its speed by dragging its edge, and
+// carve a SECOND pair. Verifies multiple independent segments land on the
+// timeline and that dragging a carved edge applies a real speed.
 //
 // Run with `bun run test:e2e:ui` — GlitchRecord dev MUST be closed (port 7337).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -29,52 +30,50 @@ async function shiftMark(window: EditorApp["window"], xFrac: number) {
 }
 
 describe("GlitchRecord editing: multiple shift+click speed carves", () => {
-  it("carves two independent speed segments via two pairs of markers", async () => {
+  it("carves two independent NEUTRAL segments via two pairs of markers", async () => {
     const { window } = editor;
-    await window.locator('[data-item-kind="clip"]').first().waitFor({ state: "visible", timeout: 60_000 });
+    const clips = window.locator('[data-item-kind="clip"]');
+    await clips.first().waitFor({ state: "visible", timeout: 60_000 });
+    await window.waitForTimeout(800);
+    expect(await clips.count()).toBe(1);
 
-    // First edit: two markers → carve segment A.
+    // First edit: two markers → carve clip into before / carved / after = 3.
     await shiftMark(window, 0.2);
     await shiftMark(window, 0.4);
-    const badges = window.locator('[data-testid="clip-speed-badge"]');
-    await badges.first().waitFor({ state: "visible", timeout: 10_000 });
-    const afterFirst = await badges.count();
-    expect(afterFirst).toBeGreaterThanOrEqual(1);
+    await window.waitForTimeout(1000);
+    const afterFirst = await clips.count();
+    expect(afterFirst).toBe(3);
 
-    // Second edit: two more markers further along → carve segment B.
+    // Second edit: two more markers further along → carve another piece.
     await shiftMark(window, 0.6);
     await shiftMark(window, 0.8);
-    await window.waitForTimeout(500);
-    const afterSecond = await badges.count();
+    await window.waitForTimeout(1000);
+    const afterSecond = await clips.count();
+    expect(afterSecond).toBeGreaterThan(afterFirst); // second carve added segments
 
-    // Two separate carves → at least two speed-badged segments on the timeline.
-    expect(afterSecond).toBeGreaterThan(afterFirst);
-
-    // Every badge shows a valid playback speed (the edits are real, not 1x).
-    const texts = await badges.allTextContents();
-    for (const t of texts) {
-      expect(t.trim()).toMatch(/^(0\.25|0\.5|0\.75|1\.25|1\.5|1\.75|2|2\.5|3|4)x$/);
-    }
+    // Carves are NEUTRAL (1x) by default — no speed badge until the user changes
+    // a speed. (Setting a speed is covered by the drag + speed-panel tests below.)
+    expect(await window.locator('[data-testid="clip-speed-badge"]').count()).toBe(0);
   });
 
-  it("a speed point can be RE-SPEEDED by dragging its edge (squeeze→faster)", async () => {
+  it("a carved segment can be SPEEDED by dragging its edge (squeeze→faster)", async () => {
     const { window } = editor;
     const canvas = window.locator('[data-testid="timeline-canvas"]').first();
     const box = await canvas.boundingBox();
     if (!box) throw new Error("no canvas");
 
-    // shift+click two markers → carve an internal speed segment (default 2x)
+    // shift+click two markers → carve an internal segment (NEUTRAL 1x, no badge yet)
     await window.keyboard.down("Shift");
     await window.mouse.click(box.x + box.width * 0.32, box.y + 6);
     await window.waitForTimeout(400);
     await window.mouse.click(box.x + box.width * 0.55, box.y + 6);
     await window.keyboard.up("Shift");
+    await window.waitForTimeout(1000);
     const badges = window.locator('[data-testid="clip-speed-badge"]');
-    await badges.first().waitFor({ state: "visible", timeout: 10_000 });
-    const before = (await badges.allTextContents()).join(",");
+    expect(await badges.count()).toBe(0); // neutral carve → no speed badge yet
 
     // Drag that carved segment's RIGHT edge inward → it shrinks → ITS speed rises,
-    // independently of the neighbouring 1x clips. This is the speed-point retime.
+    // independently of the neighbouring 1x clips. This is the stretch→speed path.
     const seg = window.locator('[data-item-kind="clip"]').nth(1);
     const sb = await seg.boundingBox();
     if (!sb) throw new Error("no carved segment");
@@ -88,8 +87,11 @@ describe("GlitchRecord editing: multiple shift+click speed carves", () => {
     for (let i = 1; i <= 12; i++) { await window.mouse.move(ex + (tgt - ex) * i / 12, ey, { steps: 2 }); await window.waitForTimeout(45); }
     await window.mouse.up(); await window.waitForTimeout(1200);
 
-    const after = (await badges.allTextContents()).join(",");
-    expect(after).not.toBe(before); // the internal segment's speed changed
+    // The squeezed segment now shows a valid non-1x speed badge.
+    await badges.first().waitFor({ state: "visible", timeout: 10_000 });
+    expect((await badges.first().textContent())?.trim() ?? "").toMatch(
+      /^(0\.25|0\.5|0\.75|1\.25|1\.5|1\.75|2|2\.5|3|4)x$/,
+    );
   });
 
   it("changes a clip's speed directly from the speed panel", async () => {
