@@ -214,7 +214,12 @@ export async function downloadAndInstallExtension(
 
 		// Write to disk
 		const fileStream = createWriteStream(zipPath);
-		await pipeline(Readable.fromWeb(response.body as NodeReadableStream), fileStream);
+		// `as unknown as` bridge: fetch's web ReadableStream<Uint8Array> and node's
+		// stream/web ReadableStream don't structurally overlap for a direct cast.
+		await pipeline(
+			Readable.fromWeb(response.body as unknown as NodeReadableStream),
+			fileStream,
+		);
 
 		// Extract the zip — use the built-in decompress or shell unzip
 		const extractDir = path.join(tempDir, "extracted");
