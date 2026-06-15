@@ -26,6 +26,7 @@ export interface TimelineShortcutBindings {
 	trimToEnd: ShortcutBinding;
 	addAnnotation: ShortcutBinding;
 	deleteSelected: ShortcutBinding;
+	muteClip: ShortcutBinding;
 }
 
 export interface TimelineRenderItem {
