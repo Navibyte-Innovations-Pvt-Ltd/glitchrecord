@@ -7,6 +7,7 @@ import {
 	getEffectiveRecordingDurationMs,
 	getEffectiveVideoStreamDurationSeconds,
 	getMediaSyncPlaybackRate,
+	resolveOverlayPlaybackRate,
 } from "./mediaTiming";
 
 describe("clampMediaTimeToDuration", () => {
@@ -99,6 +100,41 @@ describe("getMediaSyncPlaybackRate", () => {
 				targetTime: 10.5,
 			}),
 		).toBeCloseTo(1.08);
+	});
+});
+
+describe("resolveOverlayPlaybackRate — narration anti-warble", () => {
+	// Narration is pitch-preserved SPEECH. Drift-correcting its playback rate
+	// (getMediaSyncPlaybackRate) warbles the voice → "speaker tearing". Overlay
+	// audio must therefore use a STABLE rate regardless of drift.
+	it("REGRESSION: stays at the base rate for the SAME drifts that make getMediaSyncPlaybackRate swing", () => {
+		// These drifts push getMediaSyncPlaybackRate to 1.05 / 0.95 / 1.08 (the warble).
+		const driftCases = [
+			{ currentTime: 10, targetTime: 10.1 },
+			{ currentTime: 10.1, targetTime: 10 },
+			{ currentTime: 10, targetTime: 10.5 },
+		];
+		for (const { currentTime, targetTime } of driftCases) {
+			// getMediaSyncPlaybackRate DOES swing away from 1 (the cause of tearing)…
+			expect(
+				getMediaSyncPlaybackRate({ basePlaybackRate: 1, currentTime, targetTime }),
+			).not.toBe(1);
+			// …but the overlay rate is drift-independent → constant → no warble.
+			expect(resolveOverlayPlaybackRate(1)).toBe(1);
+		}
+	});
+
+	it("returns the base rate unchanged (e.g. a 2x clip-speed overlay)", () => {
+		expect(resolveOverlayPlaybackRate(1)).toBe(1);
+		expect(resolveOverlayPlaybackRate(2)).toBe(2);
+		expect(resolveOverlayPlaybackRate(0.5)).toBe(0.5);
+	});
+
+	it("sanitizes invalid rates to 1", () => {
+		expect(resolveOverlayPlaybackRate(0)).toBe(1);
+		expect(resolveOverlayPlaybackRate(-1)).toBe(1);
+		expect(resolveOverlayPlaybackRate(Number.NaN)).toBe(1);
+		expect(resolveOverlayPlaybackRate(Number.POSITIVE_INFINITY)).toBe(1);
 	});
 });
 
