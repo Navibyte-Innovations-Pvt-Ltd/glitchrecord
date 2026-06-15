@@ -45,6 +45,7 @@ interface UseTimelineEditorRuntimeParams {
 	onAddSpeedPoint?: (markerMs: number) => void;
 	onClipSpanChange?: (id: string, span: Span) => void;
 	onClipDelete?: (id: string) => void;
+	onClipMutedChange?: (muted: boolean) => void;
 	selectedClipId?: string | null;
 	onSelectClip?: (id: string | null) => void;
 	annotationRegions: AnnotationRegion[];
@@ -91,6 +92,7 @@ export function useTimelineEditorRuntime({
 	onAddSpeedPoint,
 	onClipSpanChange,
 	onClipDelete,
+	onClipMutedChange,
 	selectedClipId,
 	onSelectClip,
 	annotationRegions,
@@ -218,6 +220,15 @@ export function useTimelineEditorRuntime({
 		onTrimToEnd(currentTimeMs);
 	}, [videoDuration, totalMs, currentTimeMs, onTrimToEnd]);
 
+	// "M" shortcut → toggle the selected clip's mute (the clip settings panel was
+	// removed, so this is the only mute control).
+	const toggleSelectedClipMute = useCallback(() => {
+		if (!selectedClipId || !onClipMutedChange) return;
+		const clip = clipRegions.find((c) => c.id === selectedClipId);
+		if (!clip) return;
+		onClipMutedChange(!clip.muted);
+	}, [selectedClipId, clipRegions, onClipMutedChange]);
+
 	const handleAddSpeedPoint = useCallback(() => {
 		if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onAddSpeedPoint) {
 			return;
@@ -273,6 +284,7 @@ export function useTimelineEditorRuntime({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		toggleSelectedClipMute,
 		cycleAnnotationsAtCurrentTime,
 	});
 
