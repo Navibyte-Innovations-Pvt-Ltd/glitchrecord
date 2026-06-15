@@ -65,13 +65,6 @@ export function useTimelineKeyboardShortcuts({
 				eventTarget instanceof HTMLSelectElement ||
 				(eventTarget instanceof HTMLElement && eventTarget.isContentEditable)
 			) {
-				// [GG-DEL-DEBUG] remove once delete-key flow is confirmed
-				if (e.key === "Delete" || e.key === "Backspace") {
-					console.debug("[GG-DEL] blocked by input-target guard", {
-						key: e.key,
-						targetTag: (eventTarget as HTMLElement)?.tagName,
-					});
-				}
 				return;
 			}
 
@@ -92,14 +85,6 @@ export function useTimelineKeyboardShortcuts({
 						selectedAnnotationId ||
 						selectedAudioId,
 				);
-				if (isDeleteKey) {
-					// [GG-DEL-DEBUG] remove once delete-key flow is confirmed
-					console.debug("[GG-DEL] not-focused gate", {
-						key: e.key,
-						hasSelection,
-						willProceed: isDeleteKey && hasSelection,
-					});
-				}
 				if (!(isDeleteKey && hasSelection)) {
 					return;
 				}
