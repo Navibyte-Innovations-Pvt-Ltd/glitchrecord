@@ -58,6 +58,7 @@ export interface TimelineEditorProps {
 	pendingMarkerMs?: number | null;
 	onClipSpanChange?: (id: string, span: Span) => void;
 	onClipDelete?: (id: string) => void;
+	onClipMutedChange?: (muted: boolean) => void;
 	selectedClipId?: string | null;
 	onSelectClip?: (id: string | null) => void;
 	annotationRegions?: AnnotationRegion[];
