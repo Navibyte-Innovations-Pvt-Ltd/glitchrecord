@@ -1,4 +1,4 @@
-import { type ClipRegion, type PlaybackSpeed, getClipSourceSpans, sortClipRegions } from "./types";
+import { type ClipRegion, getClipSourceSpans, sortClipRegions } from "./types";
 
 // Shift+click drops two markers; the span between them is carved into its own
 // clip region at `speed`. Any region overlapping [a, b] is split so the carved
@@ -8,7 +8,7 @@ export function carveSpeedRegion(
 	regions: ClipRegion[],
 	a: number,
 	b: number,
-	speed: PlaybackSpeed,
+	speed: number,
 	newId: () => string,
 	carvedId?: string,
 ): ClipRegion[] {
