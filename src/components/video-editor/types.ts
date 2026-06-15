@@ -632,9 +632,11 @@ export interface SpeedRegion {
 	id: string;
 	startMs: number;
 	endMs: number;
-	speed: PlaybackSpeed;
+	/** Free playback speed, snapped to a clean 0.05 grid (0.1 … 30). Not the old
+	 *  fixed PlaybackSpeed presets — the user sets it by dragging the clip edge. */
+	speed: number;
 	/** Source content (ms) the region covers. Drag the edge to stretch (slower) or
-	 *  squeeze (faster); speed = sourceMs / timelineWidth, snapped to PlaybackSpeed. */
+	 *  squeeze (faster); speed = sourceMs / timelineWidth, snapped to 0.05. */
 	sourceMs?: number;
 }
 
