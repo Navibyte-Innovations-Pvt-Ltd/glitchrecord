@@ -144,21 +144,6 @@ export function useTimelineKeyboardShortcuts({
 					selectedAnnotationId,
 					selectedAudioId,
 				});
-				// [GG-DEL-DEBUG] remove once delete-key flow is confirmed
-				console.debug("[GG-DEL] keydown", {
-					key: e.key,
-					timelineFocused: isTimelineFocusedRef.current,
-					target,
-					selectedClipId,
-					selectedZoomId,
-					selectedKeyframeId,
-					selectedAnnotationId,
-					selectedAudioId,
-					activeEl:
-						typeof document !== "undefined"
-							? document.activeElement?.tagName
-							: undefined,
-				});
 				if (target !== "none") {
 					e.preventDefault();
 				}
