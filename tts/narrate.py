@@ -78,6 +78,25 @@ def numbers_to_words(text: str, lang: str = "en") -> str:
     return re.sub(r"\b\d{1,9}\b", repl, text)
 
 
+def tts_normalize(text: str) -> str:
+    """Make text the TTS engine (esp. Sarvam bulbul) reads CORRECTLY. The engine
+    mis-reads dashes/hyphens: a number-unit compound like "60-day" comes out
+    "sixty, D-A-Y" (it spells the word), and an em-dash used as a pause is read
+    oddly. So: drop dashes entirely — turn compound hyphens into a space and any
+    dash-as-separator into a comma pause. Runs for ALL engines (belt-and-suspenders
+    even when the script generator already avoids dashes)."""
+    # Em/en dash (with optional surrounding space) used as a phrase separator → comma pause.
+    text = re.sub(r"\s*[—–]\s*", ", ", text)
+    # ASCII hyphen used as a SPACED separator ("Phone is best - just type") → comma.
+    text = re.sub(r"\s+-\s+", ", ", text)
+    # Hyphen GLUING two alphanumerics ("60-day", "2-Month", "code-mixed", "Wi-Fi")
+    # → a space, so the engine says both parts as words ("60 day", "2 Month").
+    text = re.sub(r"(?<=[\w])-(?=[\w])", " ", text)
+    # Slash between words ("WiFi/SMS") is read as "slash" — make it a space.
+    text = re.sub(r"(?<=[^\s/])\s*/\s*(?=[^\s/])", " ", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
+
+
 def clean_script(text: str, lang: str = "en", convert_numbers: bool = True) -> str:
     """Strip things that shouldn't be SPOKEN: [SECTION] headers, markdown
     headings/rules/bullets, leftover markdown emphasis. Optionally convert
@@ -102,7 +121,7 @@ def clean_script(text: str, lang: str = "en", convert_numbers: bool = True) -> s
         s = re.sub(r"\s{2,}", " ", s).strip()            # collapse gaps left behind
         if s:
             lines.append(s)
-    joined = " ".join(lines).strip()
+    joined = tts_normalize(" ".join(lines).strip())
     return numbers_to_words(joined, lang) if convert_numbers else joined
 
 
