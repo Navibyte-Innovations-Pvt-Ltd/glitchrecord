@@ -45,6 +45,9 @@ interface UseVideoEditorAudioParams {
 	duration: number;
 	isPlaying: boolean;
 	previewVolume: number;
+	// Whether the user has muted the embedded <video> audio in preview (to hear
+	// only narration). Folded into the embedded gain that feeds the mix headroom.
+	narrationPreviewMuted?: boolean;
 	sourceAudioFallbackRefreshKey?: number;
 	summarizeErrorMessage: (message: string) => string;
 	onSourceFallbackLoadError: (error: unknown) => void;
@@ -65,6 +68,7 @@ export function useVideoEditorAudio({
 	duration,
 	isPlaying,
 	previewVolume,
+	narrationPreviewMuted = false,
 	sourceAudioFallbackRefreshKey = 0,
 	summarizeErrorMessage,
 	onSourceFallbackLoadError,
@@ -116,7 +120,19 @@ export function useVideoEditorAudio({
 		setDefaultSourceAudioTrackSettings,
 	});
 
-	const { playSourceAudioPreview } = useAudioPreviewSync({
+	// The effective embedded <video> preview volume — mirrors VideoEditor's video
+	// volume formula. Fed to the hook so narration + video can't sum past the clip
+	// point, and re-used by VideoEditor (× the returned headroom) so the embedded
+	// video and the other sources share the SAME anti-clip attenuation.
+	const embeddedVideoPreviewVolume = useMemo(
+		() =>
+			shouldMutePreviewVideo || isCurrentClipMuted || narrationPreviewMuted
+				? 0
+				: Math.max(0, Math.min(1, previewVolume * embeddedSourcePreviewGain)),
+		[shouldMutePreviewVideo, isCurrentClipMuted, narrationPreviewMuted, previewVolume, embeddedSourcePreviewGain],
+	);
+
+	const { playSourceAudioPreview, previewMixHeadroom } = useAudioPreviewSync({
 		audioRegions,
 		previewVolume,
 		isPlaying,
@@ -128,6 +144,7 @@ export function useVideoEditorAudio({
 		sourceAudioFallbackStartDelayMsByPath,
 		isCurrentClipMuted,
 		getSourceTrackPreviewGain,
+		embeddedVideoPreviewVolume,
 		onSourceFallbackLoadError,
 	});
 
@@ -148,5 +165,7 @@ export function useVideoEditorAudio({
 		onSelectedClipSourceAudioTrackNormalizeChange,
 		embeddedSourcePreviewGain,
 		getSourceTrackPreviewGain,
+		embeddedVideoPreviewVolume,
+		previewMixHeadroom,
 	};
 }
