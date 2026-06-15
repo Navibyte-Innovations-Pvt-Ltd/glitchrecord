@@ -42,13 +42,20 @@ describe("GlitchRecord editor features", () => {
   it("DELETE a clip removes it", async () => {
     const { window } = editor;
     await ready(window);
-    // split first so deleting one still leaves a timeline
-    await clickClip(window); await seekFrac(window, 0.5); await window.keyboard.press("c");
-    await window.waitForTimeout(800);
+    // Carve a middle segment — this AUTO-SELECTS the carved clip (reliable, unlike
+    // a raw clip-click which the dnd pointer pipeline can swallow). Then delete via
+    // keyboard (the clip settings panel with its "Delete Clip" button was removed).
+    const box = await window.locator('[data-testid="timeline-canvas"]').first().boundingBox();
+    if (!box) throw new Error("no canvas");
+    await window.keyboard.down("Shift");
+    await window.mouse.click(box.x + box.width * 0.35, box.y + 6);
+    await window.waitForTimeout(400);
+    await window.mouse.click(box.x + box.width * 0.6, box.y + 6);
+    await window.keyboard.up("Shift");
+    await window.waitForTimeout(1000);
     const n = await clips(window).count();
-    expect(n).toBeGreaterThanOrEqual(2);
-    await clickClip(window, 0);
-    await window.getByText("Delete Clip", { exact: true }).click();
+    expect(n).toBe(3); // before / carved (selected) / after
+    await window.keyboard.press("Backspace");
     await window.waitForTimeout(800);
     expect(await clips(window).count()).toBeLessThan(n);
   });
@@ -62,20 +69,28 @@ describe("GlitchRecord editor features", () => {
     expect(await zooms(window).count()).toBeGreaterThanOrEqual(1);
   });
 
-  it("UNDO / REDO a speed change", async () => {
+  it("UNDO / REDO a speed carve", async () => {
     const { window } = editor;
     await ready(window);
-    await clickClip(window);
-    await window.locator('[data-testid="clip-speed-0.5"]').first().click();
-    await window.waitForTimeout(600);
-    const badge = clips(window).first().locator('[data-testid="clip-speed-badge"]');
-    expect((await badge.textContent())?.trim()).toBe("0.5x");
+    expect(await clips(window).count()).toBe(1);
+    // The speed-preset panel was removed; speed is carved/dragged on the timeline.
+    // shift+click two markers carves the clip into 3 segments (the speed tool).
+    const box = await window.locator('[data-testid="timeline-canvas"]').first().boundingBox();
+    if (!box) throw new Error("no canvas");
+    await window.keyboard.down("Shift");
+    await window.mouse.click(box.x + box.width * 0.32, box.y + 6);
+    await window.waitForTimeout(400);
+    await window.mouse.click(box.x + box.width * 0.55, box.y + 6);
+    await window.keyboard.up("Shift");
+    await window.waitForTimeout(1000);
+    expect(await clips(window).count()).toBe(3);
+    // Undo → back to one clip; Redo → carved into 3 again.
     await window.locator('[title="Undo"]').first().click();
     await window.waitForTimeout(700);
-    expect(await badge.count()).toBe(0); // back to 1x → no badge
+    expect(await clips(window).count()).toBe(1);
     await window.locator('[title="Redo"]').first().click();
     await window.waitForTimeout(700);
-    expect((await clips(window).first().locator('[data-testid="clip-speed-badge"]').textContent())?.trim()).toBe("0.5x");
+    expect(await clips(window).count()).toBe(3);
   });
 
   it("EXPORT opens the export settings menu", async () => {
