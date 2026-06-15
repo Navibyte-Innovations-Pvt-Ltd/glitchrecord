@@ -2,6 +2,30 @@ import type { ClipRegion, PlaybackSpeed, ZoomRegion } from "./types";
 
 export type ClipSpeedChangeBlockReason = "clip-overlap" | "zoom-overlap";
 
+// Manual clip-speed control (the +/− steppers + typable number box that replaced
+// the preset grid). Free adjustment, but SNAPPED to a clean 0.05 grid so values
+// are always 0.1, 0.15, 0.2 … never 0.1345.
+export const SPEED_MIN = 0.1;
+export const SPEED_MAX = 30;
+export const SPEED_STEP = 0.05;
+
+/**
+ * Clamp to [SPEED_MIN, SPEED_MAX] and snap to the nearest 0.05, returning a clean
+ * 2-decimal number (no float drift like 0.15000000000000002). Non-finite input
+ * falls back to 1.
+ */
+export function snapClipSpeed(value: number): number {
+	if (!Number.isFinite(value)) return 1;
+	const clamped = Math.min(SPEED_MAX, Math.max(SPEED_MIN, value));
+	const snapped = Math.round(clamped / SPEED_STEP) * SPEED_STEP;
+	return Number(snapped.toFixed(2));
+}
+
+/** Step the speed up/down by one SPEED_STEP from a current value, snapped+clamped. */
+export function stepClipSpeed(current: number, direction: 1 | -1): number {
+	return snapClipSpeed(snapClipSpeed(current) + direction * SPEED_STEP);
+}
+
 // The speeds a clip's right-edge resize can snap to. Stretching the clip wider
 // lowers the speed (slow-mo); squeezing it narrower raises the speed.
 export const CLIP_SPEEDS: PlaybackSpeed[] = [
@@ -10,13 +34,13 @@ export const CLIP_SPEEDS: PlaybackSpeed[] = [
 
 // Right-edge resize → playback speed. The clip's SOURCE content is fixed; the
 // new timeline width sets the speed (speed = source / width), snapped to the
-// nearest allowed speed. Stretch right (wider) → lower speed; squeeze (narrower)
-// → higher speed. Clamps mirror the editor: source ≥ 1ms, width ≥ 50ms.
-export function snapStretchSpeed(sourceContentMs: number, newWidthMs: number): PlaybackSpeed {
+// clean 0.05 grid (0.1 … 30) so the user gets free values like 0.1, 0.15, 0.2 —
+// NOT the old fixed presets. Stretch right (wider) → lower speed; squeeze
+// (narrower) → higher speed. Clamps mirror the editor: source ≥ 1ms, width ≥ 50ms.
+export function snapStretchSpeed(sourceContentMs: number, newWidthMs: number): number {
 	const source = Math.max(1, sourceContentMs);
 	const width = Math.max(50, newWidthMs);
-	const raw = source / width;
-	return CLIP_SPEEDS.reduce((p, c) => (Math.abs(c - raw) < Math.abs(p - raw) ? c : p));
+	return snapClipSpeed(source / width);
 }
 
 export interface ClipSpeedChangePlan {
