@@ -26,6 +26,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	deleteSelectedClip: () => void;
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
+	toggleSelectedClipMute: () => void;
 	cycleAnnotationsAtCurrentTime: (backward?: boolean) => boolean;
 }
 
@@ -52,6 +53,7 @@ export function useTimelineKeyboardShortcuts({
 	deleteSelectedClip,
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
+	toggleSelectedClipMute,
 	cycleAnnotationsAtCurrentTime,
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
@@ -119,6 +121,9 @@ export function useTimelineKeyboardShortcuts({
 			if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
 				handleAddAnnotation();
 			}
+			if (matchesShortcut(e, keyShortcuts.muteClip, isMac) && selectedClipId) {
+				toggleSelectedClipMute();
+			}
 
 			if (e.key === "Tab" && annotationCount > 0) {
 				if (cycleAnnotationsAtCurrentTime(e.shiftKey)) {
@@ -183,6 +188,7 @@ export function useTimelineKeyboardShortcuts({
 		deleteSelectedClip,
 		deleteSelectedKeyframe,
 		deleteSelectedZoom,
+		toggleSelectedClipMute,
 		handleAddAnnotation,
 		handleAddZoom,
 		handleSplitClip,
