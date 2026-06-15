@@ -52,6 +52,7 @@ export interface TimelineEditorProps {
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	clipRegions?: ClipRegion[];
 	onClipSplit?: (splitMs: number) => void;
+	onTrimToEnd?: (cutMs: number) => void;
 	onAddSpeedPoint?: (markerMs: number) => void;
 	onShiftMarker?: (ms: number) => void;
 	pendingMarkerMs?: number | null;
@@ -104,6 +105,7 @@ export interface TimelineEditorHandle {
 	addZoom: () => void;
 	suggestZooms: () => void;
 	splitClip: () => void;
+	trimToEnd: () => void;
 	addSpeedPoint: () => void;
 	addAnnotation: (trackIndex?: number) => void;
 	addAudio: (trackIndex?: number) => Promise<void>;
@@ -132,6 +134,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onTrimSpanChange,
 			clipRegions = [],
 			onClipSplit,
+			onTrimToEnd,
 			onAddSpeedPoint,
 			onShiftMarker,
 			pendingMarkerMs,
@@ -369,6 +372,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onTrimSpanChange,
 			clipRegions,
 			onClipSplit,
+			onTrimToEnd,
 			onAddSpeedPoint,
 			onClipSpanChange,
 			onClipDelete,
