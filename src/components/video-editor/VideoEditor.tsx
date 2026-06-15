@@ -3755,12 +3755,11 @@ export default function VideoEditor() {
 			// continuous bar); auto-selecting lets the seam-drag reroute the resize to
 			// THIS segment's right edge instead of trimming the neighbour.
 			const carvedId = `clip-${nextClipIdRef.current++}`;
-			// Split the clip at the two markers at 1× (no source change), THEN apply the
-			// 2× speed to ONLY the carved middle via planClipSpeedChange — which reflows
-			// the following clips AND zooms so the source stays contiguous. Carving at 2×
-			// in place (the old path) left the segment AFTER the 2nd marker mapped to
-			// skipped-ahead footage past the recording end — it looked like the speed-up
-			// "bled" into the next part. The reflow keeps only the marked span fast.
+			// Carve the span between the two markers into its own clip at 1× — NO speed
+			// change by default — and select it. The user sets the speed themselves by
+			// dragging the carved segment's edge (squeeze = faster, stretch = slower),
+			// which reflows source correctly via the clip-resize path. Defaulting to 2×
+			// surprised users; a plain 1× split is the neutral starting point.
 			const split = carveSpeedRegion(
 				clipRegions,
 				a,
@@ -3769,21 +3768,10 @@ export default function VideoEditor() {
 				() => `clip-${nextClipIdRef.current++}`,
 				carvedId,
 			);
-			const plan = planClipSpeedChange({
-				clipRegions: split,
-				zoomRegions,
-				selectedClipId: carvedId,
-				speed: 2,
-			});
-			if (plan && !("blockedReason" in plan)) {
-				setClipRegions(plan.clipRegions);
-				setZoomRegions(plan.zoomRegions);
-			} else {
-				setClipRegions(split);
-			}
+			setClipRegions(split);
 			handleSelectClip(carvedId);
 		}
-	}, [handleSelectClip, clipRegions, zoomRegions, setClipRegions, setZoomRegions]);
+	}, [handleSelectClip, clipRegions, setClipRegions]);
 
 	// Drag a speed region's edge: stretch wider → slower, squeeze narrower → faster.
 	// speed = sourceMs / timelineWidth, snapped to the nearest allowed PlaybackSpeed.
