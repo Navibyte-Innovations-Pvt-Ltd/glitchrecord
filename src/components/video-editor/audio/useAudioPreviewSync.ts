@@ -5,7 +5,7 @@ import {
   clampMediaTimeToDuration,
   enablePitchPreservingPlayback,
   estimateCompanionAudioStartDelaySeconds,
-  getMediaSyncPlaybackRate,
+  resolveOverlayPlaybackRate,
 } from "@/lib/mediaTiming";
 import type { AudioRegion, SpeedRegion } from "../types";
 import { computeMixHeadroom } from "./mixHeadroom";
@@ -376,11 +376,11 @@ export function useAudioPreviewSync({
         if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
           audio.currentTime = audioOffset;
         }
-        const syncedPlaybackRate = getMediaSyncPlaybackRate({
-          basePlaybackRate: targetPlaybackRate,
-          currentTime: audio.currentTime,
-          targetTime: audioOffset,
-        });
+        // Fixed rate, NOT drift-corrected. getMediaSyncPlaybackRate swings the
+        // rate up to ±8% to chase drift; on pitch-preserved SPEECH that warbles
+        // the voice → audible "speaker tearing". Drift is handled by the seek
+        // above (>0.2s). Same fixed-rate approach as the companion source tracks.
+        const syncedPlaybackRate = resolveOverlayPlaybackRate(targetPlaybackRate);
         if (Math.abs(audio.playbackRate - syncedPlaybackRate) > 0.001) {
           audio.playbackRate = syncedPlaybackRate;
         }
