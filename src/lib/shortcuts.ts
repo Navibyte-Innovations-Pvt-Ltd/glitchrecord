@@ -5,6 +5,7 @@ export const SHORTCUT_ACTIONS = [
 	"addAnnotation",
 	"addKeyframe",
 	"deleteSelected",
+	"muteClip",
 	"playPause",
 ] as const;
 
@@ -80,6 +81,7 @@ export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
 	addAnnotation: { key: "a" },
 	addKeyframe: { key: "f" },
 	deleteSelected: { key: "d", ctrl: true },
+	muteClip: { key: "m" },
 	playPause: { key: " " },
 };
 
@@ -90,6 +92,7 @@ export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
 	addAnnotation: "Add Annotation",
 	addKeyframe: "Add Keyframe",
 	deleteSelected: "Delete Selected",
+	muteClip: "Mute / Unmute Clip",
 	playPause: "Play / Pause",
 };
 
