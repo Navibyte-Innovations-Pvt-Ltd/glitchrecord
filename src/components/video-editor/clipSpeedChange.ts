@@ -21,11 +21,6 @@ export function snapClipSpeed(value: number): number {
 	return Number(snapped.toFixed(2));
 }
 
-/** Step the speed up/down by one SPEED_STEP from a current value, snapped+clamped. */
-export function stepClipSpeed(current: number, direction: 1 | -1): number {
-	return snapClipSpeed(snapClipSpeed(current) + direction * SPEED_STEP);
-}
-
 // The speeds a clip's right-edge resize can snap to. Stretching the clip wider
 // lowers the speed (slow-mo); squeezing it narrower raises the speed.
 export const CLIP_SPEEDS: PlaybackSpeed[] = [
