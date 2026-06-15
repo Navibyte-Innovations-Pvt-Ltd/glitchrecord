@@ -90,7 +90,7 @@ import {
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
 import { rippleAudioRegionsForRemovedSegments } from "./audioRegionRipple";
-import { planClipSpeedChange, snapStretchSpeed } from "./clipSpeedChange";
+import { planClipSpeedChange, snapClipSpeed, snapStretchSpeed } from "./clipSpeedChange";
 import { trimRangesToEnd } from "./trimToEnd";
 import {
 	carveSpeedRegion,
@@ -224,7 +224,6 @@ import {
 	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime as resolveTimelineTimeToSourceTime,
 	type SpeedRegion,
-	type PlaybackSpeed,
 	type TrimRegion,
 	trimsToClips,
 	type WebcamOverlaySettings,
@@ -3722,8 +3721,10 @@ export default function VideoEditor() {
 
 	const handleSelectClip = useCallback((id: string | null) => {
 		setSelectedClipId(id);
+		// NOTE: selecting a clip no longer opens the clip settings panel. Speed is
+		// set by dragging the clip edge (snaps to a clean 0.05 grid), mute via the
+		// "M" shortcut, delete via Delete/Backspace — so the panel isn't needed.
 		if (id) {
-			setActiveEffectSection("clip");
 			setSelectedZoomId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
@@ -3777,9 +3778,8 @@ export default function VideoEditor() {
 	}, [handleSelectClip, clipRegions, setClipRegions]);
 
 	// Drag a speed region's edge: stretch wider → slower, squeeze narrower → faster.
-	// speed = sourceMs / timelineWidth, snapped to the nearest allowed PlaybackSpeed.
+	// speed = sourceMs / timelineWidth, snapped to the clean 0.05 grid (0.1 … 30).
 	const handleSpeedSpanChange = useCallback((id: string, span: Span) => {
-		const SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
 		setSpeedRegions((prev) =>
 			prev.map((r) => {
 				if (r.id !== id) return r;
@@ -3789,10 +3789,7 @@ export default function VideoEditor() {
 				// Which edge moved? Anchor the other one.
 				const startMoved = Math.abs(start - r.startMs) > Math.abs(end - r.endMs);
 				const width = Math.max(50, end - start);
-				const raw = sourceMs / width;
-				const speed = SPEEDS.reduce((p, c) =>
-					Math.abs(c - raw) < Math.abs(p - raw) ? c : p,
-				);
+				const speed = snapClipSpeed(sourceMs / width);
 				// Recompute the moved edge so the width exactly matches the snapped speed.
 				const snappedWidth = Math.max(50, Math.round(sourceMs / speed));
 				if (startMoved) start = end - snappedWidth;
