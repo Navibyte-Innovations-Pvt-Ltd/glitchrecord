@@ -7,7 +7,7 @@ export function useRecordingTimer(recording: boolean, paused: boolean) {
 	const [pausedTotal, setPausedTotal] = useState(0);
 
 	useEffect(() => {
-		let timer: NodeJS.Timeout | null = null;
+		let timer: ReturnType<typeof setTimeout> | null = null;
 		if (recording) {
 			if (!recordingStart) {
 				setRecordingStart(Date.now());
