@@ -78,13 +78,19 @@ def numbers_to_words(text: str, lang: str = "en") -> str:
     return re.sub(r"\b\d{1,9}\b", repl, text)
 
 
-def tts_normalize(text: str) -> str:
+def tts_normalize(text: str, lang: str = "hi") -> str:
     """Make text the TTS engine (esp. Sarvam bulbul) reads CORRECTLY. The engine
-    mis-reads dashes/hyphens: a number-unit compound like "60-day" comes out
-    "sixty, D-A-Y" (it spells the word), and an em-dash used as a pause is read
-    oddly. So: drop dashes entirely — turn compound hyphens into a space and any
-    dash-as-separator into a comma pause. Runs for ALL engines (belt-and-suspenders
-    even when the script generator already avoids dashes)."""
+    mis-reads several characters: a number-unit hyphen ("60-day" → "sixty, D-A-Y",
+    it SPELLS the word), an em-dash pause, the "₹" glyph, and digit-grouping commas
+    ("1,50,000" → it says "comma"). So drop/translate all of them. Runs for ALL
+    engines (belt-and-suspenders even when the script generator already avoids them)."""
+    rupee = "रुपये" if str(lang).startswith("hi") else "rupees"
+    # ₹199 / ₹ 1,200 → "199 रुपये" (the engine mis-reads the ₹ glyph). Then any
+    # leftover lone ₹ → the word.
+    text = re.sub(r"₹\s*(\d[\d,]*)", lambda m: f"{m.group(1)} {rupee}", text)
+    text = text.replace("₹", f" {rupee} ")
+    # Digit-grouping commas ("1,50,000" → "150000") so "comma" isn't spoken.
+    text = re.sub(r"(?<=\d),(?=\d)", "", text)
     # Em/en dash (with optional surrounding space) used as a phrase separator → comma pause.
     text = re.sub(r"\s*[—–]\s*", ", ", text)
     # ASCII hyphen used as a SPACED separator ("Phone is best - just type") → comma.
@@ -121,7 +127,7 @@ def clean_script(text: str, lang: str = "en", convert_numbers: bool = True) -> s
         s = re.sub(r"\s{2,}", " ", s).strip()            # collapse gaps left behind
         if s:
             lines.append(s)
-    joined = tts_normalize(" ".join(lines).strip())
+    joined = tts_normalize(" ".join(lines).strip(), lang)
     return numbers_to_words(joined, lang) if convert_numbers else joined
 
 
