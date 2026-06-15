@@ -28,6 +28,7 @@ import {
 	saveProjectThumbnail,
   saveRecentProjectPaths,
 } from "../project/manager";
+import { isDeletableProjectPath } from "../project/deleteGuard";
 import { persistRecordingSessionManifest, resolveRecordingSession } from "../project/session";
 import {
 	currentProjectPath,
@@ -617,6 +618,33 @@ export function registerProjectHandlers() {
       }
     }
     return deletedMain ? { success: true as const } : { success: false as const, error: 'File not found' }
+  })
+
+  // Delete a saved project file + its preview thumbnail sidecar. Guarded to a
+  // project file inside the projects directory (mirrors delete-recording).
+  ipcMain.handle('delete-project', async (_, filePath: string) => {
+    try {
+      const projectsDir = await getProjectsDir()
+      const resolved = isDeletableProjectPath(filePath, projectsDir)
+      if (!resolved) return { success: false as const, error: 'Not a deletable project' }
+      let deletedMain = false
+      try {
+        await fs.unlink(resolved)
+        deletedMain = true
+      } catch {
+        /* main file may already be gone */
+      }
+      try {
+        await fs.unlink(getProjectThumbnailPath(resolved))
+      } catch {
+        /* thumbnail sidecar may not exist — ignore */
+      }
+      return deletedMain
+        ? { success: true as const }
+        : { success: false as const, error: 'File not found' }
+    } catch (error) {
+      return { success: false as const, error: String(error) }
+    }
   })
 
   ipcMain.handle('open-project-file-at-path', async (_, filePath: string) => {
