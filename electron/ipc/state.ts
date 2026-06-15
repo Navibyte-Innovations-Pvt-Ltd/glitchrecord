@@ -74,7 +74,7 @@ export let countdownRemaining: number | null = null;
 export let currentCursorVisualType: CursorVisualType | undefined = undefined;
 
 // ── Cursor telemetry ──────────────────────────────────────────────────────────
-export let cursorCaptureInterval: NodeJS.Timeout | null = null;
+export let cursorCaptureInterval: ReturnType<typeof setTimeout> | null = null;
 export let cursorCaptureStartTimeMs = 0;
 export let cursorCaptureAccumulatedPausedMs = 0;
 export let cursorCapturePauseStartedAtMs: number | null = null;
@@ -86,7 +86,7 @@ export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
 export let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null;
 export let selectedWindowBounds: WindowBounds | null = null;
-export let windowBoundsCaptureInterval: NodeJS.Timeout | null = null;
+export let windowBoundsCaptureInterval: ReturnType<typeof setTimeout> | null = null;
 
 // ── Native macOS window source cache ─────────────────────────────────────────
 export let cachedNativeMacWindowSources: import("./types").NativeMacWindowSource[] | null = null;
@@ -233,7 +233,7 @@ export function setCurrentCursorVisualType(v: CursorVisualType | undefined) {
 	currentCursorVisualType = v;
 }
 
-export function setCursorCaptureInterval(v: NodeJS.Timeout | null) {
+export function setCursorCaptureInterval(v: ReturnType<typeof setTimeout> | null) {
 	cursorCaptureInterval = v;
 }
 export function setCursorCaptureStartTimeMs(v: number) {
@@ -269,7 +269,7 @@ export function setLinuxCursorScreenPoint(v: { x: number; y: number; updatedAt: 
 export function setSelectedWindowBounds(v: WindowBounds | null) {
 	selectedWindowBounds = v;
 }
-export function setWindowBoundsCaptureInterval(v: NodeJS.Timeout | null) {
+export function setWindowBoundsCaptureInterval(v: ReturnType<typeof setTimeout> | null) {
 	windowBoundsCaptureInterval = v;
 }
 
