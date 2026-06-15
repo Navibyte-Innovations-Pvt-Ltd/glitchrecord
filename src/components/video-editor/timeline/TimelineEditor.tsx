@@ -23,6 +23,7 @@ import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
 import { calculateTimelineScale } from "./core/time";
 import { computeZoomedRange, spanToFraction } from "./core/timelineZoom";
+import zoomStyles from "./TimelineZoom.module.css";
 import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
@@ -429,7 +430,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						value={zoomFraction}
 						disabled={!canZoom}
 						onChange={(event) => applyZoomFraction(Number(event.target.value))}
-						className="w-36 h-1 accent-blue-500 cursor-pointer disabled:opacity-30 disabled:cursor-default"
+						className={`w-36 ${zoomStyles.slider}`}
 						aria-label="Timeline zoom"
 						title="Drag to zoom the timeline"
 					/>
