@@ -8,25 +8,29 @@ down and explains. Marking is how you control the narration.
 
 There is ONE key — **Shift** — used three ways.
 
-## 1. Explain a component — HOLD Shift over it
+## 1. Explain a component — point at it and tap (or hold) Shift
 
-Move the cursor over the thing you want explained (a button, a card, a price, a
-toggle) and **hold Shift for about half a second**, then release.
+Move the cursor over the thing you want explained and press **Shift**.
 
-- A quick tap does nothing (so normal capital-letter typing is never mistaken for
-  a mark).
+- Over a **button, link, or option** (anything clickable): a **quick Shift tap is
+  enough** — it marks that control. No long hold needed.
+- Over **plain text or a non-clickable area** (a price line, a card body): **hold
+  Shift for about half a second** so a stray tap isn't mistaken for a mark.
 - Hold **longer** to tell the AI to spend **more time** on it.
+- A Shift tap **while typing** (capital letters) or a **Shift+click** (multi-select)
+  is never mistaken for a mark.
 - The AI names that element and explains what it does and why it matters — e.g.
-  hold over **Book Seat** → the script explains booking a seat, not just "we view
-  the page".
+  mark **Book Seat** → the script explains booking a seat, not just "we view the
+  page".
 
-## 2. Explain a SET of options — HOLD Shift on each, one after another
+## 2. Explain a SET of options — mark each, one after another
 
 When the screen offers several choices and you want the narration to present them
-as a group, **hold Shift over each sibling option in quick succession** (within a
-few seconds of each other).
+as a group, **press Shift over each sibling option in quick succession** (within a
+few seconds of each other). For a row of buttons, quick **taps** are enough — tap
+Google, tap phone, tap email.
 
-- Example: hold over **Continue with Google**, then **phone OTP**, then **email**
+- Example: mark **Continue with Google**, then **phone OTP**, then **email**
   → the script says *"you can sign up three ways — with Google, your phone, or
   email"*, instead of narrating just one.
 - Works for plan cards (MICRO / PRO), role choices (Student / Library Owner), any
