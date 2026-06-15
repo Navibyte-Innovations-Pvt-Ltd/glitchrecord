@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	CLIP_SPEEDS,
 	formatClipSpeedLabel,
 	planClipSpeedChange,
+	snapClipSpeed,
 	snapStretchSpeed,
+	SPEED_MAX,
+	SPEED_MIN,
+	SPEED_STEP,
 } from "./clipSpeedChange";
 
 // Right-edge stretch → speed. Models the timeline gesture from the editor:
 // drag a clip's right handle wider to slow it down, squeeze it to speed up.
-// Source content stays fixed; speed = source / timeline-width, snapped to CLIP_SPEEDS.
+// Source content stays fixed; speed = source / timeline-width, snapped to the
+// clean 0.05 grid (0.1 … 30) — the user adjusts freely, not via fixed presets.
 describe("snapStretchSpeed (drag right handle → speed)", () => {
 	it("matches the editor screenshot: 4.825s source over a 19.3s clip → 0.25x", () => {
 		// Clip shown as 0.1s–19.4s at 0.25x ⇒ source = 19.3s * 0.25 = 4.825s.
@@ -47,9 +51,43 @@ describe("snapStretchSpeed (drag right handle → speed)", () => {
 		}
 	});
 
-	it("always returns an allowed snap speed and clamps degenerate sizes", () => {
-		expect(CLIP_SPEEDS).toContain(snapStretchSpeed(0, 0));
-		expect(CLIP_SPEEDS).toContain(snapStretchSpeed(123_456, 7));
+	it("clamps degenerate sizes into the [0.1, 30] range and lands on the 0.05 grid", () => {
+		const tiny = snapStretchSpeed(0, 0); // → clamps to the floor
+		const huge = snapStretchSpeed(123_456, 7); // → clamps to the ceiling
+		expect(tiny).toBe(SPEED_MIN);
+		expect(huge).toBe(SPEED_MAX);
+		// every result is already-snapped (idempotent on the 0.05 grid)
+		expect(snapClipSpeed(tiny)).toBe(tiny);
+		expect(snapClipSpeed(huge)).toBe(huge);
+	});
+
+	it("produces clean 0.05-grid values (e.g. 0.85), never arbitrary like 0.8333", () => {
+		expect(snapStretchSpeed(5000, 6000)).toBe(0.85); // 5000/6000 = 0.8333 → 0.85
+	});
+});
+
+describe("snapClipSpeed (clean 0.05 grid, clamped 0.1…30)", () => {
+	it("snaps to the nearest 0.05 with no float drift", () => {
+		expect(snapClipSpeed(0.1)).toBe(0.1);
+		expect(snapClipSpeed(0.15)).toBe(0.15);
+		expect(snapClipSpeed(0.123)).toBe(0.1);
+		expect(snapClipSpeed(0.138)).toBe(0.15);
+		expect(snapClipSpeed(0.1345)).toBe(0.15); // the "no 0.1345" requirement
+		expect(snapClipSpeed(1.337)).toBe(1.35);
+		// clean decimals, no 0.15000000000000002
+		expect(Number.isInteger(snapClipSpeed(0.4) / SPEED_STEP)).toBe(true);
+	});
+
+	it("clamps below 0.1 and above 30", () => {
+		expect(snapClipSpeed(0)).toBe(SPEED_MIN);
+		expect(snapClipSpeed(-3)).toBe(SPEED_MIN);
+		expect(snapClipSpeed(0.04)).toBe(SPEED_MIN);
+		expect(snapClipSpeed(99)).toBe(SPEED_MAX);
+	});
+
+	it("falls back to 1 for non-finite input", () => {
+		expect(snapClipSpeed(Number.NaN)).toBe(1);
+		expect(snapClipSpeed(Number.POSITIVE_INFINITY)).toBe(1);
 	});
 });
 
