@@ -57,6 +57,9 @@ def pick_device() -> str:
 
 import re
 
+# Text normalization (pure stdlib, unit-tested in test_textnorm.py).
+from textnorm import tts_normalize
+
 
 def numbers_to_words(text: str, lang: str = "en") -> str:
     """Convert standalone digit-numbers to spoken words BEFORE synthesis. XTTS's
@@ -76,48 +79,6 @@ def numbers_to_words(text: str, lang: str = "en") -> str:
             return m.group(0)
 
     return re.sub(r"\b\d{1,9}\b", repl, text)
-
-
-def tts_normalize(text: str, lang: str = "hi") -> str:
-    """Make text the TTS engine (esp. Sarvam bulbul) reads CORRECTLY. The engine
-    mis-reads several characters: a number-unit hyphen ("60-day" → "sixty, D-A-Y",
-    it SPELLS the word), an em-dash pause, the "₹" glyph, and digit-grouping commas
-    ("1,50,000" → it says "comma"). So drop/translate all of them. Runs for ALL
-    engines (belt-and-suspenders even when the script generator already avoids them)."""
-    rupee = "रुपये" if str(lang).startswith("hi") else "rupees"
-    # ₹199 / ₹ 1,200 → "199 रुपये" (the engine mis-reads the ₹ glyph). Then any
-    # leftover lone ₹ → the word.
-    text = re.sub(r"₹\s*(\d[\d,]*)", lambda m: f"{m.group(1)} {rupee}", text)
-    text = text.replace("₹", f" {rupee} ")
-    # Digit-grouping commas ("1,50,000" → "150000") so "comma" isn't spoken.
-    text = re.sub(r"(?<=\d),(?=\d)", "", text)
-    # Em/en dash (with optional surrounding space) used as a phrase separator → comma pause.
-    text = re.sub(r"\s*[—–]\s*", ", ", text)
-    # ASCII hyphen used as a SPACED separator ("Phone is best - just type") → comma.
-    text = re.sub(r"\s+-\s+", ", ", text)
-    # Hyphen GLUING two alphanumerics ("60-day", "2-Month", "code-mixed", "Wi-Fi")
-    # → a space, so the engine says both parts as words ("60 day", "2 Month").
-    text = re.sub(r"(?<=[\w])-(?=[\w])", " ", text)
-    # Slash between words ("WiFi/SMS") is read as "slash" — make it a space.
-    text = re.sub(r"(?<=[^\s/])\s*/\s*(?=[^\s/])", " ", text)
-    # ALL-CAPS labels (plan tiers MICRO / SMALL / STANDARD / PRO, headings) are
-    # SPELLED out letter by letter by the engine ("PRO" → "P, R, O"). Title-case
-    # them so they're said as WORDS — except genuine acronyms that SHOULD be
-    # spelled (OTP, SMS, ID …), which stay untouched.
-    text = re.sub(r"\b[A-Z][A-Z]+\b", _decaps_word, text)
-    return re.sub(r"\s{2,}", " ", text).strip()
-
-
-# Acronyms the engine SHOULD spell — keep these in capitals.
-_KEEP_CAPS = {
-    "OTP", "SMS", "ID", "QR", "OK", "URL", "API", "AI", "UI", "UX", "FAQ",
-    "PDF", "CSV", "GST", "PAN", "KYC", "PIN", "SIM", "IT", "HR", "USB", "IP",
-}
-
-
-def _decaps_word(m: "re.Match[str]") -> str:
-    word = m.group(0)
-    return word if word in _KEEP_CAPS else word[:1] + word[1:].lower()
 
 
 def clean_script(text: str, lang: str = "en", convert_numbers: bool = True) -> str:
