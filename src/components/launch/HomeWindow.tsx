@@ -216,6 +216,17 @@ export function HomeWindow() {
 		[],
 	);
 
+	const deleteProject = useCallback(
+		async (path: string) => {
+			const a = api();
+			const res = (await a?.deleteProject?.(path)) as { success: boolean } | undefined;
+			if (res?.success) {
+				setProjects((prev) => prev.filter((p) => p.path !== path));
+			}
+		},
+		[],
+	);
+
 	return (
 		<div className="flex h-screen w-screen flex-col bg-editor-bg text-foreground">
 			{/* Header — draggable title bar; left padding clears the macOS traffic lights */}
@@ -285,13 +296,22 @@ export function HomeWindow() {
 								</h2>
 								<div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
 									{projects.map((p) => (
-										<button
+										<div
 											key={p.path}
-											type="button"
-											onClick={() => void openProject(p.path)}
+											data-testid="project-card"
+											data-project-name={p.name}
+											data-project-path={p.path}
 											className="group flex flex-col gap-1.5 text-left"
 										>
-											<div className="relative aspect-[16/10] overflow-hidden rounded-lg bg-editor-dialog-alt shadow-[0_8px_18px_rgba(0,0,0,0.28)] transition group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_28px_rgba(0,0,0,0.4)]">
+											<div
+												role="button"
+												tabIndex={0}
+												onClick={() => void openProject(p.path)}
+												onKeyDown={(e) => {
+													if (e.key === "Enter") void openProject(p.path);
+												}}
+												className="relative aspect-[16/10] cursor-pointer overflow-hidden rounded-lg bg-editor-dialog-alt shadow-[0_8px_18px_rgba(0,0,0,0.28)] transition group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_28px_rgba(0,0,0,0.4)]"
+											>
 												{p.thumbnailPath ? (
 													<img
 														src={toFileUrl(p.thumbnailPath)}
@@ -304,11 +324,25 @@ export function HomeWindow() {
 														No preview
 													</div>
 												)}
+
+												{/* Delete — single click, no confirm (mirrors recordings) */}
+												<button
+													type="button"
+													data-testid="project-delete"
+													onClick={(e) => {
+														e.stopPropagation();
+														void deleteProject(p.path);
+													}}
+													title="Delete project"
+													className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/55 text-white/70 opacity-0 transition hover:bg-red-600 hover:text-white group-hover:opacity-100"
+												>
+													<Trash className="h-3.5 w-3.5" />
+												</button>
 											</div>
 											<span className="truncate text-[12px] font-medium tracking-tight">
 												{p.name}
 											</span>
-										</button>
+										</div>
 									))}
 								</div>
 							</section>
