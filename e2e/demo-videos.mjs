@@ -223,19 +223,34 @@ async function recordBrowse() {
       await scrollBy(500);
       visitedNames.push(text);
     }
-    // hold-Shift on the main heading (or primary CTA) → an "explain this" note.
-    let mark = page.locator("h1").first();
-    if (!(await mark.count().catch(() => 0))) mark = page.getByRole("button").first();
-    if (await mark.count().catch(() => 0)) {
-      await mark.scrollIntoViewIfNeeded().catch(() => {});
-      const b = await mark.boundingBox().catch(() => null);
-      if (b && b.y > 60) {
-        await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
-        await sleep(700);
-        await page.keyboard.down("Shift"); await sleep(1100); await page.keyboard.up("Shift");
-        await sleep(800);
-      }
+    // hold-Shift on the main content element → an "explain this" note. Try an
+    // ordered list of real targets and mark the FIRST one that's visible AND
+    // sitting in the viewport. A single brittle "h1 or button" check missed
+    // content sites (bbc: no usable h1 → 0 notes → a thin, generic script). The
+    // note is what makes the script rich, so landing one matters on every site.
+    const markCandidates = [
+      "main h1", "h1", "article h1", "h2", "[role=heading]",
+      "main a", "article a", "main button", "button",
+    ];
+    let marked = false;
+    for (const sel of markCandidates) {
+      if (marked) break;
+      const loc = page.locator(sel).first();
+      if (!(await loc.count().catch(() => 0))) continue;
+      await loc.scrollIntoViewIfNeeded().catch(() => {});
+      await sleep(250);
+      const b = await loc.boundingBox().catch(() => null);
+      const vh = page.viewportSize()?.height ?? 800;
+      // On-screen, below the sticky header, above the fold bottom, real size.
+      if (!b || b.y < 70 || b.y > vh - 90 || b.width < 24 || b.height < 14) continue;
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+      await sleep(700);
+      await page.keyboard.down("Shift"); await sleep(1100); await page.keyboard.up("Shift");
+      await sleep(800);
+      marked = true;
+      console.log("  hold-Shift note marked on:", sel);
     }
+    if (!marked) console.log("  hold-Shift note: NO usable target found");
     await scrollBy(400);
     console.log("  browse FINAL:", page.url(), "| nav clicks", visitedNames.length);
   } catch (e) { console.log("  browse partial:", e.message.split("\n")[0], "at", page.url()); }
