@@ -264,7 +264,7 @@ describe("Edit scenarios", () => {
 		expect(clipsOf(p)[0].speed).toBe(0.5);
 	}, 120_000);
 
-	it("SCENARIO speed point persists 3 segments with a fast middle", async () => {
+	it("SCENARIO two markers carve 3 NEUTRAL (1x) segments that persist", async () => {
 		const p = await editAndSave(async (win) => {
 			const box = await win.locator('[data-testid="timeline-canvas"]').first().boundingBox();
 			if (!box) throw new Error("no canvas");
@@ -277,6 +277,8 @@ describe("Edit scenarios", () => {
 		});
 		const c = clipsOf(p);
 		expect(c.length).toBe(3); // before / carved / after
-		expect(c.some((seg) => seg.speed === 2)).toBe(true);
+		// Carve is NEUTRAL by default — every segment stays 1x until the user
+		// changes the speed themselves (drag the carved edge / speed panel).
+		expect(c.every((seg) => seg.speed === 1)).toBe(true);
 	}, 120_000);
 });
