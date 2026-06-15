@@ -33,7 +33,7 @@ let hudOverlayCaptureProtectionLoaded = false;
 let hudOverlayFallbackExpanded = false;
 let hudOverlayIgnoringMouse = true;
 let hudOverlaySourceSelectionActive = false;
-let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
+let hudOverlayMouseReassertTimer: ReturnType<typeof setTimeout> | null = null;
 let hudOverlayRecordingActive = false;
 let hudOverlayWebcamPreviewVisible = false;
 let countdownWindow: BrowserWindow | null = null;
@@ -799,7 +799,7 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 
 	const targetUrl = `${packagedRendererBaseUrl}/?${queryString}`;
 	let settled = false;
-	let timeoutId: NodeJS.Timeout | null = setTimeout(() => {
+	let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
 		fallbackToFile("load-timeout");
 	}, 5000);
 
