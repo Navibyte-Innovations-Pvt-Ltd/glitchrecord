@@ -227,6 +227,7 @@ export function GlitchgrabLogPanel({
 	const [chatBusy, setChatBusy] = useState(false);
 	const [chatError, setChatError] = useState<string | null>(null);
 	const chatEndRef = useRef<HTMLDivElement | null>(null);
+	const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const [narrating, setNarrating] = useState(false);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
 	const [narrationError, setNarrationError] = useState<string | null>(null);
@@ -485,6 +486,15 @@ export function GlitchgrabLogPanel({
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	}, [chatMessages, chatBusy]);
+
+	// Auto-grow the refine textarea to fit its content (so the long placeholder /
+	// typed text isn't clipped and no inner scrollbar shows). Caps at ~6 lines.
+	useEffect(() => {
+		const el = chatInputRef.current;
+		if (!el) return;
+		el.style.height = "auto";
+		el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+	}, [chatInput]);
 
 	const generateNarration = useCallback(async () => {
 		const api = electronAPI();
@@ -1128,7 +1138,7 @@ export function GlitchgrabLogPanel({
 			)}
 			{chatError && <p className="text-[11px] text-red-400/80">{chatError}</p>}
 			<div className="flex items-end gap-1.5">
-			<textarea data-testid="gg-refine-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChat(); } }} placeholder="e.g. explain the OTP step more; intro shorter; add the add-vs-claim part…" rows={1} className="flex-1 resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1.5 text-[12px] outline-none focus:border-blue-500/40" />
+			<textarea ref={chatInputRef} data-testid="gg-refine-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChat(); } }} placeholder="e.g. explain the OTP step more; intro shorter…" rows={2} className="flex-1 resize-none overflow-y-auto rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1.5 text-[12px] leading-snug outline-none min-h-[2.6rem] max-h-[120px] focus:border-blue-500/40" />
 			<button type="button" data-testid="gg-refine-send" onClick={() => void sendChat()} disabled={chatBusy || !chatInput.trim()} className="flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40">Send</button>
 			</div>
 			</div>
