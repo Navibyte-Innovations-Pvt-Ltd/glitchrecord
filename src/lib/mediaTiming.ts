@@ -74,6 +74,23 @@ export function getMediaSyncPlaybackRate({
 	return Math.max(0.1, safeBasePlaybackRate + adjustment);
 }
 
+/**
+ * Playback rate for PITCH-SENSITIVE overlay audio (narration / user audio tracks).
+ *
+ * Unlike {@link getMediaSyncPlaybackRate} (used for the video element, where small
+ * rate nudges are imperceptible), narration is SPEECH played with pitch
+ * preservation. Continuously nudging its rate around 1.0 to chase drift makes the
+ * pitch-preservation time-stretcher warble the voice — heard as "speaker tearing".
+ * So overlay audio uses a STABLE rate (no drift micro-corrections); drift is
+ * corrected by an occasional `currentTime` seek instead. This mirrors the fixed
+ * rate already used for companion source tracks for the same reason.
+ *
+ * @returns basePlaybackRate, sanitized (>0, finite; falls back to 1).
+ */
+export function resolveOverlayPlaybackRate(basePlaybackRate: number): number {
+	return Number.isFinite(basePlaybackRate) && basePlaybackRate > 0 ? basePlaybackRate : 1;
+}
+
 type PitchPreservingMediaElement = HTMLMediaElement & {
 	preservesPitch?: boolean;
 	mozPreservesPitch?: boolean;
