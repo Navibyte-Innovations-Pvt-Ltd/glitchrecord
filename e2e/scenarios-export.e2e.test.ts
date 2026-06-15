@@ -240,28 +240,47 @@ describe("Edit scenarios", () => {
 		}
 	}, 120_000);
 
-	it("SCENARIO speed-up 2x persists to the project (clip ~halves)", async () => {
+	it("SCENARIO a dragged clip speed persists to the saved project (snapped to 0.05)", async () => {
+		// The speed-preset panel was removed; speed is set by carving a segment and
+		// dragging its edge. Verify that a drag-set, non-1x speed PERSISTS to the
+		// saved project, snapped to the clean 0.05 grid (exact value depends on the
+		// drag distance, so we assert the grid + range, not a hardcoded 2x/0.5x).
 		const p = await editAndSave(async (win) => {
-			const clip = win.locator('[data-item-kind="clip"]').first();
-			await clip.click();
-			await win.waitForTimeout(500);
-			await win.locator('[data-testid="clip-speed-2"]').first().click();
+			const box = await win.locator('[data-testid="timeline-canvas"]').first().boundingBox();
+			if (!box) throw new Error("no canvas");
+			await win.keyboard.down("Shift");
+			await win.mouse.click(box.x + box.width * 0.3, box.y + 6);
+			await win.waitForTimeout(400);
+			await win.mouse.click(box.x + box.width * 0.55, box.y + 6);
+			await win.keyboard.up("Shift");
+			await win.waitForTimeout(1200);
+			// drag the carved (middle) segment's right edge inward → raises its speed
+			const seg = win.locator('[data-item-kind="clip"]').nth(1);
+			const sb = await seg.boundingBox();
+			if (!sb) throw new Error("no carved segment");
+			await win.mouse.click(sb.x + sb.width / 2, sb.y + sb.height / 2);
+			await win.waitForTimeout(600);
+			const ex = sb.x + sb.width - 5;
+			const ey = sb.y + sb.height / 2;
+			await win.mouse.move(ex, ey, { steps: 8 });
+			await win.mouse.down();
+			await win.waitForTimeout(350);
+			const tgt = sb.x + sb.width * 0.45;
+			for (let i = 1; i <= 12; i++) {
+				await win.mouse.move(ex + ((tgt - ex) * i) / 12, ey, { steps: 2 });
+				await win.waitForTimeout(45);
+			}
+			await win.mouse.up();
 			await win.waitForTimeout(1200);
 		});
 		const c = clipsOf(p);
-		expect(c.length).toBe(1);
-		expect(c[0].speed).toBe(2);
-	}, 120_000);
-
-	it("SCENARIO slow-mo 0.5x persists to the project (clip ~doubles)", async () => {
-		const p = await editAndSave(async (win) => {
-			const clip = win.locator('[data-item-kind="clip"]').first();
-			await clip.click();
-			await win.waitForTimeout(500);
-			await win.locator('[data-testid="clip-speed-0.5"]').first().click();
-			await win.waitForTimeout(1200);
-		});
-		expect(clipsOf(p)[0].speed).toBe(0.5);
+		expect(c.length).toBe(3); // before / carved / after
+		const sped = c.find((s) => s.speed !== 1);
+		expect(sped, "a carved segment should carry a dragged non-1x speed").toBeTruthy();
+		// On the clean 0.05 grid → speed*100 is a whole multiple of 5; within range.
+		expect(Math.round(sped!.speed * 100) % 5).toBe(0);
+		expect(sped!.speed).toBeGreaterThanOrEqual(0.1);
+		expect(sped!.speed).toBeLessThanOrEqual(30);
 	}, 120_000);
 
 	it("SCENARIO two markers carve 3 NEUTRAL (1x) segments that persist", async () => {
