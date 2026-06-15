@@ -368,25 +368,49 @@ async function recordEdits(events, sessionId) {
     await win.locator('[data-testid="gg-script-toggle"]').first().click().catch(() => {});
     await sleep(1500);
     await win.locator('[data-testid="gg-generate-script"]').first().click().catch(() => {});
-    await sleep(2500);
     // A hold-Shift NOTE triggers a "you marked N spots — what should I explain?"
-    // interstitial that blocks generation until answered. Pick the first suggested
-    // option + click "Write script" so the marked spot gets explained.
-    const writeScriptBtn = win.getByRole("button", { name: /^Write script$/i }).first();
-    if (await writeScriptBtn.count().catch(() => 0)) {
-      await win.getByText(/^Explain /i).first().click().catch(() => {});
-      await sleep(500);
-      await writeScriptBtn.click().catch(() => {});
-      console.log("  note-questions: answered first option + Write script");
-      await sleep(2000);
-    }
+    // interstitial that BLOCKS generation until answered. It renders a beat after
+    // the click (the marked notes are detected async), so we POLL: every second,
+    // (a) if the script already landed in the textarea → done; (b) if the
+    // interstitial is up → pick the first suggested option + click "Write script".
+    // The old single 2500ms check raced the interstitial and left it un-answered →
+    // the whole run hung on that site until its timeout.
     const ta = win.locator('[data-testid="gg-narration-textarea"]').first();
-    for (let i = 0; i < 50; i++) { // Claude takes a few seconds
+    let answeredNoteQuestions = false;
+    // ~150s window: v4-flash answers in ~8s, but a real noisy capture + the
+    // Devanagari retry + network can stack up. A short window (was 60) timed out
+    // before the script landed → false "0 chars". Defense-in-depth.
+    for (let i = 0; i < 150; i++) {
       aiScript = (await ta.inputValue().catch(() => "")) || "";
-      if (aiScript.trim().length > 20) break;
+      if (aiScript.trim().length > 20) break; // script generated → done
+      const writeScriptBtn = win.getByRole("button", { name: /^Write script$/i }).first();
+      if (
+        (await writeScriptBtn.count().catch(() => 0)) &&
+        (await writeScriptBtn.isVisible().catch(() => false))
+      ) {
+        // Pick the first suggested answer (labels start Explain/Describe/Mention/…),
+        // then Write script. Selecting an option grounds the explanation in a pick.
+        const opt = win
+          .getByText(/^(Explain|Describe|Mention|Show|Point out|Highlight|Tell)\b/i)
+          .first();
+        if (await opt.count().catch(() => 0)) await opt.click().catch(() => {});
+        await sleep(400);
+        await writeScriptBtn.click().catch(() => {});
+        if (!answeredNoteQuestions) console.log("  note-questions: answered first option + Write script");
+        answeredNoteQuestions = true;
+      }
       await sleep(1000);
     }
     console.log(`  SCRIPT from events (${aiScript.length} chars): ${JSON.stringify(aiScript.slice(0, 240))}`);
+    // Persist the generated narration so script QUALITY can be reviewed per site
+    // (the console log is lost when each site runs in its own spawned process).
+    try {
+      fs.writeFileSync(
+        path.join(OUT, `script-${slugOf(SITE)}.txt`),
+        `# ${SITE}\n# ${aiScript.length} chars · note-questions answered: ${answeredNoteQuestions}\n\n${aiScript}\n`,
+        "utf8",
+      );
+    } catch { /* best effort */ }
     // Diagnostics: dump the bridge's generate-script log lines + any panel error.
     try {
       const dbg = fs.readFileSync(path.join(udd, "glitchgrab-debug.log"), "utf8").split("\n")
