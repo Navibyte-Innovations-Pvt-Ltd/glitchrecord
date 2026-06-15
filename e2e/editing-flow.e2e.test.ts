@@ -87,30 +87,15 @@ describe("GlitchRecord editing: multiple shift+click speed carves", () => {
     for (let i = 1; i <= 12; i++) { await window.mouse.move(ex + (tgt - ex) * i / 12, ey, { steps: 2 }); await window.waitForTimeout(45); }
     await window.mouse.up(); await window.waitForTimeout(1200);
 
-    // The squeezed segment now shows a valid non-1x speed badge.
+    // The squeezed segment now shows a valid non-1x speed badge. Speed snaps to a
+    // clean 0.05 grid now (e.g. "1.85x"), so accept any numeric speed ≠ 1x.
     await badges.first().waitFor({ state: "visible", timeout: 10_000 });
-    expect((await badges.first().textContent())?.trim() ?? "").toMatch(
-      /^(0\.25|0\.5|0\.75|1\.25|1\.5|1\.75|2|2\.5|3|4)x$/,
-    );
+    const label = (await badges.first().textContent())?.trim() ?? "";
+    expect(label).toMatch(/^\d+(\.\d+)?x$/);
+    expect(label).not.toBe("1x");
   });
 
-  it("changes a clip's speed directly from the speed panel", async () => {
-    const { window } = editor;
-    // Select a clip → the clip panel (with the speed grid) opens.
-    const clip = window.locator('[data-item-kind="clip"]').first();
-    await clip.waitFor({ state: "visible", timeout: 30_000 });
-    await clip.click();
-
-    // Click the 0.5× speed button → the SELECTED clip slows to 0.5x.
-    const half = window.locator('[data-testid="clip-speed-0.5"]').first();
-    await half.waitFor({ state: "visible", timeout: 10_000 });
-    await half.click();
-    await window.waitForTimeout(500);
-
-    // Read THIS clip's own badge (prior tests carve other segments, so a global
-    // .first() badge could be a different clip).
-    const badge = clip.locator('[data-testid="clip-speed-badge"]');
-    await badge.waitFor({ state: "visible", timeout: 10_000 });
-    expect((await badge.textContent())?.trim()).toBe("0.5x");
-  });
+  // NOTE: the clip speed-preset panel was removed — speed is now set ONLY by
+  // dragging a clip's edge (covered by the squeeze test above + clip-stretch.e2e).
+  // The old "set speed from the panel" test was deleted with the panel.
 });
