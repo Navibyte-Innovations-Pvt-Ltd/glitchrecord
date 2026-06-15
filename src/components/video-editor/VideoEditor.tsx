@@ -4106,14 +4106,6 @@ export default function VideoEditor() {
 	const handleClipDelete = useCallback(
 		(id: string) => {
 			const deletedClip = clipRegions.find((clip) => clip.id === id);
-			// [GG-DEL-DEBUG] remove once delete flow is confirmed
-			console.debug("[GG-DEL] handleClipDelete", {
-				id,
-				found: Boolean(deletedClip),
-				speed: deletedClip?.speed,
-				retimeGroupId: deletedClip?.retimeGroupId,
-				clipCount: clipRegions.length,
-			});
 			// Deleting a SPEED-POINT (retime) zone removes the whole effect: dissolve
 			// the linked pair back to one clip, then reset it to 1× like any speed clip.
 			if (deletedClip?.retimeGroupId) {
