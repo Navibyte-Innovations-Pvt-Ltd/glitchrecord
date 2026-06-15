@@ -1,4 +1,4 @@
-import { Plus } from "@phosphor-icons/react";
+import { MagnifyingGlassMinus, MagnifyingGlassPlus, Plus } from "@phosphor-icons/react";
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -22,6 +22,7 @@ import KeyframeMarkers from "./components/markers/KeyframeMarkers";
 import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
 import { calculateTimelineScale } from "./core/time";
+import { computeZoomedRange, spanToFraction } from "./core/timelineZoom";
 import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
@@ -188,6 +189,19 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			totalMs,
 			timelineContainerRef,
 		});
+
+		// Drag-to-zoom slider state. The visible-range WIDTH is the zoom; the slider
+		// maps a 0 (out) … 1 (in) fraction to that width (log-scaled, playhead-anchored)
+		// for fast DaVinci-style zooming instead of the slow scroll gesture. The
+		// fraction is DERIVED from clampedRange so wheel/pinch moves the thumb too.
+		const minVisibleRangeMs = timelineScale.minVisibleRangeMs;
+		const visibleSpanMs = Math.max(1, clampedRange.end - clampedRange.start);
+		const canZoom = totalMs > minVisibleRangeMs;
+		const zoomFraction = spanToFraction(visibleSpanMs, totalMs, minVisibleRangeMs);
+		const applyZoomFraction = (fraction: number) => {
+			if (!canZoom) return;
+			setRange(computeZoomedRange(fraction, totalMs, minVisibleRangeMs, currentTimeMs));
+		};
 
 		const [liveSpanPreviewById, setLiveSpanPreviewById] = useState<Record<string, Span>>({});
 		const liveZoomPreview = useMemo(() => {
@@ -396,6 +410,43 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		return (
 			<div className="flex-1 min-h-0 flex flex-col bg-editor-bg overflow-hidden">
+				<div className="flex items-center justify-end gap-1.5 px-3 py-1 border-b border-white/5 select-none">
+					<button
+						type="button"
+						disabled={!canZoom}
+						onClick={() => applyZoomFraction(Math.max(0, zoomFraction - 0.12))}
+						className="p-1 rounded text-foreground/70 hover:bg-white/10 hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+						title="Zoom out"
+						aria-label="Zoom out timeline"
+					>
+						<MagnifyingGlassMinus size={15} weight="bold" />
+					</button>
+					<input
+						type="range"
+						min={0}
+						max={1}
+						step={0.001}
+						value={zoomFraction}
+						disabled={!canZoom}
+						onChange={(event) => applyZoomFraction(Number(event.target.value))}
+						className="w-36 h-1 accent-blue-500 cursor-pointer disabled:opacity-30 disabled:cursor-default"
+						aria-label="Timeline zoom"
+						title="Drag to zoom the timeline"
+					/>
+					<button
+						type="button"
+						disabled={!canZoom}
+						onClick={() => applyZoomFraction(Math.min(1, zoomFraction + 0.12))}
+						className="p-1 rounded text-foreground/70 hover:bg-white/10 hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+						title="Zoom in"
+						aria-label="Zoom in timeline"
+					>
+						<MagnifyingGlassPlus size={15} weight="bold" />
+					</button>
+					<span className="ml-1 w-12 text-right text-[11px] tabular-nums text-foreground/45">
+						{(visibleSpanMs / 1000).toFixed(visibleSpanMs < 10_000 ? 1 : 0)}s
+					</span>
+				</div>
 				<div
 					ref={timelineContainerRef}
 					className="flex-1 min-h-0 overflow-auto bg-editor-bg relative"
