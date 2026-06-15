@@ -42,20 +42,16 @@ describe("GlitchRecord editor features", () => {
   it("DELETE a clip removes it", async () => {
     const { window } = editor;
     await ready(window);
-    // Carve a middle segment — this AUTO-SELECTS the carved clip (reliable, unlike
-    // a raw clip-click which the dnd pointer pipeline can swallow). Then delete via
-    // keyboard (the clip settings panel with its "Delete Clip" button was removed).
-    const box = await window.locator('[data-testid="timeline-canvas"]').first().boundingBox();
-    if (!box) throw new Error("no canvas");
-    await window.keyboard.down("Shift");
-    await window.mouse.click(box.x + box.width * 0.35, box.y + 6);
-    await window.waitForTimeout(400);
-    await window.mouse.click(box.x + box.width * 0.6, box.y + 6);
-    await window.keyboard.up("Shift");
-    await window.waitForTimeout(1000);
+    // Split into two — splitting AUTO-SELECTS the left clip (a plain 1x clip, no
+    // retime-group/selection-flakiness). Then delete the selected clip via keyboard
+    // (the clip settings panel with its "Delete Clip" button was removed).
+    await clickClip(window);
+    await seekFrac(window, 0.5);
+    await window.keyboard.press("c");
+    await window.waitForTimeout(800);
     const n = await clips(window).count();
-    expect(n).toBe(3); // before / carved (selected) / after
-    await window.keyboard.press("Backspace");
+    expect(n).toBe(2);
+    await window.keyboard.press("Delete");
     await window.waitForTimeout(800);
     expect(await clips(window).count()).toBeLessThan(n);
   });
