@@ -3376,6 +3376,7 @@ export default function VideoEditor() {
 		duration,
 		isPlaying,
 		previewVolume,
+		narrationPreviewMuted,
 		sourceAudioFallbackRefreshKey,
 		summarizeErrorMessage,
 		onSourceFallbackLoadError: (error) => {
@@ -5557,12 +5558,10 @@ export default function VideoEditor() {
 			cursorClickBounceDuration={cursorClickBounceDuration}
 			cursorSway={cursorSway}
 			volume={
-				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted || narrationPreviewMuted
-					? 0
-					: Math.max(
-							0,
-							Math.min(1, previewVolume * audio.embeddedSourcePreviewGain),
-						)
+				// embeddedVideoPreviewVolume already folds in the mutes + previewVolume;
+				// × the shared mix headroom so the video + narration + source audio can't
+				// sum past the device clip point (the "speaker tearing" fix).
+				Math.max(0, Math.min(1, audio.embeddedVideoPreviewVolume * audio.previewMixHeadroom))
 			}
 			suspendRendering={suspendRendering}
 		/>
