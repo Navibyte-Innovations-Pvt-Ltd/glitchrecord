@@ -457,7 +457,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				</div>
 				<div
 					ref={timelineContainerRef}
-					className="flex-1 min-h-0 overflow-auto bg-editor-bg relative"
+					// Scroll stays functional; the scrollbar is hidden (a visible bar looked
+					// unpolished). Hides in Chromium/Electron (::-webkit-scrollbar) + Firefox.
+					className="flex-1 min-h-0 overflow-auto bg-editor-bg relative [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 					tabIndex={0}
 					onFocus={() => {
 						isTimelineFocusedRef.current = true;
