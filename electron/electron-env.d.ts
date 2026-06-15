@@ -791,6 +791,7 @@ interface Window {
 			filePath: string,
 		) => Promise<{ success: boolean; thumbnailPath?: string }>;
 		deleteRecording: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+		deleteProject: (filePath: string) => Promise<{ success: boolean; error?: string }>;
 		openProjectFileAtPath: (filePath: string) => Promise<{
 			success: boolean;
 			path?: string;
