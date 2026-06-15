@@ -88,6 +88,7 @@ import {
 	getAspectRatioLabel,
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
+import { rippleAudioRegionsForRemovedSegments } from "./audioRegionRipple";
 import { planClipSpeedChange, snapStretchSpeed } from "./clipSpeedChange";
 import {
 	carveSpeedRegion,
@@ -3754,12 +3755,35 @@ export default function VideoEditor() {
 			// continuous bar); auto-selecting lets the seam-drag reroute the resize to
 			// THIS segment's right edge instead of trimming the neighbour.
 			const carvedId = `clip-${nextClipIdRef.current++}`;
-			setClipRegions((regions) =>
-				carveSpeedRegion(regions, a, b, 2, () => `clip-${nextClipIdRef.current++}`, carvedId),
+			// Split the clip at the two markers at 1× (no source change), THEN apply the
+			// 2× speed to ONLY the carved middle via planClipSpeedChange — which reflows
+			// the following clips AND zooms so the source stays contiguous. Carving at 2×
+			// in place (the old path) left the segment AFTER the 2nd marker mapped to
+			// skipped-ahead footage past the recording end — it looked like the speed-up
+			// "bled" into the next part. The reflow keeps only the marked span fast.
+			const split = carveSpeedRegion(
+				clipRegions,
+				a,
+				b,
+				1,
+				() => `clip-${nextClipIdRef.current++}`,
+				carvedId,
 			);
+			const plan = planClipSpeedChange({
+				clipRegions: split,
+				zoomRegions,
+				selectedClipId: carvedId,
+				speed: 2,
+			});
+			if (plan && !("blockedReason" in plan)) {
+				setClipRegions(plan.clipRegions);
+				setZoomRegions(plan.zoomRegions);
+			} else {
+				setClipRegions(split);
+			}
 			handleSelectClip(carvedId);
 		}
-	}, [handleSelectClip]);
+	}, [handleSelectClip, clipRegions, zoomRegions, setClipRegions, setZoomRegions]);
 
 	// Drag a speed region's edge: stretch wider → slower, squeeze narrower → faster.
 	// speed = sourceMs / timelineWidth, snapped to the nearest allowed PlaybackSpeed.
@@ -3983,7 +4007,12 @@ export default function VideoEditor() {
 				setZoomRegions((prev) => removeTrimmedRegions(prev));
 				setAnnotationRegions((prev) => removeTrimmedRegions(prev));
 				setSpeedRegions((prev) => removeTrimmedRegions(prev));
-				setAudioRegions((prev) => removeTrimmedRegions(prev));
+				// Audio (narration) is a free overlay, NOT anchored to the trimmed
+				// footage — RIPPLE it (shift/shrink) instead of deleting it. Deleting on
+				// overlap made a whole-timeline narration track vanish on any trim.
+				setAudioRegions((prev) =>
+					rippleAudioRegionsForRemovedSegments(prev, removedSegments),
+				);
 			}
 
 			setClipRegions((prev) =>
