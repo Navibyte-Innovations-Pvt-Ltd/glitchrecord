@@ -9,7 +9,8 @@ import {
 	planSpeedPointInsert,
 	resolveInternalBoundaryDrag,
 } from "./clipRetime";
-import { type ClipRegion, getClipSourceSpans } from "./types";
+import { planClipSpeedChange } from "./clipSpeedChange";
+import { type ClipRegion, getClipSourceSpans, mapTimelineTimeToSourceTime } from "./types";
 
 // Shift+click on a clip drops two markers; the span between them is carved into
 // its own speed region. This is the exact gesture from the editor (two markers,
@@ -56,6 +57,59 @@ describe("carveSpeedRegion (shift+click two markers)", () => {
 		// stays sorted by start.
 		const starts = out.map((r) => r.startMs);
 		expect(starts).toEqual([...starts].sort((x, y) => x - y));
+	});
+
+	// The user-reported bug: "I add two markers and speed it up, but the part AFTER
+	// the second marker also plays fast / wrong." Root cause: carving at 2× in place
+	// makes the trailing clip's SOURCE start past where the carved part's source
+	// ended — and past the recording itself. These tests pin the bug and the fix.
+	it("REGRESSION: carving at 2× in place maps the trailing clip past the recording (the bleed)", () => {
+		n = 0;
+		const SOURCE = 30_000;
+		const bad = carveSpeedRegion(
+			[{ id: "base", startMs: 0, endMs: SOURCE, speed: 1 }],
+			10_000,
+			20_000,
+			2,
+			newId,
+		);
+		const maxSourceEnd = Math.max(...getClipSourceSpans(bad).map((s) => s.sourceEndMs));
+		// 10s of PHANTOM footage beyond the real 30s recording → the player shows the
+		// wrong (skipped-ahead/frozen) frames after the 2nd marker.
+		expect(maxSourceEnd).toBe(40_000);
+	});
+
+	it("FIX: split at 1× then speed the carved middle (the editor flow) keeps source contiguous", () => {
+		n = 0;
+		const SOURCE = 30_000;
+		const regions: ClipRegion[] = [{ id: "base", startMs: 0, endMs: SOURCE, speed: 1 }];
+		// Exactly what handleShiftMarker now does: split at 1×, then planClipSpeedChange @2×.
+		const split = carveSpeedRegion(regions, 10_000, 20_000, 1, newId, "carved");
+		const plan = planClipSpeedChange({
+			clipRegions: split,
+			zoomRegions: [],
+			selectedClipId: "carved",
+			speed: 2,
+		});
+		expect(plan && "clipRegions" in plan).toBe(true);
+		const clips = (plan as { clipRegions: ClipRegion[] }).clipRegions;
+
+		// Nothing maps beyond the real recording — no phantom footage, no bleed.
+		const maxSourceEnd = Math.max(...getClipSourceSpans(clips).map((s) => s.sourceEndMs));
+		expect(maxSourceEnd).toBe(SOURCE);
+
+		// Only the carved middle is fast; the parts before and after stay 1×.
+		const carved = clips.find((c) => c.id === "carved");
+		expect(carved?.speed).toBe(2);
+		expect(clips.filter((c) => c.speed === 1)).toHaveLength(2);
+
+		// The segment after the carve resumes at the 2nd marker's source (20s), NOT
+		// skipped ahead — its content is unchanged, just shifted earlier in time.
+		const after = clips.find((c) => carved && c.startMs === carved.endMs);
+		expect(after).toBeDefined();
+		if (after) {
+			expect(mapTimelineTimeToSourceTime(after.startMs, clips)).toBe(20_000);
+		}
 	});
 });
 
