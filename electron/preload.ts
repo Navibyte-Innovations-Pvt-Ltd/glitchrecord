@@ -876,6 +876,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			success: boolean;
 			error?: string;
 		}>,
+	deleteProject: (filePath: string) =>
+		ipcRenderer.invoke("delete-project", filePath) as Promise<{
+			success: boolean;
+			error?: string;
+		}>,
 	openProjectFileAtPath: (filePath: string) => {
 		return ipcRenderer.invoke("open-project-file-at-path", filePath);
 	},
