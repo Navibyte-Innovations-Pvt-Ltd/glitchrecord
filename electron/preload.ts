@@ -196,7 +196,8 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		return () => ipcRenderer.removeListener("glitchbridge:live-event", handler);
 	},
 	getEvents: () => ipcRenderer.invoke("glitchbridge:get-events"),
-	noteQuestions: () => ipcRenderer.invoke("glitchbridge:note-questions"),
+	noteQuestions: (frames?: Array<{ id: string; dataUrl: string }>) =>
+		ipcRenderer.invoke("glitchbridge:note-questions", frames),
 	generateScript: (opts?: {
 		lang?: string;
 		gender?: string;
