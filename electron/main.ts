@@ -35,6 +35,7 @@ import { ensurePackagedRendererServer } from "./rendererServer";
 import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, getCurrentUser, loadPersistedSession, appendDebugLog, resetBridgeSession } from "./glitchbridge/server";
 import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
 import { validateToken, uploadSession, generateScript, refineScript, getNoteQuestions, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
+import { generateAvatar, hasHeyGenKey, type AvatarTier } from "./glitchbridge/heygen";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -1227,6 +1228,50 @@ app.whenReady().then(async () => {
 			}
 		},
 	);
+	// Whether the platform HeyGen key is configured (so the panel can prompt).
+	ipcMain.handle("avatar:key-status", () => ({ hasKey: hasHeyGenKey() }));
+
+	// Native picker for the avatar's custom photo (renderer File.path is gone in
+	// modern Electron, so resolve the absolute path here).
+	ipcMain.handle("avatar:pick-photo", async () => {
+		const res = await dialog.showOpenDialog({
+			title: "Choose avatar photo",
+			properties: ["openFile"],
+			filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }],
+		});
+		if (res.canceled || res.filePaths.length === 0) return { path: null };
+		return { path: res.filePaths[0] };
+	});
+
+	// Generate a talking-head avatar from a custom photo + the existing narration
+	// audio (lip-synced). Runs in the main process so the API key never reaches
+	// the renderer. Streams stages back over "avatar-progress".
+	ipcMain.handle(
+		"avatar:generate",
+		async (
+			_e,
+			opts: { photoPath: string; audioPath: string; tier: AvatarTier; transparent?: boolean },
+		) => {
+			const sendProgress = (stage: string) => {
+				if (!_e.sender.isDestroyed()) _e.sender.send("avatar-progress", stage);
+			};
+			const outDir = path.join(app.getPath("userData"), "avatars");
+			appendDebugLog("rec", `avatar: generate tier=${opts.tier} transparent=${!!opts.transparent}`);
+			const result = await generateAvatar(
+				{
+					photoPath: opts.photoPath,
+					audioPath: opts.audioPath,
+					tier: opts.tier,
+					transparent: opts.transparent,
+				},
+				outDir,
+				sendProgress,
+			);
+			appendDebugLog("rec", `avatar: ${result.ok ? "ok " + result.path : "FAIL " + result.error}`);
+			return result;
+		},
+	);
+
 	ipcMain.handle("glitchbridge:get-events", () => {
 		const session = getCurrentSession();
 		// If a session exists for THIS run, always show its events — even if empty.
