@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	getAvatarBubbleLayout,
+	getAvatarFullFrameLayout,
 	getAvatarObjectPosition,
+	getAvatarSpotlightProgress,
 	isAvatarOverlayVisible,
+	lerpAvatarLayout,
 	panAvatarFraming,
 } from "./avatarOverlay";
 import { DEFAULT_AVATAR_OVERLAY } from "./types";
@@ -92,6 +95,57 @@ describe("panAvatarFraming (Shift+drag to slide the face)", () => {
 	});
 });
 
+describe("getAvatarSpotlightProgress (corner ↔ full animation envelope)", () => {
+	const regions = [{ id: "a", startMs: 1000, endMs: 5000 }];
+
+	it("is 0 outside any region", () => {
+		expect(getAvatarSpotlightProgress(regions, 0)).toBe(0);
+		expect(getAvatarSpotlightProgress(regions, 6000)).toBe(0);
+		expect(getAvatarSpotlightProgress([], 2000)).toBe(0);
+	});
+	it("is 1 (full) in the held middle of a region", () => {
+		expect(getAvatarSpotlightProgress(regions, 3000, 450)).toBeCloseTo(1);
+	});
+	it("ramps up after the start and down before the end", () => {
+		const justIn = getAvatarSpotlightProgress(regions, 1100, 450); // 100ms into 450 ease
+		const justOut = getAvatarSpotlightProgress(regions, 4900, 450);
+		expect(justIn).toBeGreaterThan(0);
+		expect(justIn).toBeLessThan(1);
+		expect(justOut).toBeGreaterThan(0);
+		expect(justOut).toBeLessThan(1);
+	});
+	it("never exceeds [0,1] and handles a zero-length region", () => {
+		expect(getAvatarSpotlightProgress([{ id: "z", startMs: 2000, endMs: 2000 }], 2000)).toBe(0);
+		for (let t = 0; t <= 6000; t += 250) {
+			const p = getAvatarSpotlightProgress(regions, t);
+			expect(p).toBeGreaterThanOrEqual(0);
+			expect(p).toBeLessThanOrEqual(1);
+		}
+	});
+});
+
+describe("lerpAvatarLayout + getAvatarFullFrameLayout", () => {
+	const cornerLayout = { x: 900, y: 500, width: 180, height: 180, borderRadius: 21 };
+	it("t=0 is the corner, t=1 is full-frame", () => {
+		const full = getAvatarFullFrameLayout(1280, 720);
+		expect(lerpAvatarLayout(cornerLayout, full, 0)).toEqual(cornerLayout);
+		const atFull = lerpAvatarLayout(cornerLayout, full, 1);
+		expect(atFull).toEqual({ x: 0, y: 0, width: 1280, height: 720, borderRadius: 0 });
+	});
+	it("t=0.5 is halfway (the slide/grow midpoint)", () => {
+		const full = getAvatarFullFrameLayout(1280, 720);
+		const mid = lerpAvatarLayout(cornerLayout, full, 0.5);
+		expect(mid.x).toBeCloseTo(450);
+		expect(mid.width).toBeCloseTo((180 + 1280) / 2);
+	});
+	it("clamps t outside [0,1]", () => {
+		const full = getAvatarFullFrameLayout(1280, 720);
+		expect(lerpAvatarLayout(cornerLayout, full, 2)).toEqual(
+			lerpAvatarLayout(cornerLayout, full, 1),
+		);
+	});
+});
+
 describe("getAvatarBubbleLayout", () => {
 	it("returns null for an unlaid-out container (no NaN drawn)", () => {
 		expect(
@@ -114,14 +168,15 @@ describe("getAvatarBubbleLayout", () => {
 		});
 		expect(layout).not.toBeNull();
 		if (!layout) return;
-		for (const v of [layout.x, layout.y, layout.size, layout.borderRadius]) {
+		for (const v of [layout.x, layout.y, layout.width, layout.height, layout.borderRadius]) {
 			expect(Number.isFinite(v)).toBe(true);
 		}
-		expect(layout.size).toBeGreaterThan(0);
+		expect(layout.width).toBeGreaterThan(0);
+		expect(layout.width).toBe(layout.height); // PiP is square
 		expect(layout.x).toBeGreaterThanOrEqual(0);
 		expect(layout.y).toBeGreaterThanOrEqual(0);
-		expect(layout.x + layout.size).toBeLessThanOrEqual(1280);
-		expect(layout.y + layout.size).toBeLessThanOrEqual(720);
+		expect(layout.x + layout.width).toBeLessThanOrEqual(1280);
+		expect(layout.y + layout.height).toBeLessThanOrEqual(720);
 	});
 
 	it("circle shape rounds to a full radius; box uses a small radius", () => {
@@ -137,8 +192,8 @@ describe("getAvatarBubbleLayout", () => {
 		});
 		expect(circle && box).toBeTruthy();
 		if (!circle || !box) return;
-		expect(circle.borderRadius).toBeCloseTo(circle.size / 2);
-		expect(box.borderRadius).toBeLessThan(box.size / 2);
+		expect(circle.borderRadius).toBeCloseTo(circle.width / 2);
+		expect(box.borderRadius).toBeLessThan(box.width / 2);
 	});
 
 	it("custom position honors dragged X/Y fractions", () => {
