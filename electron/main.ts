@@ -1340,6 +1340,29 @@ app.whenReady().then(async () => {
 	// Whether the platform HeyGen key is configured (so the panel can prompt).
 	ipcMain.handle("avatar:key-status", () => ({ hasKey: hasHeyGenKey() }));
 
+	// Recover the most recently generated avatar clip from disk (when its in-app
+	// reference was lost — e.g. before clip persistence existed).
+	ipcMain.handle("avatar:latest-clip", async () => {
+		try {
+			const dir = path.join(app.getPath("userData"), "avatars");
+			if (!fssync.existsSync(dir)) return { path: null };
+			const files = (await fs.readdir(dir)).filter(
+				(f) => f.endsWith(".mp4") || f.endsWith(".webm"),
+			);
+			if (files.length === 0) return { path: null };
+			const stats = await Promise.all(
+				files.map(async (f) => {
+					const full = path.join(dir, f);
+					return { full, t: (await fs.stat(full)).mtimeMs };
+				}),
+			);
+			stats.sort((a, b) => b.t - a.t);
+			return { path: stats[0].full };
+		} catch {
+			return { path: null };
+		}
+	});
+
 	// HeyGen avatar groups (incl. public like "Ramisa") + the looks inside a group.
 	ipcMain.handle("avatar:search-groups", (_e, query?: string) => listAvatarGroups(query));
 	ipcMain.handle("avatar:group-looks", (_e, groupId: string) => listGroupLooks(groupId));
