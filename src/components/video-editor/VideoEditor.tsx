@@ -639,6 +639,36 @@ export default function VideoEditor() {
 			})),
 		[],
 	);
+	const handleAvatarReady = useCallback(
+		(clipPath: string, shape: "box" | "circle", previewUrl?: string) =>
+			setAvatarOverlay((prev) => ({
+				...prev,
+				enabled: true,
+				sourcePath: clipPath,
+				previewUrl: previewUrl ?? prev.previewUrl,
+				shape,
+			})),
+		[],
+	);
+	const handleAvatarPreview = useCallback(
+		({
+			previewUrl,
+			shape,
+			clearClip,
+		}: {
+			previewUrl: string | null;
+			shape: "box" | "circle";
+			clearClip?: boolean;
+		}) =>
+			setAvatarOverlay((prev) => ({
+				...prev,
+				enabled: !!(previewUrl || (!clearClip && prev.sourcePath)),
+				previewUrl,
+				shape,
+				sourcePath: clearClip ? null : prev.sourcePath,
+			})),
+		[],
+	);
 	const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
 	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
 	// Tracks the videoSourcePath for which the cursor telemetry IPC has already
@@ -6469,24 +6499,8 @@ export default function VideoEditor() {
 								onAddNarrationToTimeline={handleAddNarrationToTimeline}
 								zoomRegions={zoomRegions}
 								storageKey={currentSourcePath ?? undefined}
-								onAvatarReady={(clipPath, shape, previewUrl) =>
-									setAvatarOverlay((prev) => ({
-										...prev,
-										enabled: true,
-										sourcePath: clipPath,
-										previewUrl: previewUrl ?? prev.previewUrl,
-										shape,
-									}))
-								}
-								onAvatarPreview={({ previewUrl, shape, clearClip }) =>
-									setAvatarOverlay((prev) => ({
-										...prev,
-										enabled: !!(previewUrl || (!clearClip && prev.sourcePath)),
-										previewUrl,
-										shape,
-										sourcePath: clearClip ? null : prev.sourcePath,
-									}))
-								}
+								onAvatarReady={handleAvatarReady}
+								onAvatarPreview={handleAvatarPreview}
 								onAvatarSettings={handleAvatarSettings}
 							/>
 						) : (
