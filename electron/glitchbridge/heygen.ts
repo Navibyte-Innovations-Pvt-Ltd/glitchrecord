@@ -177,11 +177,10 @@ async function startGeneration(
 ): Promise<string> {
 	const width = req.width ?? 720;
 	const height = req.height ?? 1280;
-	// Transparent green-screen matte → we composite the cutout ourselves; opaque
-	// videos keep HeyGen's own background and sit in a rounded box.
-	const background = req.transparent
-		? { type: "color", value: "#00FF00" }
-		: { type: "color", value: "#000000" };
+	// Clean neutral studio background. (HeyGen also supports a true-alpha webm for
+	// circle/cutout compositing — wire that in P3 after inspecting a real clip;
+	// green-key was wrong, it causes edge fringing.)
+	const background = { type: "color", value: "#101014" };
 
 	const body = {
 		video_inputs: [
