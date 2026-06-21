@@ -153,6 +153,9 @@ export interface AvatarOverlaySettings {
 	/** Look/preview thumbnail (HeyGen URL) — shown before a clip exists. */
 	previewUrl: string | null;
 	positionPreset: WebcamPositionPreset;
+	/** Free-drag position (0–1 of the available area). Used when preset is "custom". */
+	positionX: number;
+	positionY: number;
 	/** Overlay size as % of the stage's shorter side. */
 	size: number;
 	/** "box" = rounded rectangle; "circle" = round cutout. */
@@ -165,6 +168,8 @@ export const DEFAULT_AVATAR_OVERLAY: AvatarOverlaySettings = {
 	sourcePath: null,
 	previewUrl: null,
 	positionPreset: "bottom-right",
+	positionX: 1,
+	positionY: 1,
 	size: 26,
 	shape: "box",
 	margin: 24,
@@ -329,9 +334,7 @@ function clampToNearestClipBoundary(
 
 	for (const { clip, sourceStartMs, sourceEndMs } of spans) {
 		const boundaries =
-			kind === "timeline"
-				? [clip.startMs, clip.endMs]
-				: [sourceStartMs, sourceEndMs];
+			kind === "timeline" ? [clip.startMs, clip.endMs] : [sourceStartMs, sourceEndMs];
 
 		for (const boundary of boundaries) {
 			const distance = Math.abs(timeMs - boundary);
