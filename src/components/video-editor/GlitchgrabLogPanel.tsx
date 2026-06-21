@@ -44,7 +44,7 @@ interface GlitchgrabAPI {
 	onEventsReady?: (cb: (data: { sessionId: string; count: number }) => void) => () => void;
 	onSessionReset?: (cb: () => void) => () => void;
 	onScriptReady?: (cb: (data: { sessionId: string; script: string }) => void) => () => void;
-	noteQuestions?: () => Promise<{
+	noteQuestions?: (frames?: Array<{ id: string; dataUrl: string }>) => Promise<{
 		ok: boolean;
 		questions?: Array<{ id: string; tMs: number; label: string; question: string; options: string[] }>;
 		error?: string;
@@ -169,6 +169,8 @@ interface GlitchgrabLogPanelProps {
 	timelineDurationSec?: number;
 	/** Seek the video to a timeline-time position (seconds). */
 	onSeekTimeline?: (sec: number) => void;
+	/** Grab a still frame (JPEG data URL) from the raw recording at a recording-time (ms). */
+	onCaptureFrame?: (tMs: number) => Promise<string | null>;
 	onTogglePlay?: () => void;
 	/** Mute the screen-recording audio while sync-previewing the narration. */
 	onSetRecordingMuted?: (muted: boolean) => void;
@@ -184,6 +186,7 @@ export function GlitchgrabLogPanel({
 	playbackRef,
 	timelineDurationSec,
 	onSeekTimeline,
+	onCaptureFrame,
 	onTogglePlay,
 	onSetRecordingMuted,
 	onAddNarrationToTimeline,
@@ -217,6 +220,9 @@ export function GlitchgrabLogPanel({
 	const [noteQuestions, setNoteQuestions] = useState<
 		Array<{ id: string; tMs: number; label: string; question: string; options: string[] }> | null
 	>(null);
+	// Live, transparent progress for the 2-pass note flow (text → screenshots →
+	// vision). Shown to the user so the screenshot step is never a black box.
+	const [visionProgress, setVisionProgress] = useState<string | null>(null);
 	// Per-question: multiple selected options + a free-text addition.
 	const [noteAnswers, setNoteAnswers] = useState<Record<string, string[]>>({});
 	const [noteText, setNoteText] = useState<Record<string, string>>({});
@@ -412,6 +418,7 @@ export function GlitchgrabLogPanel({
 		const api = gg();
 		setScriptError(null);
 		setNoteQuestions(null);
+		setVisionProgress(null);
 		if (!api?.generateScript) {
 			setScriptError("Quit & relaunch GlitchRecord — this feature needs a restart.");
 			return;
@@ -419,21 +426,50 @@ export function GlitchgrabLogPanel({
 		if (api.noteQuestions) {
 			setScriptLoading(true);
 			try {
-				const q = await api.noteQuestions();
-				if (q.ok && q.questions && q.questions.length > 0) {
-					setNoteQuestions(q.questions);
+				// PASS 1 — text. Which marked spots stay unclear from labels alone?
+				setVisionProgress("Reviewing your marked spots…");
+				const q1 = await api.noteQuestions();
+				let questions = q1.ok ? (q1.questions ?? []) : [];
+
+				// PASS 2 — vision. For each unclear spot grab a screenshot from the
+				// recording at that exact moment and let the AI look BEFORE asking
+				// you. Most doubt vanishes once it can see the element.
+				if (questions.length > 0 && onCaptureFrame) {
+					setVisionProgress(
+						`${questions.length} spot${questions.length === 1 ? "" : "s"} unclear — grabbing screenshots…`,
+					);
+					const frames: Array<{ id: string; dataUrl: string }> = [];
+					for (const qq of questions) {
+						setVisionProgress(`📸 Capturing ${formatMs(qq.tMs)} — “${qq.label.slice(0, 28)}”…`);
+						const dataUrl = await onCaptureFrame(qq.tMs);
+						if (dataUrl) frames.push({ id: qq.id, dataUrl });
+					}
+					if (frames.length > 0) {
+						setVisionProgress(
+							`Sending ${frames.length} screenshot${frames.length === 1 ? "" : "s"} to the AI to review…`,
+						);
+						const q2 = await api.noteQuestions(frames);
+						if (q2.ok && q2.questions) questions = q2.questions;
+					}
+				}
+
+				if (questions.length > 0) {
+					setVisionProgress(null);
+					setNoteQuestions(questions);
 					setNoteAnswers({});
 					setNoteText({});
 					setScriptLoading(false);
 					return; // wait for the user to answer, then runGenerate
 				}
+				setVisionProgress(null);
 			} catch {
+				setVisionProgress(null);
 				/* fall through to plain generate */
 			}
 			setScriptLoading(false);
 		}
 		await runGenerate();
-	}, [runGenerate]);
+	}, [runGenerate, onCaptureFrame]);
 
 	// Send a chat instruction to refine the script. Replies with the full revised
 	// script → shown in the thread AND synced into the narration box.
@@ -1030,8 +1066,13 @@ export function GlitchgrabLogPanel({
 			</div>
 			<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3" style={{ scrollbarWidth: "thin" }}>
 			<button type="button" data-testid="gg-generate-script" onClick={generateScriptFromEvents} disabled={scriptLoading} className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40" title="Use AI to write a narration script from the captured events">
-			{scriptLoading ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Writing script…</>) : (<><Sparkle className="h-3.5 w-3.5" /> Generate script from events</>)}
+			{scriptLoading ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> {visionProgress ? "Working…" : "Writing script…"}</>) : (<><Sparkle className="h-3.5 w-3.5" /> Generate script from events</>)}
 			</button>
+			{visionProgress && (
+				<p className="flex items-center gap-1.5 text-[11px] text-blue-300/80" data-testid="gg-vision-progress">
+					<ArrowClockwise className="h-3 w-3 shrink-0 animate-spin" /> {visionProgress}
+				</p>
+			)}
 			{!loggedIn && (
 				<button type="button" onClick={() => gg()?.login?.()} className="flex items-center justify-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20" title="Log in to GlitchGrab to generate scripts and create issues">
 				<Sparkle className="h-3.5 w-3.5" /> Connect GlitchGrab
