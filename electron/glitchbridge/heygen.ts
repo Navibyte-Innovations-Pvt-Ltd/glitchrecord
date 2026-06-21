@@ -22,8 +22,10 @@ const UPLOAD = "https://upload.heygen.com";
 export type AvatarTier = "photo" | "iv";
 
 export interface AvatarRequest {
-	/** Absolute path to the custom photo (png/jpg). */
-	photoPath: string;
+	/** Custom photo (png/jpg) → talking_photo. Omit when using a HeyGen library avatar. */
+	photoPath?: string;
+	/** HeyGen library avatar id (from listAvatars). Takes precedence over photoPath. */
+	avatarId?: string;
 	/** Absolute path to the narration audio (mp3/wav) to lip-sync. */
 	audioPath: string;
 	tier: AvatarTier;
@@ -32,6 +34,13 @@ export interface AvatarRequest {
 	/** Portrait corner box by default; 9:16 keeps a head-and-shoulders crop. */
 	width?: number;
 	height?: number;
+}
+
+export interface HeyGenAvatar {
+	id: string;
+	name: string;
+	gender?: string;
+	previewUrl?: string;
 }
 
 export interface AvatarResult {
@@ -74,6 +83,42 @@ function key(): string | null {
 
 export function hasHeyGenKey(): boolean {
 	return key() !== null;
+}
+
+// HeyGen's studio avatar library (preset realistic avatars). Each can be driven
+// by our narration audio just like a custom photo. Returns a trimmed list.
+export async function listAvatars(): Promise<{
+	ok: boolean;
+	avatars?: HeyGenAvatar[];
+	error?: string;
+}> {
+	const apiKey = key();
+	if (!apiKey) return { ok: false, error: "HEYGEN_API_KEY not set" };
+	try {
+		const res = await fetch(`${API}/v2/avatars`, { headers: { "x-api-key": apiKey } });
+		if (!res.ok) return { ok: false, error: `List avatars ${res.status}` };
+		const data = (await res.json()) as {
+			data?: {
+				avatars?: Array<{
+					avatar_id?: string;
+					avatar_name?: string;
+					gender?: string;
+					preview_image_url?: string;
+				}>;
+			};
+		};
+		const avatars: HeyGenAvatar[] = (data.data?.avatars ?? [])
+			.filter((a) => a.avatar_id)
+			.map((a) => ({
+				id: a.avatar_id as string,
+				name: a.avatar_name || (a.avatar_id as string),
+				gender: a.gender,
+				previewUrl: a.preview_image_url,
+			}));
+		return { ok: true, avatars };
+	} catch (e) {
+		return { ok: false, error: e instanceof Error ? e.message : String(e) };
+	}
 }
 
 function mimeFor(p: string): string {
@@ -122,10 +167,11 @@ async function uploadTalkingPhoto(photoPath: string, apiKey: string): Promise<st
 	return id;
 }
 
-// Kick off generation. Returns the video_id to poll.
+// Kick off generation. Returns the video_id to poll. `character` is either a
+// talking_photo (custom photo) or a library avatar.
 async function startGeneration(
 	req: AvatarRequest,
-	talkingPhotoId: string,
+	character: Record<string, unknown>,
 	audioAssetId: string,
 	apiKey: string,
 ): Promise<string> {
@@ -140,12 +186,7 @@ async function startGeneration(
 	const body = {
 		video_inputs: [
 			{
-				character: {
-					type: "talking_photo",
-					talking_photo_id: talkingPhotoId,
-					// Avatar IV gets richer motion; Photo Avatar stays steady for a small PiP.
-					...(req.tier === "iv" ? { talking_photo_style: "expressive" } : {}),
-				},
+				character,
 				voice: { type: "audio", audio_asset_id: audioAssetId },
 				background,
 			},
@@ -209,21 +250,36 @@ export async function generateAvatar(
 ): Promise<AvatarResult> {
 	const apiKey = key();
 	if (!apiKey) return { ok: false, error: "HEYGEN_API_KEY not set in the environment" };
-	if (!fssync.existsSync(req.photoPath)) return { ok: false, error: "Photo file not found" };
+	if (!req.avatarId && !req.photoPath)
+		return { ok: false, error: "Choose a photo or a HeyGen avatar" };
+	if (req.photoPath && !req.avatarId && !fssync.existsSync(req.photoPath))
+		return { ok: false, error: "Photo file not found" };
 	if (!fssync.existsSync(req.audioPath))
 		return { ok: false, error: "Narration audio not found — generate narration first" };
 
 	try {
 		await fs.mkdir(outDir, { recursive: true });
 
-		onProgress("Uploading photo…");
-		const talkingPhotoId = await uploadTalkingPhoto(req.photoPath, apiKey);
+		// Build the character: a HeyGen library avatar, or our uploaded photo.
+		let character: Record<string, unknown>;
+		if (req.avatarId) {
+			character = { type: "avatar", avatar_id: req.avatarId, avatar_style: "normal" };
+		} else {
+			onProgress("Uploading photo…");
+			const talkingPhotoId = await uploadTalkingPhoto(req.photoPath as string, apiKey);
+			character = {
+				type: "talking_photo",
+				talking_photo_id: talkingPhotoId,
+				// Avatar IV gets richer motion; Photo Avatar stays steady for a small PiP.
+				...(req.tier === "iv" ? { talking_photo_style: "expressive" } : {}),
+			};
+		}
 
 		onProgress("Uploading narration…");
 		const audio = await uploadAsset(req.audioPath, apiKey);
 
 		onProgress("Starting avatar…");
-		const videoId = await startGeneration(req, talkingPhotoId, audio.id, apiKey);
+		const videoId = await startGeneration(req, character, audio.id, apiKey);
 
 		// Poll. HeyGen has no webhook here, so back off from 5s.
 		const deadline = Date.now() + 10 * 60 * 1000;
