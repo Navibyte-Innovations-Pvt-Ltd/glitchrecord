@@ -1,6 +1,6 @@
-import fs from "node:fs/promises";
-import fssync from "node:fs";
 import { spawn } from "node:child_process";
+import fssync from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -21,6 +21,30 @@ import {
 import { RECORDINGS_DIR } from "./appPaths";
 import { showCursor } from "./cursorHider";
 import { registerExtensionIpcHandlers } from "./extensions/extensionIpc";
+import {
+	BASE as GLITCHGRAB_URL,
+	generateScript,
+	getNoteQuestions,
+	refineScript,
+	uploadSession,
+	validateToken,
+} from "./glitchbridge/api";
+import { clearAuth, saveAuth, setSelectedRepo } from "./glitchbridge/auth";
+import { type AvatarTier, generateAvatar, hasHeyGenKey, listAvatars } from "./glitchbridge/heygen";
+import {
+	appendDebugLog,
+	broadcastRecordingStart,
+	broadcastRecordingStop,
+	fetchUserRepos,
+	getAuthStatus,
+	getCurrentSession,
+	getCurrentUser,
+	loadPersistedSession,
+	refreshCurrentUserFromStorage,
+	resetBridgeSession,
+	startBridgeServer,
+	stopBridgeServer,
+} from "./glitchbridge/server";
 import { getGpuSwitches } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
@@ -32,10 +56,6 @@ import {
 import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
-import { startBridgeServer, stopBridgeServer, broadcastRecordingStart, broadcastRecordingStop, refreshCurrentUserFromStorage, getAuthStatus, fetchUserRepos, getCurrentSession, getCurrentUser, loadPersistedSession, appendDebugLog, resetBridgeSession } from "./glitchbridge/server";
-import { saveAuth, clearAuth, setSelectedRepo } from "./glitchbridge/auth";
-import { validateToken, uploadSession, generateScript, refineScript, getNoteQuestions, BASE as GLITCHGRAB_URL } from "./glitchbridge/api";
-import { generateAvatar, hasHeyGenKey, type AvatarTier } from "./glitchbridge/heygen";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -53,9 +73,9 @@ import {
 import {
 	createEditorWindow,
 	createHomeWindow,
-	getHomeWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
+	getHomeWindow,
 	getHudOverlayWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
@@ -142,11 +162,22 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
 // in-progress recording isn't silently killed. Log to the unified debug file.
 process.on("uncaughtException", (err) => {
 	console.error("[main] Uncaught exception:", err);
-	try { appendDebugLog("rec", `UNCAUGHT EXCEPTION: ${err?.stack ?? String(err)}`); } catch { /* ignore */ }
+	try {
+		appendDebugLog("rec", `UNCAUGHT EXCEPTION: ${err?.stack ?? String(err)}`);
+	} catch {
+		/* ignore */
+	}
 });
 process.on("unhandledRejection", (reason) => {
 	console.error("[main] Unhandled rejection:", reason);
-	try { appendDebugLog("rec", `UNHANDLED REJECTION: ${reason instanceof Error ? reason.stack : String(reason)}`); } catch { /* ignore */ }
+	try {
+		appendDebugLog(
+			"rec",
+			`UNHANDLED REJECTION: ${reason instanceof Error ? reason.stack : String(reason)}`,
+		);
+	} catch {
+		/* ignore */
+	}
 });
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
@@ -958,14 +989,19 @@ app.whenReady().then(async () => {
 		app.setAppUserModelId("dev.glitchrecord.app");
 	}
 
-
 	// Start GlitchBridge WebSocket server — Chrome extension connects here
 	startBridgeServer({
 		onScriptReady: (sessionId, script) => {
-			BrowserWindow.getAllWindows()[0]?.webContents.send("glitchbridge:script-ready", { sessionId, script });
+			BrowserWindow.getAllWindows()[0]?.webContents.send("glitchbridge:script-ready", {
+				sessionId,
+				script,
+			});
 		},
 		onIssueCreated: (sessionId, issueUrl) => {
-			BrowserWindow.getAllWindows()[0]?.webContents.send("glitchbridge:issue-created", { sessionId, issueUrl });
+			BrowserWindow.getAllWindows()[0]?.webContents.send("glitchbridge:issue-created", {
+				sessionId,
+				issueUrl,
+			});
 		},
 		onLiveEvent: (event) => {
 			for (const w of BrowserWindow.getAllWindows()) {
@@ -982,10 +1018,7 @@ app.whenReady().then(async () => {
 	ipcMain.handle("glitchbridge:recording-start", () => {
 		// Capture events regardless of login state — auth only needed for issue creation
 		const auth = getAuthStatus();
-		return broadcastRecordingStart(
-			auth.selectedRepoId ?? "",
-			auth.selectedRepoName ?? "",
-		);
+		return broadcastRecordingStart(auth.selectedRepoId ?? "", auth.selectedRepoName ?? "");
 	});
 	ipcMain.handle("glitchbridge:recording-stop", (_e, sessionId: string, meta: unknown) => {
 		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
@@ -996,93 +1029,133 @@ app.whenReady().then(async () => {
 	// script from events" button. Requires login (web endpoint is token-gated).
 	// Per-note clarifying questions for the shift-marked spots. Re-uploads events
 	// (cheap) to get a DB session, then asks the web API.
-	ipcMain.handle("glitchbridge:note-questions", async (_e, frames?: Array<{ id: string; dataUrl: string }>) => {
-		const user = getCurrentUser();
-		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
-		const session = getCurrentSession();
-		const events = session?.events ?? loadPersistedSession().events;
-		if (!events?.length) return { ok: false, error: "No captured events yet." };
-		const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
-		if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
-		// frames present = PASS 2 (vision): re-judge the flagged spots WITH screenshots.
-		appendDebugLog("rec", `note-questions: ${frames?.length ? `vision pass (${frames.length} frame${frames.length === 1 ? "" : "s"})` : "text pass"}`);
-		const result = await getNoteQuestions({ token: user.token, sessionId: dbSessionId, frames });
-		if ("error" in result) return { ok: false, error: result.error };
-		return { ok: true, questions: result.questions };
-	});
+	ipcMain.handle(
+		"glitchbridge:note-questions",
+		async (_e, frames?: Array<{ id: string; dataUrl: string }>) => {
+			const user = getCurrentUser();
+			if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
+			const session = getCurrentSession();
+			const events = session?.events ?? loadPersistedSession().events;
+			if (!events?.length) return { ok: false, error: "No captured events yet." };
+			const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
+			if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
+			// frames present = PASS 2 (vision): re-judge the flagged spots WITH screenshots.
+			appendDebugLog(
+				"rec",
+				`note-questions: ${frames?.length ? `vision pass (${frames.length} frame${frames.length === 1 ? "" : "s"})` : "text pass"}`,
+			);
+			const result = await getNoteQuestions({
+				token: user.token,
+				sessionId: dbSessionId,
+				frames,
+			});
+			if ("error" in result) return { ok: false, error: result.error };
+			return { ok: true, questions: result.questions };
+		},
+	);
 
-	ipcMain.handle("glitchbridge:generate-script", async (_e, opts?: {
-		lang?: string;
-		gender?: string;
-		durationSec?: number;
-		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
-		noteAnswers?: Array<{ label: string; answer: string }>;
-	}) => {
-		const user = getCurrentUser();
-		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
-		const session = getCurrentSession();
-		const events = session?.events ?? loadPersistedSession().events;
-		if (!events?.length) return { ok: false, error: "No captured events yet." };
+	ipcMain.handle(
+		"glitchbridge:generate-script",
+		async (
+			_e,
+			opts?: {
+				lang?: string;
+				gender?: string;
+				durationSec?: number;
+				zooms?: Array<{
+					startMs: number;
+					endMs: number;
+					depth?: number;
+					cx?: number;
+					cy?: number;
+				}>;
+				noteAnswers?: Array<{ label: string; answer: string }>;
+			},
+		) => {
+			const user = getCurrentUser();
+			if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
+			const session = getCurrentSession();
+			const events = session?.events ?? loadPersistedSession().events;
+			if (!events?.length) return { ok: false, error: "No captured events yet." };
 
-		appendDebugLog("rec", `generate-script: uploading ${events.length} events (lang=${opts?.lang ?? "hi"})`);
-		const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
-		if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
+			appendDebugLog(
+				"rec",
+				`generate-script: uploading ${events.length} events (lang=${opts?.lang ?? "hi"})`,
+			);
+			const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
+			if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
 
-		appendDebugLog("rec", `generate-script: calling DeepSeek (session ${dbSessionId})`);
-		const result = await generateScript({
-			token: user.token,
-			sessionId: dbSessionId,
-			lang: opts?.lang,
-			gender: opts?.gender,
-			durationSec: opts?.durationSec,
-			zooms: opts?.zooms,
-			noteAnswers: opts?.noteAnswers,
-		});
-		if ("error" in result) {
-			appendDebugLog("rec", `generate-script: failed — ${result.error}`);
-			return { ok: false, error: result.error };
-		}
-		appendDebugLog("rec", `generate-script: got ${result.script.length} chars`);
-		return { ok: true, script: result.script };
-	});
+			appendDebugLog("rec", `generate-script: calling DeepSeek (session ${dbSessionId})`);
+			const result = await generateScript({
+				token: user.token,
+				sessionId: dbSessionId,
+				lang: opts?.lang,
+				gender: opts?.gender,
+				durationSec: opts?.durationSec,
+				zooms: opts?.zooms,
+				noteAnswers: opts?.noteAnswers,
+			});
+			if ("error" in result) {
+				appendDebugLog("rec", `generate-script: failed — ${result.error}`);
+				return { ok: false, error: result.error };
+			}
+			appendDebugLog("rec", `generate-script: got ${result.script.length} chars`);
+			return { ok: true, script: result.script };
+		},
+	);
 
 	// Conversationally refine the current script. Re-uploads the events (cheap) to
 	// get a DB session, then chats with DeepSeek. Returns the full revised script.
-	ipcMain.handle("glitchbridge:refine-script", async (_e, opts: {
-		messages: Array<{ role: "user" | "assistant"; content: string }>;
-		currentScript?: string;
-		lang?: string;
-		gender?: string;
-		durationSec?: number;
-		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
-	}) => {
-		const user = getCurrentUser();
-		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
-		if (!opts?.messages?.length) return { ok: false, error: "No message to send." };
-		const session = getCurrentSession();
-		const events = session?.events ?? loadPersistedSession().events;
-		if (!events?.length) return { ok: false, error: "No captured events yet." };
+	ipcMain.handle(
+		"glitchbridge:refine-script",
+		async (
+			_e,
+			opts: {
+				messages: Array<{ role: "user" | "assistant"; content: string }>;
+				currentScript?: string;
+				lang?: string;
+				gender?: string;
+				durationSec?: number;
+				zooms?: Array<{
+					startMs: number;
+					endMs: number;
+					depth?: number;
+					cx?: number;
+					cy?: number;
+				}>;
+			},
+		) => {
+			const user = getCurrentUser();
+			if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
+			if (!opts?.messages?.length) return { ok: false, error: "No message to send." };
+			const session = getCurrentSession();
+			const events = session?.events ?? loadPersistedSession().events;
+			if (!events?.length) return { ok: false, error: "No captured events yet." };
 
-		const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
-		if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
+			const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
+			if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
 
-		appendDebugLog("rec", `refine-script: ${opts.messages.length} msgs (session ${dbSessionId})`);
-		const result = await refineScript({
-			token: user.token,
-			sessionId: dbSessionId,
-			messages: opts.messages,
-			currentScript: opts.currentScript,
-			lang: opts.lang,
-			gender: opts.gender,
-			durationSec: opts.durationSec,
-			zooms: opts.zooms,
-		});
-		if ("error" in result) {
-			appendDebugLog("rec", `refine-script: failed — ${result.error}`);
-			return { ok: false, error: result.error };
-		}
-		return { ok: true, reply: result.reply, script: result.script };
-	});
+			appendDebugLog(
+				"rec",
+				`refine-script: ${opts.messages.length} msgs (session ${dbSessionId})`,
+			);
+			const result = await refineScript({
+				token: user.token,
+				sessionId: dbSessionId,
+				messages: opts.messages,
+				currentScript: opts.currentScript,
+				lang: opts.lang,
+				gender: opts.gender,
+				durationSec: opts.durationSec,
+				zooms: opts.zooms,
+			});
+			if ("error" in result) {
+				appendDebugLog("rec", `refine-script: failed — ${result.error}`);
+				return { ok: false, error: result.error };
+			}
+			return { ok: true, reply: result.reply, script: result.script };
+		},
+	);
 
 	// Standalone Narration Tester — paste a script → generate audio, no recording.
 	let narrationTesterWindow: BrowserWindow | null = null;
@@ -1103,7 +1176,9 @@ app.whenReady().then(async () => {
 				nodeIntegration: false,
 			},
 		});
-		void win.loadFile(path.join(process.env.APP_ROOT ?? process.cwd(), "tts", "narration-tester.html"));
+		void win.loadFile(
+			path.join(process.env.APP_ROOT ?? process.cwd(), "tts", "narration-tester.html"),
+		);
 		narrationTesterWindow = win;
 		win.on("closed", () => {
 			if (narrationTesterWindow === win) narrationTesterWindow = null;
@@ -1157,7 +1232,18 @@ app.whenReady().then(async () => {
 	// Generate narration audio from a script via the local TTS (apps/glitchrecord/tts).
 	ipcMain.handle(
 		"generate-narration",
-		async (_e, text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string; apiKey?: string; pace?: number }) => {
+		async (
+			_e,
+			text: string,
+			opts?: {
+				engine?: string;
+				lang?: string;
+				speaker?: string;
+				voice?: string;
+				apiKey?: string;
+				pace?: number;
+			},
+		) => {
 			try {
 				if (!text || !text.trim()) return { ok: false, error: "Empty script" };
 				const ttsDir = path.join(process.env.APP_ROOT ?? process.cwd(), "tts");
@@ -1178,13 +1264,20 @@ app.whenReady().then(async () => {
 				const voice = opts?.voice ?? opts?.speaker ?? "ritu";
 				const args = [
 					script,
-					"--engine", opts?.engine ?? "sarvam",
-					"--lang", opts?.lang ?? "hi",
-					"--voice", voice,
-					"--speaker", voice,
-					"--pace", String(opts?.pace ?? 1.0),
-					"--text-file", tmpTxt,
-					"--out", outWav,
+					"--engine",
+					opts?.engine ?? "sarvam",
+					"--lang",
+					opts?.lang ?? "hi",
+					"--voice",
+					voice,
+					"--speaker",
+					voice,
+					"--pace",
+					String(opts?.pace ?? 1.0),
+					"--text-file",
+					tmpTxt,
+					"--out",
+					outWav,
 				];
 				appendDebugLog("rec", `narration: spawning ${py} (${text.length} chars)`);
 				const sendProgress = (stage: string) => {
@@ -1193,35 +1286,45 @@ app.whenReady().then(async () => {
 				sendProgress("Starting…");
 				const childEnv: NodeJS.ProcessEnv = { ...process.env, COQUI_TOS_AGREED: "1" };
 				if (opts?.apiKey) childEnv.SARVAM_API_KEY = opts.apiKey;
-				const result = await new Promise<{ ok: boolean; path?: string; error?: string }>((resolve) => {
-					const child = spawn(py, args, { env: childEnv });
-					let out = "";
-					let err = "";
-					child.stdout.on("data", (d) => { out += d.toString(); });
-					child.stderr.on("data", (d) => {
-						const s = d.toString();
-						err += s;
-						// Surface meaningful stages to the UI.
-						for (const line of s.split("\n")) {
-							const chunk = line.match(/\[narrate\] chunk (\d+)\/(\d+)/);
-							if (chunk) {
-								const [, i, n] = chunk;
-								sendProgress(`Synthesizing ${i}/${n}`);
-							} else if (line.includes("loading") || line.includes("downloads")) {
-								sendProgress("Loading model…");
+				const result = await new Promise<{ ok: boolean; path?: string; error?: string }>(
+					(resolve) => {
+						const child = spawn(py, args, { env: childEnv });
+						let out = "";
+						let err = "";
+						child.stdout.on("data", (d) => {
+							out += d.toString();
+						});
+						child.stderr.on("data", (d) => {
+							const s = d.toString();
+							err += s;
+							// Surface meaningful stages to the UI.
+							for (const line of s.split("\n")) {
+								const chunk = line.match(/\[narrate\] chunk (\d+)\/(\d+)/);
+								if (chunk) {
+									const [, i, n] = chunk;
+									sendProgress(`Synthesizing ${i}/${n}`);
+								} else if (line.includes("loading") || line.includes("downloads")) {
+									sendProgress("Loading model…");
+								}
 							}
-						}
-					});
-					child.on("error", (e) => resolve({ ok: false, error: String(e) }));
-					child.on("close", (code) => {
-						if (code === 0 && fssync.existsSync(outWav)) {
-							resolve({ ok: true, path: out.trim().split("\n").pop() || outWav });
-						} else {
-							resolve({ ok: false, error: err.slice(-600) || `narrate.py exited ${code}` });
-						}
-					});
-				});
-				appendDebugLog("rec", `narration: ${result.ok ? "ok " + result.path : "FAIL " + result.error}`);
+						});
+						child.on("error", (e) => resolve({ ok: false, error: String(e) }));
+						child.on("close", (code) => {
+							if (code === 0 && fssync.existsSync(outWav)) {
+								resolve({ ok: true, path: out.trim().split("\n").pop() || outWav });
+							} else {
+								resolve({
+									ok: false,
+									error: err.slice(-600) || `narrate.py exited ${code}`,
+								});
+							}
+						});
+					},
+				);
+				appendDebugLog(
+					"rec",
+					`narration: ${result.ok ? "ok " + result.path : "FAIL " + result.error}`,
+				);
 				return result;
 			} catch (e) {
 				return { ok: false, error: String(e) };
@@ -1230,6 +1333,9 @@ app.whenReady().then(async () => {
 	);
 	// Whether the platform HeyGen key is configured (so the panel can prompt).
 	ipcMain.handle("avatar:key-status", () => ({ hasKey: hasHeyGenKey() }));
+
+	// HeyGen's studio avatar library — for the "pick a HeyGen avatar" mode.
+	ipcMain.handle("avatar:list", () => listAvatars());
 
 	// Native picker for the avatar's custom photo (renderer File.path is gone in
 	// modern Electron, so resolve the absolute path here).
@@ -1250,16 +1356,26 @@ app.whenReady().then(async () => {
 		"avatar:generate",
 		async (
 			_e,
-			opts: { photoPath: string; audioPath: string; tier: AvatarTier; transparent?: boolean },
+			opts: {
+				photoPath?: string;
+				avatarId?: string;
+				audioPath: string;
+				tier: AvatarTier;
+				transparent?: boolean;
+			},
 		) => {
 			const sendProgress = (stage: string) => {
 				if (!_e.sender.isDestroyed()) _e.sender.send("avatar-progress", stage);
 			};
 			const outDir = path.join(app.getPath("userData"), "avatars");
-			appendDebugLog("rec", `avatar: generate tier=${opts.tier} transparent=${!!opts.transparent}`);
+			appendDebugLog(
+				"rec",
+				`avatar: generate ${opts.avatarId ? `avatar=${opts.avatarId}` : "photo"} tier=${opts.tier} transparent=${!!opts.transparent}`,
+			);
 			const result = await generateAvatar(
 				{
 					photoPath: opts.photoPath,
+					avatarId: opts.avatarId,
 					audioPath: opts.audioPath,
 					tier: opts.tier,
 					transparent: opts.transparent,
@@ -1267,7 +1383,10 @@ app.whenReady().then(async () => {
 				outDir,
 				sendProgress,
 			);
-			appendDebugLog("rec", `avatar: ${result.ok ? "ok " + result.path : "FAIL " + result.error}`);
+			appendDebugLog(
+				"rec",
+				`avatar: ${result.ok ? "ok " + result.path : "FAIL " + result.error}`,
+			);
 			return result;
 		},
 	);
@@ -1304,7 +1423,10 @@ app.whenReady().then(async () => {
 	ipcMain.handle("glitchgrab:logout", () => {
 		clearAuth();
 		refreshCurrentUserFromStorage();
-		BrowserWindow.getAllWindows()[0]?.webContents.send("glitchgrab:auth-changed", getAuthStatus());
+		BrowserWindow.getAllWindows()[0]?.webContents.send(
+			"glitchgrab:auth-changed",
+			getAuthStatus(),
+		);
 		return { ok: true };
 	});
 
