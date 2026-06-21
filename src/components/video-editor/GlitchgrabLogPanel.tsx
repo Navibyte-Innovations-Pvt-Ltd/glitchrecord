@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
 	ArrowClockwise,
 	ArrowRight,
@@ -16,9 +14,21 @@ import {
 	TextT,
 	UserCircle,
 } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface CaptureEvent {
-	type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste" | "note";
+	type:
+		| "click"
+		| "navigate"
+		| "idle"
+		| "input"
+		| "select"
+		| "keydown"
+		| "scroll"
+		| "copy"
+		| "paste"
+		| "note";
 	t: number;
 	label?: string;
 	tag?: string;
@@ -47,7 +57,13 @@ interface GlitchgrabAPI {
 	onScriptReady?: (cb: (data: { sessionId: string; script: string }) => void) => () => void;
 	noteQuestions?: (frames?: Array<{ id: string; dataUrl: string }>) => Promise<{
 		ok: boolean;
-		questions?: Array<{ id: string; tMs: number; label: string; question: string; options: string[] }>;
+		questions?: Array<{
+			id: string;
+			tMs: number;
+			label: string;
+			question: string;
+			options: string[];
+		}>;
 		error?: string;
 	}>;
 	generateScript?: (opts?: {
@@ -74,31 +90,51 @@ function gg(): GlitchgrabAPI | null {
 function EventIcon({ type }: { type: CaptureEvent["type"] }) {
 	const cls = "h-3.5 w-3.5 shrink-0 opacity-60";
 	switch (type) {
-		case "navigate": return <ArrowRight className={cls} />;
-		case "idle":     return <Clock className={cls} />;
-		case "input":    return <Keyboard className={cls} />;
-		case "select":   return <TextT className={cls} />;
-		case "keydown":  return <Keyboard className={cls} />;
-		case "scroll":   return <ArrowsDownUp className={cls} />;
-		case "copy":     return <Copy className={cls} />;
-		case "paste":    return <Clipboard className={cls} />;
-		case "note":     return <NoteBlank className="h-3.5 w-3.5 shrink-0 text-amber-400" weight="fill" />;
-		default:         return <CursorClick className={cls} />;
+		case "navigate":
+			return <ArrowRight className={cls} />;
+		case "idle":
+			return <Clock className={cls} />;
+		case "input":
+			return <Keyboard className={cls} />;
+		case "select":
+			return <TextT className={cls} />;
+		case "keydown":
+			return <Keyboard className={cls} />;
+		case "scroll":
+			return <ArrowsDownUp className={cls} />;
+		case "copy":
+			return <Copy className={cls} />;
+		case "paste":
+			return <Clipboard className={cls} />;
+		case "note":
+			return <NoteBlank className="h-3.5 w-3.5 shrink-0 text-amber-400" weight="fill" />;
+		default:
+			return <CursorClick className={cls} />;
 	}
 }
 
 function eventText(e: CaptureEvent): string {
 	switch (e.type) {
-		case "navigate": return `Navigate → ${e.label ?? e.url ?? ""}`;
-		case "idle":     return `Idle ${Math.round((e.durationMs ?? 0) / 1000)}s`;
-		case "input":    return `Typed in ${e.label ?? e.tag ?? "field"}${e.preview ? `: "${e.preview}"` : ""}`;
-		case "select":   return `Selected: "${(e.label ?? "").slice(0, 40)}"`;
-		case "keydown":  return `Key: ${e.label}`;
-		case "scroll":   return `Scrolled`;
-		case "copy":     return e.label ? `Copied: "${e.label.slice(0, 40)}"` : "Copy";
-		case "paste":    return "Paste";
-		case "note":     return `📌 Explain: ${e.label ?? "this"}`;
-		default:         return `Click: ${e.label ?? "element"}`;
+		case "navigate":
+			return `Navigate → ${e.label ?? e.url ?? ""}`;
+		case "idle":
+			return `Idle ${Math.round((e.durationMs ?? 0) / 1000)}s`;
+		case "input":
+			return `Typed in ${e.label ?? e.tag ?? "field"}${e.preview ? `: "${e.preview}"` : ""}`;
+		case "select":
+			return `Selected: "${(e.label ?? "").slice(0, 40)}"`;
+		case "keydown":
+			return `Key: ${e.label}`;
+		case "scroll":
+			return `Scrolled`;
+		case "copy":
+			return e.label ? `Copied: "${e.label.slice(0, 40)}"` : "Copy";
+		case "paste":
+			return "Paste";
+		case "note":
+			return `📌 Explain: ${e.label ?? "this"}`;
+		default:
+			return `Click: ${e.label ?? "element"}`;
 	}
 }
 
@@ -123,25 +159,42 @@ const ENGINES: Array<[string, string]> = [
 ];
 const VOICES: Record<string, Array<[string, string]>> = {
 	sarvam: [
-		["ritu", "Ritu (F)"], ["priya", "Priya (F)"], ["neha", "Neha (F)"],
-		["pooja", "Pooja (F)"], ["simran", "Simran (F)"], ["kavya", "Kavya (F)"],
-		["aditya", "Aditya (M)"], ["rahul", "Rahul (M)"], ["rohan", "Rohan (M)"],
-		["shubh", "Shubh (M)"], ["varun", "Varun (M)"], ["kabir", "Kabir (M)"],
+		["ritu", "Ritu (F)"],
+		["priya", "Priya (F)"],
+		["neha", "Neha (F)"],
+		["pooja", "Pooja (F)"],
+		["simran", "Simran (F)"],
+		["kavya", "Kavya (F)"],
+		["aditya", "Aditya (M)"],
+		["rahul", "Rahul (M)"],
+		["rohan", "Rohan (M)"],
+		["shubh", "Shubh (M)"],
+		["varun", "Varun (M)"],
+		["kabir", "Kabir (M)"],
 	],
 	supertonic: [
-		["F1", "F1 (female)"], ["F2", "F2 (female)"], ["F3", "F3 (female)"],
-		["M1", "M1 (male)"], ["M2", "M2 (male)"], ["M3", "M3 (male)"],
+		["F1", "F1 (female)"],
+		["F2", "F2 (female)"],
+		["F3", "F3 (female)"],
+		["M1", "M1 (male)"],
+		["M2", "M2 (male)"],
+		["M3", "M3 (male)"],
 	],
 	xtts: [
-		["Ana Florence", "Ana (F)"], ["Daisy Studious", "Daisy (F)"],
-		["Andrew Chipper", "Andrew (M)"], ["Damien Black", "Damien (M)"],
+		["Ana Florence", "Ana (F)"],
+		["Daisy Studious", "Daisy (F)"],
+		["Andrew Chipper", "Andrew (M)"],
+		["Damien Black", "Damien (M)"],
 	],
 };
 
 // Clipboard fallback for non-Electron / when native IPC is unavailable.
 function fallbackCopy(text: string, onDone: () => void) {
 	if (navigator.clipboard?.writeText) {
-		navigator.clipboard.writeText(text).then(onDone).catch(() => execCommandCopy(text, onDone));
+		navigator.clipboard
+			.writeText(text)
+			.then(onDone)
+			.catch(() => execCommandCopy(text, onDone));
 		return;
 	}
 	execCommandCopy(text, onDone);
@@ -178,11 +231,24 @@ interface GlitchgrabLogPanelProps {
 	/** Bake the generated narration into the export as an audio region at startSec. */
 	onAddNarrationToTimeline?: (audioPath: string, startSec: number, durationSec: number) => void;
 	/** Zoom regions from the editor — fed to the AI as emphasis context. */
-	zoomRegions?: Array<{ startMs: number; endMs: number; depth?: number; focus?: { cx: number; cy: number } }>;
+	zoomRegions?: Array<{
+		startMs: number;
+		endMs: number;
+		depth?: number;
+		focus?: { cx: number; cy: number };
+	}>;
 	/** Stable per-recording key — script + chat history are saved/restored under it. */
 	storageKey?: string;
 	/** "log" = Events/Narration tabs; "avatar" = dedicated avatar section (own rail item). */
 	view?: "log" | "avatar";
+	/** Called when an avatar clip is generated — editor adds it as a PiP overlay. */
+	onAvatarReady?: (clipPath: string, shape: "box" | "circle", previewUrl?: string) => void;
+	/** Live layout placeholder — show the chosen look as a PiP before generating. */
+	onAvatarPreview?: (p: {
+		previewUrl: string | null;
+		shape: "box" | "circle";
+		clearClip?: boolean;
+	}) => void;
 }
 
 export function GlitchgrabLogPanel({
@@ -196,6 +262,8 @@ export function GlitchgrabLogPanel({
 	zoomRegions,
 	storageKey,
 	view = "log",
+	onAvatarReady,
+	onAvatarPreview,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -221,9 +289,13 @@ export function GlitchgrabLogPanel({
 	// The script writer lives in a roomy right-side drawer (script is a big chunk).
 	const [scriptOpen, setScriptOpen] = useState(false);
 	// Per-note clarifying questions (asked before generating, when notes exist).
-	const [noteQuestions, setNoteQuestions] = useState<
-		Array<{ id: string; tMs: number; label: string; question: string; options: string[] }> | null
-	>(null);
+	const [noteQuestions, setNoteQuestions] = useState<Array<{
+		id: string;
+		tMs: number;
+		label: string;
+		question: string;
+		options: string[];
+	}> | null>(null);
 	// Live, transparent progress for the 2-pass note flow (text → screenshots →
 	// vision). Shown to the user so the screenshot step is never a black box.
 	const [visionProgress, setVisionProgress] = useState<string | null>(null);
@@ -232,7 +304,9 @@ export function GlitchgrabLogPanel({
 	const [noteText, setNoteText] = useState<Record<string, string>>({});
 	// Refine-script chat thread (conversational edits to the script). Assistant
 	// turns may carry a `script` (the revised draft) the user can apply.
-	const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; script?: string | null }>>([]);
+	const [chatMessages, setChatMessages] = useState<
+		Array<{ role: "user" | "assistant"; content: string; script?: string | null }>
+	>([]);
 	const [chatInput, setChatInput] = useState("");
 	const [chatBusy, setChatBusy] = useState(false);
 	const [chatError, setChatError] = useState<string | null>(null);
@@ -253,11 +327,21 @@ export function GlitchgrabLogPanel({
 	const [avatarPhotoPath, setAvatarPhotoPath] = useState<string | null>(null);
 	// HeyGen avatar library = searchable groups (e.g. "Ramisa") → looks.
 	const [avatarQuery, setAvatarQuery] = useState("");
-	const [avatarGroups, setAvatarGroups] = useState<Array<{ id: string; name: string; numLooks: number; previewUrl?: string; isPublic: boolean }>>([]);
+	const [avatarGroups, setAvatarGroups] = useState<
+		Array<{
+			id: string;
+			name: string;
+			numLooks: number;
+			previewUrl?: string;
+			isPublic: boolean;
+		}>
+	>([]);
 	const [avatarGroupsLoading, setAvatarGroupsLoading] = useState(false);
 	const [avatarGroupsError, setAvatarGroupsError] = useState<string | null>(null);
 	const [selectedGroup, setSelectedGroup] = useState<{ id: string; name: string } | null>(null);
-	const [groupLooks, setGroupLooks] = useState<Array<{ id: string; name: string; previewUrl?: string }>>([]);
+	const [groupLooks, setGroupLooks] = useState<
+		Array<{ id: string; name: string; previewUrl?: string }>
+	>([]);
 	const [groupLooksLoading, setGroupLooksLoading] = useState(false);
 	const [groupLooksError, setGroupLooksError] = useState<string | null>(null);
 	const [selectedLookId, setSelectedLookId] = useState<string | null>(null);
@@ -286,14 +370,19 @@ export function GlitchgrabLogPanel({
 	const listRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		electronAPI()?.narrationKeyStatus?.().then((s) => setHasSavedKey(!!s?.hasSarvamKey)).catch(() => {});
+		electronAPI()
+			?.narrationKeyStatus?.()
+			.then((s) => setHasSavedKey(!!s?.hasSarvamKey))
+			.catch(() => {});
 	}, []);
 
 	// Track GlitchGrab login so we can show a Connect button + clear the
 	// "log in first" error the moment auth lands (no relaunch needed).
 	useEffect(() => {
 		const api = gg();
-		api?.status?.().then((s) => setLoggedIn(!!s?.loggedIn)).catch(() => {});
+		api?.status?.()
+			.then((s) => setLoggedIn(!!s?.loggedIn))
+			.catch(() => {});
 		const unsub = api?.onAuthChanged?.((s) => {
 			setLoggedIn(!!s?.loggedIn);
 			if (s?.loggedIn) setScriptError(null);
@@ -307,45 +396,72 @@ export function GlitchgrabLogPanel({
 		const valid = VOICES[engine] ?? [];
 		if (!valid.some(([v]) => v === voice)) setVoice(valid[0]?.[0] ?? "");
 	}, [engine, voice]);
-	useEffect(() => { localStorage.setItem("gg.tts.lang", lang); }, [lang]);
-	useEffect(() => { localStorage.setItem("gg.tts.voice", voice); }, [voice]);
-	useEffect(() => { localStorage.setItem("gg.tts.apiKey", apiKey); }, [apiKey]);
-	useEffect(() => { localStorage.setItem("gg.tts.pace", String(pace)); }, [pace]);
+	useEffect(() => {
+		localStorage.setItem("gg.tts.lang", lang);
+	}, [lang]);
+	useEffect(() => {
+		localStorage.setItem("gg.tts.voice", voice);
+	}, [voice]);
+	useEffect(() => {
+		localStorage.setItem("gg.tts.apiKey", apiKey);
+	}, [apiKey]);
+	useEffect(() => {
+		localStorage.setItem("gg.tts.pace", String(pace));
+	}, [pace]);
 
 	const electronAPI = () =>
-		(window as unknown as {
-			electronAPI?: {
-				generateNarration?: (
-					t: string,
-					opts?: { engine?: string; lang?: string; voice?: string; apiKey?: string; pace?: number },
-				) => Promise<{ ok: boolean; path?: string; error?: string }>;
-				getLocalMediaUrl?: (p: string) => Promise<{ success: boolean; url?: string }>;
-				revealInFolder?: (p: string) => void;
-				onNarrationProgress?: (cb: (stage: string) => void) => () => void;
-				narrationKeyStatus?: () => Promise<{ hasSarvamKey: boolean }>;
-				generateAvatar?: (opts: {
-					photoPath?: string;
-					avatarId?: string;
-					talkingPhotoId?: string;
-					audioPath: string;
-					tier: "photo" | "iv";
-					transparent?: boolean;
-				}) => Promise<{ ok: boolean; path?: string; format?: "webm" | "mp4"; error?: string }>;
-				avatarKeyStatus?: () => Promise<{ hasKey: boolean }>;
-				pickAvatarPhoto?: () => Promise<{ path: string | null }>;
-				onAvatarProgress?: (cb: (stage: string) => void) => () => void;
-				searchAvatarGroups?: (query?: string) => Promise<{
-					ok: boolean;
-					groups?: Array<{ id: string; name: string; numLooks: number; previewUrl?: string; isPublic: boolean }>;
-					error?: string;
-				}>;
-				listGroupLooks?: (groupId: string) => Promise<{
-					ok: boolean;
-					looks?: Array<{ id: string; name: string; previewUrl?: string }>;
-					error?: string;
-				}>;
-			};
-		}).electronAPI;
+		(
+			window as unknown as {
+				electronAPI?: {
+					generateNarration?: (
+						t: string,
+						opts?: {
+							engine?: string;
+							lang?: string;
+							voice?: string;
+							apiKey?: string;
+							pace?: number;
+						},
+					) => Promise<{ ok: boolean; path?: string; error?: string }>;
+					getLocalMediaUrl?: (p: string) => Promise<{ success: boolean; url?: string }>;
+					revealInFolder?: (p: string) => void;
+					onNarrationProgress?: (cb: (stage: string) => void) => () => void;
+					narrationKeyStatus?: () => Promise<{ hasSarvamKey: boolean }>;
+					generateAvatar?: (opts: {
+						photoPath?: string;
+						avatarId?: string;
+						talkingPhotoId?: string;
+						audioPath: string;
+						tier: "photo" | "iv";
+						transparent?: boolean;
+					}) => Promise<{
+						ok: boolean;
+						path?: string;
+						format?: "webm" | "mp4";
+						error?: string;
+					}>;
+					avatarKeyStatus?: () => Promise<{ hasKey: boolean }>;
+					pickAvatarPhoto?: () => Promise<{ path: string | null }>;
+					onAvatarProgress?: (cb: (stage: string) => void) => () => void;
+					searchAvatarGroups?: (query?: string) => Promise<{
+						ok: boolean;
+						groups?: Array<{
+							id: string;
+							name: string;
+							numLooks: number;
+							previewUrl?: string;
+							isPublic: boolean;
+						}>;
+						error?: string;
+					}>;
+					listGroupLooks?: (groupId: string) => Promise<{
+						ok: boolean;
+						looks?: Array<{ id: string; name: string; previewUrl?: string }>;
+						error?: string;
+					}>;
+				};
+			}
+		).electronAPI;
 
 	// Live stage updates from the TTS process.
 	useEffect(() => {
@@ -355,25 +471,37 @@ export function GlitchgrabLogPanel({
 
 	// ── Avatar wiring ───────────────────────────────────────────
 	useEffect(() => {
-		electronAPI()?.avatarKeyStatus?.().then((s) => setAvatarHasKey(!!s?.hasKey)).catch(() => setAvatarHasKey(false));
+		electronAPI()
+			?.avatarKeyStatus?.()
+			.then((s) => setAvatarHasKey(!!s?.hasKey))
+			.catch(() => setAvatarHasKey(false));
 	}, []);
 	useEffect(() => {
 		const unsub = electronAPI()?.onAvatarProgress?.((stage) => setAvatarStage(stage));
 		return () => unsub?.();
 	}, []);
-	useEffect(() => { localStorage.setItem("gg.avatar.tier", avatarTier); }, [avatarTier]);
-	useEffect(() => { localStorage.setItem("gg.avatar.shape", avatarShape); }, [avatarShape]);
-	useEffect(() => { localStorage.setItem("gg.avatar.source", avatarSource); }, [avatarSource]);
+	useEffect(() => {
+		localStorage.setItem("gg.avatar.tier", avatarTier);
+	}, [avatarTier]);
+	useEffect(() => {
+		localStorage.setItem("gg.avatar.shape", avatarShape);
+	}, [avatarShape]);
+	useEffect(() => {
+		localStorage.setItem("gg.avatar.source", avatarSource);
+	}, [avatarSource]);
 
 	const searchAvatarGroups = useCallback((query: string) => {
 		setAvatarGroupsLoading(true);
 		setAvatarGroupsError(null);
-		electronAPI()?.searchAvatarGroups?.(query)
+		electronAPI()
+			?.searchAvatarGroups?.(query)
 			.then((r) => {
 				if (r?.ok && r.groups) setAvatarGroups(r.groups);
 				else setAvatarGroupsError(r?.error || "Could not load avatars");
 			})
-			.catch((e) => setAvatarGroupsError(e instanceof Error ? e.message : "Could not load avatars"))
+			.catch((e) =>
+				setAvatarGroupsError(e instanceof Error ? e.message : "Could not load avatars"),
+			)
 			.finally(() => setAvatarGroupsLoading(false));
 	}, []);
 
@@ -389,22 +517,33 @@ export function GlitchgrabLogPanel({
 		setGroupLooks([]);
 		setGroupLooksLoading(true);
 		setGroupLooksError(null);
-		electronAPI()?.listGroupLooks?.(group.id)
+		electronAPI()
+			?.listGroupLooks?.(group.id)
 			.then((r) => {
 				if (r?.ok && r.looks) setGroupLooks(r.looks);
 				else setGroupLooksError(r?.error || "Could not load looks");
 			})
-			.catch((e) => setGroupLooksError(e instanceof Error ? e.message : "Could not load looks"))
+			.catch((e) =>
+				setGroupLooksError(e instanceof Error ? e.message : "Could not load looks"),
+			)
 			.finally(() => setGroupLooksLoading(false));
 	}, []);
 	// Resolve a playable URL for the generated clip preview.
 	useEffect(() => {
-		if (!avatarPath) { setAvatarUrl(null); return; }
+		if (!avatarPath) {
+			setAvatarUrl(null);
+			return;
+		}
 		let alive = true;
-		electronAPI()?.getLocalMediaUrl?.(avatarPath).then((r) => {
-			if (alive && r?.success && r.url) setAvatarUrl(r.url);
-		}).catch(() => {});
-		return () => { alive = false; };
+		electronAPI()
+			?.getLocalMediaUrl?.(avatarPath)
+			.then((r) => {
+				if (alive && r?.success && r.url) setAvatarUrl(r.url);
+			})
+			.catch(() => {});
+		return () => {
+			alive = false;
+		};
 	}, [avatarPath]);
 
 	const pickAvatarPhoto = useCallback(async () => {
@@ -416,9 +555,18 @@ export function GlitchgrabLogPanel({
 		const api = electronAPI();
 		if (!api?.generateAvatar) return;
 		const usingLibrary = avatarSource === "library";
-		if (usingLibrary && !selectedLookId) { setAvatarError("Pick a HeyGen avatar look first"); return; }
-		if (!usingLibrary && !avatarPhotoPath) { setAvatarError("Choose a photo first"); return; }
-		if (!narrationPath) { setAvatarError("Generate narration audio first (Narration tab)"); return; }
+		if (usingLibrary && !selectedLookId) {
+			setAvatarError("Pick a HeyGen avatar look first");
+			return;
+		}
+		if (!usingLibrary && !avatarPhotoPath) {
+			setAvatarError("Choose a photo first");
+			return;
+		}
+		if (!narrationPath) {
+			setAvatarError("Generate narration audio first (Narration tab)");
+			return;
+		}
 		setAvatarBusy(true);
 		setAvatarError(null);
 		setAvatarPath(null);
@@ -431,15 +579,28 @@ export function GlitchgrabLogPanel({
 				tier: avatarTier,
 				transparent: avatarShape === "circle",
 			});
-			if (res.ok && res.path) setAvatarPath(res.path);
-			else setAvatarError(res.error || "Avatar generation failed");
+			if (res.ok && res.path) {
+				setAvatarPath(res.path);
+				// Push the clip to the editor as a PiP overlay (visible on the video).
+				const lookPreview = groupLooks.find((l) => l.id === selectedLookId)?.previewUrl;
+				onAvatarReady?.(res.path, avatarShape, lookPreview);
+			} else setAvatarError(res.error || "Avatar generation failed");
 		} catch (e) {
 			setAvatarError(e instanceof Error ? e.message : "Avatar generation failed");
 		} finally {
 			setAvatarBusy(false);
 			setAvatarStage("");
 		}
-	}, [avatarSource, avatarPhotoPath, selectedLookId, narrationPath, avatarTier, avatarShape]);
+	}, [
+		avatarSource,
+		avatarPhotoPath,
+		selectedLookId,
+		groupLooks,
+		narrationPath,
+		avatarTier,
+		avatarShape,
+		onAvatarReady,
+	]);
 
 	// AI script arrives from the bridge after a recording stops → stash it and
 	// jump to the Narration tab so the "Use AI script" button is visible.
@@ -498,7 +659,11 @@ export function GlitchgrabLogPanel({
 			try {
 				localStorage.setItem(
 					`gg.script.${storageKey}`,
-					JSON.stringify({ script: narrationText, chat: chatMessages, audioPath: narrationPath }),
+					JSON.stringify({
+						script: narrationText,
+						chat: chatMessages,
+						audioPath: narrationPath,
+					}),
 				);
 			} catch {
 				/* quota / serialize issues — non-fatal */
@@ -583,7 +748,9 @@ export function GlitchgrabLogPanel({
 					);
 					const frames: Array<{ id: string; dataUrl: string }> = [];
 					for (const qq of questions) {
-						setVisionProgress(`📸 Capturing ${formatMs(qq.tMs)} — “${qq.label.slice(0, 28)}”…`);
+						setVisionProgress(
+							`📸 Capturing ${formatMs(qq.tMs)} — “${qq.label.slice(0, 28)}”…`,
+						);
 						const dataUrl = await onCaptureFrame(qq.tMs);
 						if (dataUrl) frames.push({ id: qq.id, dataUrl });
 					}
@@ -635,7 +802,10 @@ export function GlitchgrabLogPanel({
 			cy: z.focus?.cy,
 		}));
 		// Send only role+content to the API (strip the local `script` field).
-		const apiMessages = [...chatMessages.map((m) => ({ role: m.role, content: m.content })), { role: "user" as const, content: text }];
+		const apiMessages = [
+			...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+			{ role: "user" as const, content: text },
+		];
 		setChatMessages((prev) => [...prev, { role: "user", content: text }]);
 		setChatInput("");
 		setChatBusy(true);
@@ -650,7 +820,10 @@ export function GlitchgrabLogPanel({
 			});
 			if (res.ok) {
 				const reply = res.reply?.trim() || (res.script ? "Updated the script." : "");
-				setChatMessages((prev) => [...prev, { role: "assistant", content: reply, script: res.script ?? null }]);
+				setChatMessages((prev) => [
+					...prev,
+					{ role: "assistant", content: reply, script: res.script ?? null },
+				]);
 			} else {
 				setChatError(res.error ?? "Refine failed.");
 			}
@@ -659,7 +832,17 @@ export function GlitchgrabLogPanel({
 		} finally {
 			setChatBusy(false);
 		}
-	}, [chatInput, chatBusy, chatMessages, narrationText, engine, voice, lang, timelineDurationSec, zoomRegions]);
+	}, [
+		chatInput,
+		chatBusy,
+		chatMessages,
+		narrationText,
+		engine,
+		voice,
+		lang,
+		timelineDurationSec,
+		zoomRegions,
+	]);
 
 	// Keep the chat scrolled to the latest message.
 	useEffect(() => {
@@ -717,7 +900,8 @@ export function GlitchgrabLogPanel({
 				const detail = e.preview ? `"${e.preview}"` : (e.label ?? "");
 				const head = `${String(i + 1).padStart(2, "0")}. [${formatMs(e.t)}] ${e.type.toUpperCase()}${detail ? `: ${detail}` : ""}`;
 				const lines: string[] = [head];
-				if (e.durationMs != null) lines.push(`      duration: ${Math.round(e.durationMs / 1000)}s`);
+				if (e.durationMs != null)
+					lines.push(`      duration: ${Math.round(e.durationMs / 1000)}s`);
 				if (e.url) lines.push(`      url: ${e.url}`);
 				if (e.meta) {
 					for (const [k, v] of Object.entries(e.meta)) {
@@ -740,11 +924,16 @@ export function GlitchgrabLogPanel({
 		};
 
 		// 1. Electron native clipboard (most reliable in the desktop app)
-		const api = (window as unknown as {
-			electronAPI?: { writeClipboard?: (t: string) => Promise<unknown> };
-		}).electronAPI;
+		const api = (
+			window as unknown as {
+				electronAPI?: { writeClipboard?: (t: string) => Promise<unknown> };
+			}
+		).electronAPI;
 		if (api?.writeClipboard) {
-			void api.writeClipboard(payload).then(markCopied).catch(() => fallbackCopy(payload, markCopied));
+			void api
+				.writeClipboard(payload)
+				.then(markCopied)
+				.catch(() => fallbackCopy(payload, markCopied));
 			return;
 		}
 		fallbackCopy(payload, markCopied);
@@ -752,7 +941,10 @@ export function GlitchgrabLogPanel({
 
 	const loadEvents = useCallback(() => {
 		const api = gg();
-		if (!api) { setLoading(false); return; }
+		if (!api) {
+			setLoading(false);
+			return;
+		}
 		if (typeof api.getEvents !== "function") {
 			// Old preload — getEvents not available yet, restart app required
 			setHasGetEvents(false);
@@ -761,12 +953,17 @@ export function GlitchgrabLogPanel({
 		}
 		setLoading(true);
 		api.getEvents()
-			.then(({ events: evts }) => { setEvents(evts); setLoading(false); })
+			.then(({ events: evts }) => {
+				setEvents(evts);
+				setLoading(false);
+			})
 			.catch(() => setLoading(false));
 	}, []);
 
 	// Load on mount
-	useEffect(() => { loadEvents(); }, [loadEvents]);
+	useEffect(() => {
+		loadEvents();
+	}, [loadEvents]);
 
 	// Live-append new events during an active recording
 	useEffect(() => {
@@ -863,7 +1060,9 @@ export function GlitchgrabLogPanel({
 					className="flex items-start gap-2 rounded-md px-2 py-1.5 text-[12px] hover:bg-foreground/[0.04]"
 				>
 					<EventIcon type={e.type} />
-					<span className="flex-1 min-w-0 truncate text-foreground/80">{eventText(e)}</span>
+					<span className="flex-1 min-w-0 truncate text-foreground/80">
+						{eventText(e)}
+					</span>
 					<span className="shrink-0 text-[10px] font-mono text-foreground/30 pt-0.5">
 						{formatMs(e.t)}
 					</span>
@@ -893,624 +1092,957 @@ export function GlitchgrabLogPanel({
 
 			{/* Tab bar (log view only — avatar has its own rail item) */}
 			{view === "log" && (
-			<div className="flex shrink-0 gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
-				<button
-					type="button"
-					onClick={() => setTab("events")}
-					className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-						tab === "events"
-							? "bg-foreground/10 text-foreground"
-							: "text-foreground/50 hover:text-foreground/80"
-					}`}
-				>
-					<CursorClick className="h-3.5 w-3.5" /> Events
-					{events.length > 0 && (
-						<span className="font-mono text-[9px] text-foreground/40">{events.length}</span>
-					)}
-				</button>
-				<button
-					type="button"
-					onClick={() => setTab("narration")}
-					className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-						tab === "narration"
-							? "bg-foreground/10 text-foreground"
-							: "text-foreground/50 hover:text-foreground/80"
-					}`}
-				>
-					<Sparkle className="h-3.5 w-3.5" /> Narration
-				</button>
-			</div>
+				<div className="flex shrink-0 gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+					<button
+						type="button"
+						onClick={() => setTab("events")}
+						className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+							tab === "events"
+								? "bg-foreground/10 text-foreground"
+								: "text-foreground/50 hover:text-foreground/80"
+						}`}
+					>
+						<CursorClick className="h-3.5 w-3.5" /> Events
+						{events.length > 0 && (
+							<span className="font-mono text-[9px] text-foreground/40">
+								{events.length}
+							</span>
+						)}
+					</button>
+					<button
+						type="button"
+						onClick={() => setTab("narration")}
+						className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+							tab === "narration"
+								? "bg-foreground/10 text-foreground"
+								: "text-foreground/50 hover:text-foreground/80"
+						}`}
+					>
+						<Sparkle className="h-3.5 w-3.5" /> Narration
+					</button>
+				</div>
 			)}
 
 			{view === "log" && tab === "events" && (
-			<>
-			{/* Events tab actions */}
-			<div className="flex items-center justify-end gap-1.5">
-				<button
-					type="button"
-					onClick={copyAll}
-					disabled={events.length === 0}
-					className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-					title="Copy all events to clipboard"
-				>
-					{copied ? (
-						<><Check className="h-3.5 w-3.5 text-green-500" /> Copied</>
-					) : (
-						<><ClipboardText className="h-3.5 w-3.5" /> Copy</>
-					)}
-				</button>
-				<button
-					type="button"
-					onClick={loadEvents}
-					className="rounded p-0.5 text-foreground/30 hover:text-foreground/60 transition-colors"
-					title="Refresh"
-				>
-					<ArrowClockwise className="h-3.5 w-3.5" />
-				</button>
-			</div>
+				<>
+					{/* Events tab actions */}
+					<div className="flex items-center justify-end gap-1.5">
+						<button
+							type="button"
+							onClick={copyAll}
+							disabled={events.length === 0}
+							className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+							title="Copy all events to clipboard"
+						>
+							{copied ? (
+								<>
+									<Check className="h-3.5 w-3.5 text-green-500" /> Copied
+								</>
+							) : (
+								<>
+									<ClipboardText className="h-3.5 w-3.5" /> Copy
+								</>
+							)}
+						</button>
+						<button
+							type="button"
+							onClick={loadEvents}
+							className="rounded p-0.5 text-foreground/30 hover:text-foreground/60 transition-colors"
+							title="Refresh"
+						>
+							<ArrowClockwise className="h-3.5 w-3.5" />
+						</button>
+					</div>
 
-			{/* Event list */}
-			{loading ? (
-				<div className="text-[12px] text-foreground/40">Loading…</div>
-			) : !hasGetEvents ? (
-				<div className="flex flex-col gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.03] p-3 text-[12px] text-foreground/50">
-					<p className="font-semibold text-foreground/70">Restart required</p>
-					<p>Quit and relaunch GlitchRecord to enable event tracking.</p>
-				</div>
-			) : events.length === 0 ? (
-				<div className="flex flex-col gap-3 text-[12px] text-foreground/40">
-					<div className="flex flex-col items-center gap-2 py-6 text-center">
-						<CursorClick className="h-7 w-7 opacity-20" />
-						<p>No events captured yet.</p>
-					</div>
-					<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] p-3 text-[11px] leading-relaxed">
-						<p className="mb-1 font-semibold text-foreground/60">How to capture events:</p>
-						<ol className="list-decimal pl-4 space-y-1">
-							<li>Log in to GlitchGrab (top bar)</li>
-							<li>Select a GitHub repo</li>
-							<li>Press Record — extension captures automatically</li>
-						</ol>
-					</div>
-				</div>
-			) : (
-				<div
-					ref={listRef}
-					className="flex flex-col gap-0.5 overflow-y-auto"
-					style={{ scrollbarWidth: "thin" }}
-				>
-					{eventListEls}
-				</div>
-			)}
-			</>
+					{/* Event list */}
+					{loading ? (
+						<div className="text-[12px] text-foreground/40">Loading…</div>
+					) : !hasGetEvents ? (
+						<div className="flex flex-col gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.03] p-3 text-[12px] text-foreground/50">
+							<p className="font-semibold text-foreground/70">Restart required</p>
+							<p>Quit and relaunch GlitchRecord to enable event tracking.</p>
+						</div>
+					) : events.length === 0 ? (
+						<div className="flex flex-col gap-3 text-[12px] text-foreground/40">
+							<div className="flex flex-col items-center gap-2 py-6 text-center">
+								<CursorClick className="h-7 w-7 opacity-20" />
+								<p>No events captured yet.</p>
+							</div>
+							<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] p-3 text-[11px] leading-relaxed">
+								<p className="mb-1 font-semibold text-foreground/60">
+									How to capture events:
+								</p>
+								<ol className="list-decimal pl-4 space-y-1">
+									<li>Log in to GlitchGrab (top bar)</li>
+									<li>Select a GitHub repo</li>
+									<li>Press Record — extension captures automatically</li>
+								</ol>
+							</div>
+						</div>
+					) : (
+						<div
+							ref={listRef}
+							className="flex flex-col gap-0.5 overflow-y-auto"
+							style={{ scrollbarWidth: "thin" }}
+						>
+							{eventListEls}
+						</div>
+					)}
+				</>
 			)}
 
 			{/* ── Narration generator ─────────────────────────────── */}
 			{view === "log" && tab === "narration" && (
-			<div className="flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
-				<div className="flex items-center gap-2">
-					<span className="text-[9px] font-mono uppercase tracking-wide text-foreground/30">
-						model: {engine}
-					</span>
-				</div>
+				<div
+					className="flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto"
+					style={{ scrollbarWidth: "thin" }}
+				>
+					<div className="flex items-center gap-2">
+						<span className="text-[9px] font-mono uppercase tracking-wide text-foreground/30">
+							model: {engine}
+						</span>
+					</div>
 
-				{/* Model + voice pickers (mirror the Narration Tester window) */}
-				<div className="flex flex-col gap-1.5">
-					<label className="flex flex-col gap-0.5">
-						<span className="text-[9px] uppercase tracking-wide text-foreground/40">Model</span>
-						<select
-							value={engine}
-							onChange={(e) => setEngine(e.target.value)}
-							className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
-						>
-							{ENGINES.map(([v, l]) => (
-								<option key={v} value={v}>{l}</option>
-							))}
-						</select>
-					</label>
-					<div className="flex gap-1.5">
-						<label className="flex flex-1 flex-col gap-0.5 min-w-0">
-							<span className="text-[9px] uppercase tracking-wide text-foreground/40">Voice</span>
+					{/* Model + voice pickers (mirror the Narration Tester window) */}
+					<div className="flex flex-col gap-1.5">
+						<label className="flex flex-col gap-0.5">
+							<span className="text-[9px] uppercase tracking-wide text-foreground/40">
+								Model
+							</span>
 							<select
-								value={voice}
-								onChange={(e) => setVoice(e.target.value)}
+								value={engine}
+								onChange={(e) => setEngine(e.target.value)}
 								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
 							>
-								{(VOICES[engine] ?? []).map(([v, l]) => (
-									<option key={v} value={v}>{l}</option>
+								{ENGINES.map(([v, l]) => (
+									<option key={v} value={v}>
+										{l}
+									</option>
 								))}
 							</select>
 						</label>
-						<label className="flex flex-col gap-0.5 w-[72px] shrink-0">
-							<span className="text-[9px] uppercase tracking-wide text-foreground/40">Lang</span>
-							<select
-								value={lang}
-								onChange={(e) => setLang(e.target.value)}
-								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
-							>
-								<option value="hi">Hindi</option>
-								<option value="hinglish">Hinglish</option>
-								<option value="en">English</option>
-							</select>
-						</label>
-						<label className="flex flex-col gap-0.5 w-[78px] shrink-0">
-							<span className="text-[9px] uppercase tracking-wide text-foreground/40">Speed</span>
-							<select
-								value={String(pace)}
-								onChange={(e) => setPace(Number(e.target.value))}
-								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
-								title="Speaking pace — higher = faster + shorter audio (fits a short video)"
-							>
-								<option value="1">1.0×</option>
-								<option value="1.1">1.1×</option>
-								<option value="1.2">1.2×</option>
-								<option value="1.3">1.3×</option>
-								<option value="1.5">1.5×</option>
-							</select>
-						</label>
+						<div className="flex gap-1.5">
+							<label className="flex flex-1 flex-col gap-0.5 min-w-0">
+								<span className="text-[9px] uppercase tracking-wide text-foreground/40">
+									Voice
+								</span>
+								<select
+									value={voice}
+									onChange={(e) => setVoice(e.target.value)}
+									className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+								>
+									{(VOICES[engine] ?? []).map(([v, l]) => (
+										<option key={v} value={v}>
+											{l}
+										</option>
+									))}
+								</select>
+							</label>
+							<label className="flex flex-col gap-0.5 w-[72px] shrink-0">
+								<span className="text-[9px] uppercase tracking-wide text-foreground/40">
+									Lang
+								</span>
+								<select
+									value={lang}
+									onChange={(e) => setLang(e.target.value)}
+									className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+								>
+									<option value="hi">Hindi</option>
+									<option value="hinglish">Hinglish</option>
+									<option value="en">English</option>
+								</select>
+							</label>
+							<label className="flex flex-col gap-0.5 w-[78px] shrink-0">
+								<span className="text-[9px] uppercase tracking-wide text-foreground/40">
+									Speed
+								</span>
+								<select
+									value={String(pace)}
+									onChange={(e) => setPace(Number(e.target.value))}
+									className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+									title="Speaking pace — higher = faster + shorter audio (fits a short video)"
+								>
+									<option value="1">1.0×</option>
+									<option value="1.1">1.1×</option>
+									<option value="1.2">1.2×</option>
+									<option value="1.3">1.3×</option>
+									<option value="1.5">1.5×</option>
+								</select>
+							</label>
+						</div>
+						{engine === "sarvam" &&
+							(hasSavedKey ? (
+								<div className="flex items-center gap-1.5 text-[10px] text-green-400/80">
+									<Check className="h-3 w-3" /> Sarvam key loaded from tts/.env
+								</div>
+							) : (
+								<input
+									type="password"
+									value={apiKey}
+									onChange={(e) => setApiKey(e.target.value)}
+									placeholder="Sarvam API key (dashboard.sarvam.ai)"
+									className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
+								/>
+							))}
 					</div>
-					{engine === "sarvam" &&
-						(hasSavedKey ? (
-							<div className="flex items-center gap-1.5 text-[10px] text-green-400/80">
-								<Check className="h-3 w-3" /> Sarvam key loaded from tts/.env
-							</div>
-						) : (
-							<input
-								type="password"
-								value={apiKey}
-								onChange={(e) => setApiKey(e.target.value)}
-								placeholder="Sarvam API key (dashboard.sarvam.ai)"
-								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
-							/>
-						))}
-				</div>
 
-								{/* Script lives in the right-side Script Writer drawer (a big chunk). */}
-				<button
-					type="button"
-					onClick={() => setScriptOpen(true)}
-					className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20"
-					title="Open the AI script writer"
-				>
-					<Sparkle className="h-3.5 w-3.5" /> {narrationText.trim() ? "Open script writer" : "Write script with AI"}
-				</button>
-				{narrationText.trim() ? (
+					{/* Script lives in the right-side Script Writer drawer (a big chunk). */}
 					<button
 						type="button"
 						onClick={() => setScriptOpen(true)}
-						className="rounded-md border border-foreground/10 bg-foreground/[0.03] p-2 text-left text-[11px] leading-relaxed text-foreground/60 line-clamp-3 hover:border-blue-500/40"
-						title="Open script writer to edit"
+						className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20"
+						title="Open the AI script writer"
 					>
-						{narrationText}
+						<Sparkle className="h-3.5 w-3.5" />{" "}
+						{narrationText.trim() ? "Open script writer" : "Write script with AI"}
 					</button>
-				) : (
-					<p className="text-[10px] text-foreground/40">No script yet — open the writer to generate one from your events.</p>
-				)}
-
-								<button
-					type="button"
-					onClick={generateNarration}
-					disabled={narrating || !narrationText.trim()}
-					className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40"
-				>
-					{narrating ? (
-						<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> {narrationStage || "Generating…"} {narrationElapsed}s</>
+					{narrationText.trim() ? (
+						<button
+							type="button"
+							onClick={() => setScriptOpen(true)}
+							className="rounded-md border border-foreground/10 bg-foreground/[0.03] p-2 text-left text-[11px] leading-relaxed text-foreground/60 line-clamp-3 hover:border-blue-500/40"
+							title="Open script writer to edit"
+						>
+							{narrationText}
+						</button>
 					) : (
-						<><Sparkle className="h-3.5 w-3.5" /> Generate narration</>
+						<p className="text-[10px] text-foreground/40">
+							No script yet — open the writer to generate one from your events.
+						</p>
 					)}
-				</button>
-				{narrating && (
-					<p className="text-[10px] text-foreground/40 text-center">
-						First run loads the model (~20–40s). Later runs are faster.
-					</p>
-				)}
-				{narrationError && (
-					<div className="rounded-md bg-red-500/10 px-2 py-1.5 text-[10px] text-red-400 max-h-[60px] overflow-y-auto">
-						{narrationError}
-					</div>
-				)}
-				{narrationUrl && (
-					<div className="flex flex-col gap-1.5">
-						{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-						<audio ref={syncAudioRef} controls src={narrationUrl} className="w-full h-8" />
 
-						{/* ── Sync preview: hear narration aligned to the video ── */}
-						{playbackRef && (
-							<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.03] p-2">
-								<div className="flex items-center justify-between text-[10px] text-foreground/50">
-									<span>Sync preview</span>
-									<span className="font-mono">starts at {formatStartSec(narrationStartSec)}</span>
-								</div>
-								<div className="flex gap-1.5">
-									<button
-										type="button"
-										onClick={setStartAtPlayhead}
-										className="flex-1 rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/70 transition-colors hover:bg-foreground/[0.08]"
-										title="Set narration start to the current playhead position"
-									>
-										Set start at playhead
-									</button>
-									<button
-										type="button"
-										onClick={() => setNarrationStartSec(0)}
-										className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/50 transition-colors hover:bg-foreground/[0.08]"
-										title="Reset start to 0"
-									>
-										0:00
-									</button>
-								</div>
-								<div className="flex gap-1.5">
-									<button
-										type="button"
-										onClick={toggleSync}
-										className={`flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-											syncArmed
-												? "bg-green-600 text-white hover:bg-green-500"
-												: "bg-blue-600 text-white hover:bg-blue-500"
-										}`}
-									>
-										{syncArmed ? "● Synced — disarm" : "Sync with video"}
-									</button>
-									{onTogglePlay && (
-										<button
-											type="button"
-											onClick={onTogglePlay}
-											className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-1 text-[11px] text-foreground/70 transition-colors hover:bg-foreground/[0.08]"
-											title="Play / pause the video"
-										>
-											▶ / ❚❚
-										</button>
-									)}
-								</div>
-								{syncArmed && (
-									<p className="text-[9px] leading-snug text-foreground/40">
-										Recording audio muted. Hit play — narration speaks from {formatStartSec(narrationStartSec)}. Scrub + "Set start at playhead" to move it.
-									</p>
-								)}
-							</div>
-						)}
-
-						{/* Bake narration into the video so the export includes it */}
-						{onAddNarrationToTimeline && (
-							<button
-								type="button"
-								onClick={addNarrationToTimeline}
-								className={`flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
-									narrationAdded
-										? "bg-green-600/15 text-green-400"
-										: "bg-foreground/90 text-background hover:bg-foreground"
-								}`}
-							>
-								{narrationAdded ? (
-									<><Check className="h-3.5 w-3.5" /> Added — re-add to update</>
-								) : (
-									<>＋ Add narration to video (at {formatStartSec(narrationStartSec)})</>
-								)}
-							</button>
-						)}
-						{narrationAdded && (
-							<p className="text-[9px] leading-snug text-foreground/40 text-center">
-								On the timeline now — adjust/trim it there, then export. The video will include the narration.
-							</p>
-						)}
-
-						<button
-							type="button"
-							onClick={() => {
-								const p = narrationPath ?? (window as unknown as { __ggNarrationPath?: string }).__ggNarrationPath;
-								if (p) electronAPI()?.revealInFolder?.(p);
-							}}
-							className="text-[11px] text-foreground/50 hover:text-foreground/80 transition-colors text-left"
-						>
-							Reveal file → drag into timeline manually
-						</button>
-					</div>
-				)}
-			</div>
-			)}
-			{view === "avatar" && (
-			<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-1" style={{ scrollbarWidth: "thin" }}>
-				<p className="text-[11px] leading-snug text-foreground/50">
-					Add an AI talking-head that lip-syncs your narration. Generate narration first, then pick a photo.
-				</p>
-
-				{avatarHasKey === false && (
-					<p className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] px-2.5 py-1.5 text-[10px] text-amber-300/90">
-						HEYGEN_API_KEY not set — add it to the environment to enable avatar generation.
-					</p>
-				)}
-
-				{/* Source: custom photo vs HeyGen library */}
-				<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
-					{([["photo", "Custom photo"], ["library", "HeyGen avatar"]] as const).map(([val, label]) => (
-						<button
-							key={val}
-							type="button"
-							onClick={() => setAvatarSource(val)}
-							className={`flex flex-1 items-center justify-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarSource === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
-						>
-							{label}
-						</button>
-					))}
-				</div>
-
-				{avatarSource === "photo" ? (
 					<button
 						type="button"
-						onClick={pickAvatarPhoto}
-						className="flex items-center justify-between rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-2 text-[11px] text-foreground/70 transition-colors hover:border-foreground/25"
+						onClick={generateNarration}
+						disabled={narrating || !narrationText.trim()}
+						className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40"
 					>
-						<span className="flex items-center gap-1.5"><UserCircle className="h-3.5 w-3.5" /> {avatarPhotoPath ? "Change photo" : "Choose avatar photo"}</span>
-						{avatarPhotoPath && <span className="max-w-[160px] truncate font-mono text-[9px] text-foreground/40">{avatarPhotoPath.split("/").pop()}</span>}
+						{narrating ? (
+							<>
+								<ArrowClockwise className="h-3.5 w-3.5 animate-spin" />{" "}
+								{narrationStage || "Generating…"} {narrationElapsed}s
+							</>
+						) : (
+							<>
+								<Sparkle className="h-3.5 w-3.5" /> Generate narration
+							</>
+						)}
 					</button>
-				) : selectedGroup ? (
-					/* Looks inside the chosen group (e.g. Ramisa's 13 looks) */
-					<div className="flex flex-col gap-1.5">
-						<button
-							type="button"
-							onClick={() => { setSelectedGroup(null); setSelectedLookId(null); }}
-							className="flex items-center gap-1 self-start text-[11px] text-foreground/50 transition-colors hover:text-foreground/80"
-						>
-							← {selectedGroup.name}
-						</button>
-						{groupLooksLoading && <p className="flex items-center gap-1.5 text-[11px] text-foreground/50"><ArrowClockwise className="h-3 w-3 animate-spin" /> Loading looks…</p>}
-						{groupLooksError && <p className="text-[11px] text-red-400/80">{groupLooksError}</p>}
-						{!groupLooksLoading && !groupLooksError && groupLooks.length > 0 && (
-							<div className="grid max-h-[240px] grid-cols-3 gap-1.5 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
-								{groupLooks.map((a) => (
-									<button
-										key={a.id}
-										type="button"
-										onClick={() => setSelectedLookId(a.id)}
-										title={a.name}
-										className={`relative aspect-square overflow-hidden rounded-md border transition-colors ${selectedLookId === a.id ? "border-blue-500 ring-1 ring-blue-500" : "border-foreground/10 hover:border-foreground/30"}`}
-									>
-										{a.previewUrl ? (
-											<img src={a.previewUrl} alt={a.name} className="h-full w-full object-cover" />
-										) : (
-											<span className="flex h-full w-full items-center justify-center p-1 text-[8px] text-foreground/40">{a.name}</span>
-										)}
-									</button>
-								))}
-							</div>
-						)}
-					</div>
-				) : (
-					/* Search + group grid (type "Ramisa" to find it) */
-					<div className="flex flex-col gap-1.5">
-						<input
-							type="text"
-							value={avatarQuery}
-							onChange={(e) => setAvatarQuery(e.target.value)}
-							onKeyDown={(e) => { if (e.key === "Enter") searchAvatarGroups(avatarQuery); }}
-							placeholder="Search avatars (e.g. Ramisa)…"
-							className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-1.5 text-[11px] text-foreground/80 placeholder:text-foreground/30 focus:border-blue-500/50 focus:outline-none"
-						/>
-						{avatarGroupsLoading && <p className="flex items-center gap-1.5 text-[11px] text-foreground/50"><ArrowClockwise className="h-3 w-3 animate-spin" /> Loading avatars…</p>}
-						{avatarGroupsError && <p className="text-[11px] text-red-400/80">{avatarGroupsError}</p>}
-						{!avatarGroupsLoading && !avatarGroupsError && (
-							<div className="grid max-h-[240px] grid-cols-3 gap-1.5 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
-								{avatarGroups.map((g) => (
-									<button
-										key={g.id}
-										type="button"
-										onClick={() => openAvatarGroup(g)}
-										title={`${g.name} · ${g.numLooks} looks`}
-										className="relative aspect-square overflow-hidden rounded-md border border-foreground/10 transition-colors hover:border-foreground/40"
-									>
-										{g.previewUrl ? (
-											<img src={g.previewUrl} alt={g.name} className="h-full w-full object-cover" />
-										) : (
-											<span className="flex h-full w-full items-center justify-center p-1 text-[8px] text-foreground/40">{g.name}</span>
-										)}
-										<span className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 py-0.5 text-[8px] text-white/90">{g.name}</span>
-									</button>
-								))}
-								{avatarGroups.length === 0 && <p className="col-span-3 text-[11px] text-foreground/40">No avatars found.</p>}
-							</div>
-						)}
-					</div>
-				)}
+					{narrating && (
+						<p className="text-[10px] text-foreground/40 text-center">
+							First run loads the model (~20–40s). Later runs are faster.
+						</p>
+					)}
+					{narrationError && (
+						<div className="rounded-md bg-red-500/10 px-2 py-1.5 text-[10px] text-red-400 max-h-[60px] overflow-y-auto">
+							{narrationError}
+						</div>
+					)}
+					{narrationUrl && (
+						<div className="flex flex-col gap-1.5">
+							{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+							<audio
+								ref={syncAudioRef}
+								controls
+								src={narrationUrl}
+								className="w-full h-8"
+							/>
 
-				{avatarSource === "photo" && (
-				<div className="flex flex-col gap-1">
-					<span className="text-[10px] uppercase tracking-wide text-foreground/40">Quality</span>
-					<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
-						{([["photo", "Photo Avatar", "~$3 / 3-min"], ["iv", "Avatar IV", "~$12 / 3-min"]] as const).map(([val, label, cost]) => (
-							<button
-								key={val}
-								type="button"
-								onClick={() => setAvatarTier(val)}
-								className={`flex flex-1 flex-col items-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarTier === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
-							>
-								{label}
-								<span className="text-[9px] text-foreground/40">{cost}</span>
-							</button>
-						))}
-					</div>
-				</div>
-				)}
-
-				<div className="flex flex-col gap-1">
-					<span className="text-[10px] uppercase tracking-wide text-foreground/40">Shape</span>
-					<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
-						{([["box", "Rounded box"], ["circle", "Circle (cutout)"]] as const).map(([val, label]) => (
-							<button
-								key={val}
-								type="button"
-								onClick={() => setAvatarShape(val)}
-								className={`flex flex-1 items-center justify-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarShape === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
-							>
-								{label}
-							</button>
-						))}
-					</div>
-				</div>
-
-				<button
-					type="button"
-					onClick={generateAvatar}
-					disabled={avatarBusy || !narrationPath || (avatarSource === "photo" ? !avatarPhotoPath : !selectedLookId)}
-					className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
-					title={!narrationPath ? "Generate narration audio first" : avatarSource === "photo" ? (!avatarPhotoPath ? "Choose a photo first" : "Generate the talking-head avatar") : (!selectedLookId ? "Pick a HeyGen avatar look first" : "Generate the talking-head avatar")}
-				>
-					{avatarBusy ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> {avatarStage || "Generating…"}</>) : (<><UserCircle className="h-3.5 w-3.5" /> Generate avatar</>)}
-				</button>
-
-				{!narrationPath && <p className="text-[10px] text-foreground/40">No narration audio yet — make it in the Narration tab.</p>}
-				{avatarError && <p className="text-[11px] text-red-400/80">{avatarError}</p>}
-
-				{avatarUrl && (
-					<div className="flex flex-col gap-1.5">
-						<span className="text-[10px] uppercase tracking-wide text-foreground/40">Preview</span>
-						{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-						<video src={avatarUrl} controls className="w-full rounded-md border border-foreground/10 bg-black" />
-						<button
-							type="button"
-							onClick={() => { if (avatarPath) electronAPI()?.revealInFolder?.(avatarPath); }}
-							className="text-left text-[11px] text-foreground/50 transition-colors hover:text-foreground/80"
-						>
-							Reveal file →
-						</button>
-					</div>
-				)}
-			</div>
-			)}
-
-			{view === "log" && !scriptOpen && createPortal(
-			<button type="button" data-testid="gg-script-toggle" onClick={() => setScriptOpen(true)} title="Open script writer" className="absolute right-2 top-2 z-30 flex items-center gap-1.5 rounded-md border border-blue-500/30 bg-background/90 px-2.5 py-1.5 text-[11px] font-medium text-blue-300 shadow-md backdrop-blur transition hover:bg-blue-500/10">
-			<Sparkle className="h-3.5 w-3.5" /> Script
-			</button>,
-			(document.getElementById("gg-editor-row") ?? document.body))}
-			{scriptOpen && createPortal(
-			<div className="gg-selectable flex w-[420px] shrink-0 flex-col rounded-lg border border-foreground/10 bg-background shadow-lg">
-			<div className="flex items-center justify-between border-b border-foreground/10 px-3 py-2">
-			<span className="flex items-center gap-1.5 text-[13px] font-semibold"><Sparkle className="h-4 w-4 text-blue-500" /> Script Writer</span>
-			<button type="button" onClick={() => setScriptOpen(false)} title="Close" className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition hover:bg-foreground/[0.06] hover:text-foreground">✕</button>
-			</div>
-			<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3" style={{ scrollbarWidth: "thin" }}>
-			<button type="button" data-testid="gg-generate-script" onClick={generateScriptFromEvents} disabled={scriptLoading} className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40" title="Use AI to write a narration script from the captured events">
-			{scriptLoading ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> {visionProgress ? "Working…" : "Writing script…"}</>) : (<><Sparkle className="h-3.5 w-3.5" /> Generate script from events</>)}
-			</button>
-			{visionProgress && (
-				<p className="flex items-center gap-1.5 text-[11px] text-blue-300/80" data-testid="gg-vision-progress">
-					<ArrowClockwise className="h-3 w-3 shrink-0 animate-spin" /> {visionProgress}
-				</p>
-			)}
-			{!loggedIn && (
-				<button type="button" onClick={() => gg()?.login?.()} className="flex items-center justify-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20" title="Log in to GlitchGrab to generate scripts and create issues">
-				<Sparkle className="h-3.5 w-3.5" /> Connect GlitchGrab
-				</button>
-			)}
-			{scriptError && <p className="text-[11px] text-red-400/80">{scriptError}</p>}
-			{noteQuestions && noteQuestions.length > 0 && (
-				<div className="flex flex-col gap-3 rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-3">
-					<div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
-						<NoteBlank className="h-3.5 w-3.5" weight="fill" /> {noteQuestions.length} spot{noteQuestions.length === 1 ? " needs" : "s need"} your input — what should I explain?
-					</div>
-					{noteQuestions.map((q) => (
-						<div key={q.id} className="flex flex-col gap-1.5">
-							<span className="text-[11px] text-foreground/70">
-								<span className="text-foreground/40">{formatStartSec(q.tMs / 1000)} · </span>{q.question}
-							</span>
-							<div className="flex flex-wrap gap-1">
-								{q.options.map((opt) => {
-									const selected = (noteAnswers[q.id] ?? []).includes(opt);
-									return (
+							{/* ── Sync preview: hear narration aligned to the video ── */}
+							{playbackRef && (
+								<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.03] p-2">
+									<div className="flex items-center justify-between text-[10px] text-foreground/50">
+										<span>Sync preview</span>
+										<span className="font-mono">
+											starts at {formatStartSec(narrationStartSec)}
+										</span>
+									</div>
+									<div className="flex gap-1.5">
 										<button
-											key={opt}
 											type="button"
-											onClick={() =>
-												setNoteAnswers((p) => {
-													const cur = p[q.id] ?? [];
-													return {
-														...p,
-														[q.id]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt],
-													};
-												})
-											}
-											className={
-												selected
-													? "rounded-md border border-amber-500/60 bg-amber-500/20 px-2 py-1 text-[10px] text-amber-100"
-													: "rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[10px] text-foreground/70 hover:border-amber-500/40"
-											}
+											onClick={setStartAtPlayhead}
+											className="flex-1 rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/70 transition-colors hover:bg-foreground/[0.08]"
+											title="Set narration start to the current playhead position"
 										>
-											{selected ? "✓ " : ""}{opt}
+											Set start at playhead
 										</button>
-									);
-								})}
-							</div>
+										<button
+											type="button"
+											onClick={() => setNarrationStartSec(0)}
+											className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/50 transition-colors hover:bg-foreground/[0.08]"
+											title="Reset start to 0"
+										>
+											0:00
+										</button>
+									</div>
+									<div className="flex gap-1.5">
+										<button
+											type="button"
+											onClick={toggleSync}
+											className={`flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+												syncArmed
+													? "bg-green-600 text-white hover:bg-green-500"
+													: "bg-blue-600 text-white hover:bg-blue-500"
+											}`}
+										>
+											{syncArmed ? "● Synced — disarm" : "Sync with video"}
+										</button>
+										{onTogglePlay && (
+											<button
+												type="button"
+												onClick={onTogglePlay}
+												className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-1 text-[11px] text-foreground/70 transition-colors hover:bg-foreground/[0.08]"
+												title="Play / pause the video"
+											>
+												▶ / ❚❚
+											</button>
+										)}
+									</div>
+									{syncArmed && (
+										<p className="text-[9px] leading-snug text-foreground/40">
+											Recording audio muted. Hit play — narration speaks from{" "}
+											{formatStartSec(narrationStartSec)}. Scrub + "Set start
+											at playhead" to move it.
+										</p>
+									)}
+								</div>
+							)}
+
+							{/* Bake narration into the video so the export includes it */}
+							{onAddNarrationToTimeline && (
+								<button
+									type="button"
+									onClick={addNarrationToTimeline}
+									className={`flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
+										narrationAdded
+											? "bg-green-600/15 text-green-400"
+											: "bg-foreground/90 text-background hover:bg-foreground"
+									}`}
+								>
+									{narrationAdded ? (
+										<>
+											<Check className="h-3.5 w-3.5" /> Added — re-add to
+											update
+										</>
+									) : (
+										<>
+											＋ Add narration to video (at{" "}
+											{formatStartSec(narrationStartSec)})
+										</>
+									)}
+								</button>
+							)}
+							{narrationAdded && (
+								<p className="text-[9px] leading-snug text-foreground/40 text-center">
+									On the timeline now — adjust/trim it there, then export. The
+									video will include the narration.
+								</p>
+							)}
+
+							<button
+								type="button"
+								onClick={() => {
+									const p =
+										narrationPath ??
+										(window as unknown as { __ggNarrationPath?: string })
+											.__ggNarrationPath;
+									if (p) electronAPI()?.revealInFolder?.(p);
+								}}
+								className="text-[11px] text-foreground/50 hover:text-foreground/80 transition-colors text-left"
+							>
+								Reveal file → drag into timeline manually
+							</button>
+						</div>
+					)}
+				</div>
+			)}
+			{view === "avatar" && (
+				<div
+					className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-1"
+					style={{ scrollbarWidth: "thin" }}
+				>
+					<p className="text-[11px] leading-snug text-foreground/50">
+						Add an AI talking-head that lip-syncs your narration. Generate narration
+						first, then pick a photo.
+					</p>
+
+					{avatarHasKey === false && (
+						<p className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] px-2.5 py-1.5 text-[10px] text-amber-300/90">
+							HEYGEN_API_KEY not set — add it to the environment to enable avatar
+							generation.
+						</p>
+					)}
+
+					{/* Source: custom photo vs HeyGen library */}
+					<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+						{(
+							[
+								["photo", "Custom photo"],
+								["library", "HeyGen avatar"],
+							] as const
+						).map(([val, label]) => (
+							<button
+								key={val}
+								type="button"
+								onClick={() => setAvatarSource(val)}
+								className={`flex flex-1 items-center justify-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarSource === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
+							>
+								{label}
+							</button>
+						))}
+					</div>
+
+					{avatarSource === "photo" ? (
+						<button
+							type="button"
+							onClick={pickAvatarPhoto}
+							className="flex items-center justify-between rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-2 text-[11px] text-foreground/70 transition-colors hover:border-foreground/25"
+						>
+							<span className="flex items-center gap-1.5">
+								<UserCircle className="h-3.5 w-3.5" />{" "}
+								{avatarPhotoPath ? "Change photo" : "Choose avatar photo"}
+							</span>
+							{avatarPhotoPath && (
+								<span className="max-w-[160px] truncate font-mono text-[9px] text-foreground/40">
+									{avatarPhotoPath.split("/").pop()}
+								</span>
+							)}
+						</button>
+					) : selectedGroup ? (
+						/* Looks inside the chosen group (e.g. Ramisa's 13 looks) */
+						<div className="flex flex-col gap-1.5">
+							<button
+								type="button"
+								onClick={() => {
+									setSelectedGroup(null);
+									setSelectedLookId(null);
+								}}
+								className="flex items-center gap-1 self-start text-[11px] text-foreground/50 transition-colors hover:text-foreground/80"
+							>
+								← {selectedGroup.name}
+							</button>
+							{groupLooksLoading && (
+								<p className="flex items-center gap-1.5 text-[11px] text-foreground/50">
+									<ArrowClockwise className="h-3 w-3 animate-spin" /> Loading
+									looks…
+								</p>
+							)}
+							{groupLooksError && (
+								<p className="text-[11px] text-red-400/80">{groupLooksError}</p>
+							)}
+							{!groupLooksLoading && !groupLooksError && groupLooks.length > 0 && (
+								<div
+									className="grid max-h-[240px] grid-cols-3 gap-1.5 overflow-y-auto pr-1"
+									style={{ scrollbarWidth: "thin" }}
+								>
+									{groupLooks.map((a) => (
+										<button
+											key={a.id}
+											type="button"
+											onClick={() => {
+												setSelectedLookId(a.id);
+												onAvatarPreview?.({
+													previewUrl: a.previewUrl ?? null,
+													shape: avatarShape,
+													clearClip: true,
+												});
+											}}
+											title={a.name}
+											className={`relative aspect-square overflow-hidden rounded-md border transition-colors ${selectedLookId === a.id ? "border-blue-500 ring-1 ring-blue-500" : "border-foreground/10 hover:border-foreground/30"}`}
+										>
+											{a.previewUrl ? (
+												<img
+													src={a.previewUrl}
+													alt={a.name}
+													className="h-full w-full object-cover"
+												/>
+											) : (
+												<span className="flex h-full w-full items-center justify-center p-1 text-[8px] text-foreground/40">
+													{a.name}
+												</span>
+											)}
+										</button>
+									))}
+								</div>
+							)}
+						</div>
+					) : (
+						/* Search + group grid (type "Ramisa" to find it) */
+						<div className="flex flex-col gap-1.5">
 							<input
 								type="text"
-								value={noteText[q.id] ?? ""}
-								onChange={(e) => setNoteText((p) => ({ ...p, [q.id]: e.target.value }))}
-								placeholder="…or add your own (combined with picks above)"
-								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1 text-[11px] outline-none focus:border-amber-500/40"
+								value={avatarQuery}
+								onChange={(e) => setAvatarQuery(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") searchAvatarGroups(avatarQuery);
+								}}
+								placeholder="Search avatars (e.g. Ramisa)…"
+								className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-1.5 text-[11px] text-foreground/80 placeholder:text-foreground/30 focus:border-blue-500/50 focus:outline-none"
 							/>
+							{avatarGroupsLoading && (
+								<p className="flex items-center gap-1.5 text-[11px] text-foreground/50">
+									<ArrowClockwise className="h-3 w-3 animate-spin" /> Loading
+									avatars…
+								</p>
+							)}
+							{avatarGroupsError && (
+								<p className="text-[11px] text-red-400/80">{avatarGroupsError}</p>
+							)}
+							{!avatarGroupsLoading && !avatarGroupsError && (
+								<div
+									className="grid max-h-[240px] grid-cols-3 gap-1.5 overflow-y-auto pr-1"
+									style={{ scrollbarWidth: "thin" }}
+								>
+									{avatarGroups.map((g) => (
+										<button
+											key={g.id}
+											type="button"
+											onClick={() => openAvatarGroup(g)}
+											title={`${g.name} · ${g.numLooks} looks`}
+											className="relative aspect-square overflow-hidden rounded-md border border-foreground/10 transition-colors hover:border-foreground/40"
+										>
+											{g.previewUrl ? (
+												<img
+													src={g.previewUrl}
+													alt={g.name}
+													className="h-full w-full object-cover"
+												/>
+											) : (
+												<span className="flex h-full w-full items-center justify-center p-1 text-[8px] text-foreground/40">
+													{g.name}
+												</span>
+											)}
+											<span className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 py-0.5 text-[8px] text-white/90">
+												{g.name}
+											</span>
+										</button>
+									))}
+									{avatarGroups.length === 0 && (
+										<p className="col-span-3 text-[11px] text-foreground/40">
+											No avatars found.
+										</p>
+									)}
+								</div>
+							)}
 						</div>
-					))}
-					<div className="flex items-center gap-1.5">
-						<button
-							type="button"
-							onClick={() =>
-								void runGenerate(
-									(noteQuestions ?? [])
-										.map((q) => ({
-											label: q.label,
-											answer: [...(noteAnswers[q.id] ?? []), (noteText[q.id] ?? "").trim()]
-												.filter(Boolean)
-												.join("; "),
-										}))
-										.filter((n) => n.answer),
-								)
-							}
-							disabled={scriptLoading}
-							className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:opacity-40"
-						>
-							{scriptLoading ? <><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> Writing…</> : <><Sparkle className="h-3.5 w-3.5" /> Write script</>}
-						</button>
-						<button
-							type="button"
-							onClick={() => void runGenerate()}
-							disabled={scriptLoading}
-							className="rounded-md border border-foreground/10 px-2 py-1.5 text-[11px] text-foreground/60 hover:bg-foreground/[0.06] disabled:opacity-40"
-						>
-							Skip
-						</button>
+					)}
+
+					{avatarSource === "photo" && (
+						<div className="flex flex-col gap-1">
+							<span className="text-[10px] uppercase tracking-wide text-foreground/40">
+								Quality
+							</span>
+							<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+								{(
+									[
+										["photo", "Photo Avatar", "~$3 / 3-min"],
+										["iv", "Avatar IV", "~$12 / 3-min"],
+									] as const
+								).map(([val, label, cost]) => (
+									<button
+										key={val}
+										type="button"
+										onClick={() => setAvatarTier(val)}
+										className={`flex flex-1 flex-col items-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarTier === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
+									>
+										{label}
+										<span className="text-[9px] text-foreground/40">
+											{cost}
+										</span>
+									</button>
+								))}
+							</div>
+						</div>
+					)}
+
+					<div className="flex flex-col gap-1">
+						<span className="text-[10px] uppercase tracking-wide text-foreground/40">
+							Shape
+						</span>
+						<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+							{(
+								[
+									["box", "Rounded box"],
+									["circle", "Circle (cutout)"],
+								] as const
+							).map(([val, label]) => (
+								<button
+									key={val}
+									type="button"
+									onClick={() => {
+										setAvatarShape(val);
+										onAvatarPreview?.({
+											previewUrl:
+												avatarSource === "library"
+													? (groupLooks.find(
+															(l) => l.id === selectedLookId,
+														)?.previewUrl ?? null)
+													: null,
+											shape: val,
+										});
+									}}
+									className={`flex flex-1 items-center justify-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarShape === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
+								>
+									{label}
+								</button>
+							))}
+						</div>
 					</div>
+
+					<button
+						type="button"
+						onClick={generateAvatar}
+						disabled={
+							avatarBusy ||
+							!narrationPath ||
+							(avatarSource === "photo" ? !avatarPhotoPath : !selectedLookId)
+						}
+						className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
+						title={
+							!narrationPath
+								? "Generate narration audio first"
+								: avatarSource === "photo"
+									? !avatarPhotoPath
+										? "Choose a photo first"
+										: "Generate the talking-head avatar"
+									: !selectedLookId
+										? "Pick a HeyGen avatar look first"
+										: "Generate the talking-head avatar"
+						}
+					>
+						{avatarBusy ? (
+							<>
+								<ArrowClockwise className="h-3.5 w-3.5 animate-spin" />{" "}
+								{avatarStage || "Generating…"}
+							</>
+						) : (
+							<>
+								<UserCircle className="h-3.5 w-3.5" /> Generate avatar
+							</>
+						)}
+					</button>
+
+					{!narrationPath && (
+						<p className="text-[10px] text-foreground/40">
+							No narration audio yet — make it in the Narration tab.
+						</p>
+					)}
+					{avatarError && <p className="text-[11px] text-red-400/80">{avatarError}</p>}
+
+					{avatarUrl && (
+						<div className="flex flex-col gap-1.5">
+							<span className="text-[10px] uppercase tracking-wide text-foreground/40">
+								Preview
+							</span>
+							{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+							<video
+								src={avatarUrl}
+								controls
+								className="w-full rounded-md border border-foreground/10 bg-black"
+							/>
+							<button
+								type="button"
+								onClick={() => {
+									if (avatarPath) electronAPI()?.revealInFolder?.(avatarPath);
+								}}
+								className="text-left text-[11px] text-foreground/50 transition-colors hover:text-foreground/80"
+							>
+								Reveal file →
+							</button>
+						</div>
+					)}
 				</div>
 			)}
-			{aiScript && aiScript !== narrationText.trim() && (
-			<button type="button" data-testid="gg-use-ai-script" onClick={() => setNarrationText(aiScript)} className="flex items-center gap-1.5 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[11px] text-blue-300 transition-colors hover:bg-blue-500/20" title="Use the AI-generated script">
-			<Sparkle className="h-3 w-3" /> Use AI script
-			</button>
-			)}
-			<textarea data-testid="gg-narration-textarea" value={narrationText} onChange={(e) => setNarrationText(e.target.value)} placeholder="Generate a script from your events, or write your own here…" className="min-h-[200px] flex-1 resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] p-3 text-[13px] leading-relaxed outline-none focus:border-blue-500/40" />
-			<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.02] p-2">
-			<div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-foreground/40"><Sparkle className="h-3 w-3" /> Refine with AI</div>
-			{chatMessages.length > 0 && (
-			<div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
-			{chatMessages.map((m, i) => (
-			<div key={i} className={m.role === "user" ? "flex flex-col items-end" : "flex flex-col items-start"}>
-			<div className={m.role === "user" ? "self-end rounded-lg bg-blue-600/80 px-2 py-1 text-[12px] text-white max-w-[85%]" : "self-start rounded-lg bg-foreground/[0.06] px-2 py-1 text-[12px] text-foreground/70 max-w-[90%] whitespace-pre-wrap"}>{m.content}</div>
-			{m.role === "assistant" && m.script && m.script !== narrationText && (
-			<button type="button" data-testid="gg-apply-script" onClick={() => setNarrationText(m.script as string)} className="mt-1 flex items-center gap-1 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300 hover:bg-blue-500/20"><Sparkle className="h-3 w-3" /> Apply to script</button>
-			)}
-			</div>
-			))}
-			{chatBusy && (<div className="self-start flex items-center gap-1.5 text-[11px] text-foreground/40"><ArrowClockwise className="h-3 w-3 animate-spin" /> Thinking…</div>)}
-			<div ref={chatEndRef} />
-			</div>
-			)}
-			{chatError && <p className="text-[11px] text-red-400/80">{chatError}</p>}
-			<div className="flex items-end gap-1.5">
-			<textarea ref={chatInputRef} data-testid="gg-refine-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChat(); } }} placeholder="e.g. explain the OTP step more; intro shorter…" rows={2} className="flex-1 resize-none overflow-y-auto rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1.5 text-[12px] leading-snug outline-none min-h-[2.6rem] max-h-[120px] focus:border-blue-500/40" />
-			<button type="button" data-testid="gg-refine-send" onClick={() => void sendChat()} disabled={chatBusy || !chatInput.trim()} className="flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40">Send</button>
-			</div>
-			</div>
-			</div>
-			</div>,
-			(document.getElementById("gg-editor-row") ?? document.body))}
 
+			{view === "log" &&
+				!scriptOpen &&
+				createPortal(
+					<button
+						type="button"
+						data-testid="gg-script-toggle"
+						onClick={() => setScriptOpen(true)}
+						title="Open script writer"
+						className="absolute right-2 top-2 z-30 flex items-center gap-1.5 rounded-md border border-blue-500/30 bg-background/90 px-2.5 py-1.5 text-[11px] font-medium text-blue-300 shadow-md backdrop-blur transition hover:bg-blue-500/10"
+					>
+						<Sparkle className="h-3.5 w-3.5" /> Script
+					</button>,
+					document.getElementById("gg-editor-row") ?? document.body,
+				)}
+			{scriptOpen &&
+				createPortal(
+					<div className="gg-selectable flex w-[420px] shrink-0 flex-col rounded-lg border border-foreground/10 bg-background shadow-lg">
+						<div className="flex items-center justify-between border-b border-foreground/10 px-3 py-2">
+							<span className="flex items-center gap-1.5 text-[13px] font-semibold">
+								<Sparkle className="h-4 w-4 text-blue-500" /> Script Writer
+							</span>
+							<button
+								type="button"
+								onClick={() => setScriptOpen(false)}
+								title="Close"
+								className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition hover:bg-foreground/[0.06] hover:text-foreground"
+							>
+								✕
+							</button>
+						</div>
+						<div
+							className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3"
+							style={{ scrollbarWidth: "thin" }}
+						>
+							<button
+								type="button"
+								data-testid="gg-generate-script"
+								onClick={generateScriptFromEvents}
+								disabled={scriptLoading}
+								className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
+								title="Use AI to write a narration script from the captured events"
+							>
+								{scriptLoading ? (
+									<>
+										<ArrowClockwise className="h-3.5 w-3.5 animate-spin" />{" "}
+										{visionProgress ? "Working…" : "Writing script…"}
+									</>
+								) : (
+									<>
+										<Sparkle className="h-3.5 w-3.5" /> Generate script from
+										events
+									</>
+								)}
+							</button>
+							{visionProgress && (
+								<p
+									className="flex items-center gap-1.5 text-[11px] text-blue-300/80"
+									data-testid="gg-vision-progress"
+								>
+									<ArrowClockwise className="h-3 w-3 shrink-0 animate-spin" />{" "}
+									{visionProgress}
+								</p>
+							)}
+							{!loggedIn && (
+								<button
+									type="button"
+									onClick={() => gg()?.login?.()}
+									className="flex items-center justify-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20"
+									title="Log in to GlitchGrab to generate scripts and create issues"
+								>
+									<Sparkle className="h-3.5 w-3.5" /> Connect GlitchGrab
+								</button>
+							)}
+							{scriptError && (
+								<p className="text-[11px] text-red-400/80">{scriptError}</p>
+							)}
+							{noteQuestions && noteQuestions.length > 0 && (
+								<div className="flex flex-col gap-3 rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-3">
+									<div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
+										<NoteBlank className="h-3.5 w-3.5" weight="fill" />{" "}
+										{noteQuestions.length} spot
+										{noteQuestions.length === 1 ? " needs" : "s need"} your
+										input — what should I explain?
+									</div>
+									{noteQuestions.map((q) => (
+										<div key={q.id} className="flex flex-col gap-1.5">
+											<span className="text-[11px] text-foreground/70">
+												<span className="text-foreground/40">
+													{formatStartSec(q.tMs / 1000)} ·{" "}
+												</span>
+												{q.question}
+											</span>
+											<div className="flex flex-wrap gap-1">
+												{q.options.map((opt) => {
+													const selected = (
+														noteAnswers[q.id] ?? []
+													).includes(opt);
+													return (
+														<button
+															key={opt}
+															type="button"
+															onClick={() =>
+																setNoteAnswers((p) => {
+																	const cur = p[q.id] ?? [];
+																	return {
+																		...p,
+																		[q.id]: cur.includes(opt)
+																			? cur.filter(
+																					(x) =>
+																						x !== opt,
+																				)
+																			: [...cur, opt],
+																	};
+																})
+															}
+															className={
+																selected
+																	? "rounded-md border border-amber-500/60 bg-amber-500/20 px-2 py-1 text-[10px] text-amber-100"
+																	: "rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[10px] text-foreground/70 hover:border-amber-500/40"
+															}
+														>
+															{selected ? "✓ " : ""}
+															{opt}
+														</button>
+													);
+												})}
+											</div>
+											<input
+												type="text"
+												value={noteText[q.id] ?? ""}
+												onChange={(e) =>
+													setNoteText((p) => ({
+														...p,
+														[q.id]: e.target.value,
+													}))
+												}
+												placeholder="…or add your own (combined with picks above)"
+												className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1 text-[11px] outline-none focus:border-amber-500/40"
+											/>
+										</div>
+									))}
+									<div className="flex items-center gap-1.5">
+										<button
+											type="button"
+											onClick={() =>
+												void runGenerate(
+													(noteQuestions ?? [])
+														.map((q) => ({
+															label: q.label,
+															answer: [
+																...(noteAnswers[q.id] ?? []),
+																(noteText[q.id] ?? "").trim(),
+															]
+																.filter(Boolean)
+																.join("; "),
+														}))
+														.filter((n) => n.answer),
+												)
+											}
+											disabled={scriptLoading}
+											className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+										>
+											{scriptLoading ? (
+												<>
+													<ArrowClockwise className="h-3.5 w-3.5 animate-spin" />{" "}
+													Writing…
+												</>
+											) : (
+												<>
+													<Sparkle className="h-3.5 w-3.5" /> Write script
+												</>
+											)}
+										</button>
+										<button
+											type="button"
+											onClick={() => void runGenerate()}
+											disabled={scriptLoading}
+											className="rounded-md border border-foreground/10 px-2 py-1.5 text-[11px] text-foreground/60 hover:bg-foreground/[0.06] disabled:opacity-40"
+										>
+											Skip
+										</button>
+									</div>
+								</div>
+							)}
+							{aiScript && aiScript !== narrationText.trim() && (
+								<button
+									type="button"
+									data-testid="gg-use-ai-script"
+									onClick={() => setNarrationText(aiScript)}
+									className="flex items-center gap-1.5 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[11px] text-blue-300 transition-colors hover:bg-blue-500/20"
+									title="Use the AI-generated script"
+								>
+									<Sparkle className="h-3 w-3" /> Use AI script
+								</button>
+							)}
+							<textarea
+								data-testid="gg-narration-textarea"
+								value={narrationText}
+								onChange={(e) => setNarrationText(e.target.value)}
+								placeholder="Generate a script from your events, or write your own here…"
+								className="min-h-[200px] flex-1 resize-none rounded-md border border-foreground/10 bg-foreground/[0.03] p-3 text-[13px] leading-relaxed outline-none focus:border-blue-500/40"
+							/>
+							<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.02] p-2">
+								<div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-foreground/40">
+									<Sparkle className="h-3 w-3" /> Refine with AI
+								</div>
+								{chatMessages.length > 0 && (
+									<div
+										className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto"
+										style={{ scrollbarWidth: "thin" }}
+									>
+										{chatMessages.map((m, i) => (
+											<div
+												key={i}
+												className={
+													m.role === "user"
+														? "flex flex-col items-end"
+														: "flex flex-col items-start"
+												}
+											>
+												<div
+													className={
+														m.role === "user"
+															? "self-end rounded-lg bg-blue-600/80 px-2 py-1 text-[12px] text-white max-w-[85%]"
+															: "self-start rounded-lg bg-foreground/[0.06] px-2 py-1 text-[12px] text-foreground/70 max-w-[90%] whitespace-pre-wrap"
+													}
+												>
+													{m.content}
+												</div>
+												{m.role === "assistant" &&
+													m.script &&
+													m.script !== narrationText && (
+														<button
+															type="button"
+															data-testid="gg-apply-script"
+															onClick={() =>
+																setNarrationText(m.script as string)
+															}
+															className="mt-1 flex items-center gap-1 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300 hover:bg-blue-500/20"
+														>
+															<Sparkle className="h-3 w-3" /> Apply to
+															script
+														</button>
+													)}
+											</div>
+										))}
+										{chatBusy && (
+											<div className="self-start flex items-center gap-1.5 text-[11px] text-foreground/40">
+												<ArrowClockwise className="h-3 w-3 animate-spin" />{" "}
+												Thinking…
+											</div>
+										)}
+										<div ref={chatEndRef} />
+									</div>
+								)}
+								{chatError && (
+									<p className="text-[11px] text-red-400/80">{chatError}</p>
+								)}
+								<div className="flex items-end gap-1.5">
+									<textarea
+										ref={chatInputRef}
+										data-testid="gg-refine-input"
+										value={chatInput}
+										onChange={(e) => setChatInput(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" && !e.shiftKey) {
+												e.preventDefault();
+												void sendChat();
+											}
+										}}
+										placeholder="e.g. explain the OTP step more; intro shorter…"
+										rows={2}
+										className="flex-1 resize-none overflow-y-auto rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 py-1.5 text-[12px] leading-snug outline-none min-h-[2.6rem] max-h-[120px] focus:border-blue-500/40"
+									/>
+									<button
+										type="button"
+										data-testid="gg-refine-send"
+										onClick={() => void sendChat()}
+										disabled={chatBusy || !chatInput.trim()}
+										className="flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-40"
+									>
+										Send
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>,
+					document.getElementById("gg-editor-row") ?? document.body,
+				)}
 		</div>
 	);
 }
