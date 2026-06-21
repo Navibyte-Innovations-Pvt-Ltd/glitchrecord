@@ -160,6 +160,8 @@ export interface AvatarOverlaySettings {
 	size: number;
 	/** "box" = rounded rectangle; "circle" = round cutout. */
 	shape: "box" | "circle";
+	/** Vertical framing of the source inside the box (object-position Y %, 0=top). */
+	framingY: number;
 	margin: number;
 }
 
@@ -172,6 +174,7 @@ export const DEFAULT_AVATAR_OVERLAY: AvatarOverlaySettings = {
 	positionY: 1,
 	size: 26,
 	shape: "box",
+	framingY: 22,
 	margin: 24,
 };
 
