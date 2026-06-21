@@ -394,7 +394,7 @@ export default function VideoEditor() {
 	// Resizable timeline panel height (px). Persisted so the dragged size survives
 	// reload. `null` = use the default (a share of the window height, clamped below).
 	const TIMELINE_HEIGHT_KEY = "glitchrecord.editor.timelineHeight";
-	const TIMELINE_MIN_HEIGHT = 160;
+	const TIMELINE_MIN_HEIGHT = 120;
 	const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(() => {
 		if (typeof window === "undefined") return null;
 		const raw = window.localStorage.getItem(TIMELINE_HEIGHT_KEY);
