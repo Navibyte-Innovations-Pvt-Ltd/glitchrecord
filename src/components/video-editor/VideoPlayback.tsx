@@ -1045,9 +1045,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		// PAUSED we snap to the exact playhead frame. The clip is muted; the
 		// narration track carries the audio.
 		useEffect(() => {
-			const v = avatarVideoRef.current;
-			if (!v || !avatarEnabled) return;
-			const seek = (t: number) => {
+			if (!avatarEnabled || !avatarVideoPath) return;
+			// Read the element INSIDE the tick — the <video> mounts only after the URL
+			// resolves, so capturing it once here would grab null and never drive the
+			// real element (that's why it stayed frozen).
+			const seek = (v: HTMLVideoElement, t: number) => {
 				const dur = Number.isFinite(v.duration) ? v.duration : Number.POSITIVE_INFINITY;
 				try {
 					v.currentTime = Math.max(0, Math.min(t, dur - 0.05));
@@ -1057,6 +1059,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			};
 			let lastReseek = 0;
 			const tick = () => {
+				const v = avatarVideoRef.current;
+				if (!v) return;
 				const target = Math.max(0, currentTimeRef.current / 1000);
 				if (!Number.isFinite(target)) return;
 				if (isPlayingRef.current) {
@@ -1064,25 +1068,25 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					// BIG jump (a scrub) and at most ~once/sec — seeking a playing video
 					// every tick interrupts decode and freezes the lips.
 					if (v.paused) {
-						seek(target);
+						seek(v, target);
 						void v.play().catch(() => undefined);
 					} else if (Math.abs(v.currentTime - target) > 0.75) {
 						const now = Date.now();
 						if (now - lastReseek > 1000) {
-							seek(target);
+							seek(v, target);
 							lastReseek = now;
 						}
 					}
 				} else {
 					// PAUSED: hold the exact playhead frame.
 					if (!v.paused) v.pause();
-					if (Math.abs(v.currentTime - target) > 0.08) seek(target);
+					if (Math.abs(v.currentTime - target) > 0.08) seek(v, target);
 				}
 			};
 			tick();
 			const id = window.setInterval(tick, 250);
 			return () => window.clearInterval(id);
-		}, [avatarEnabled]);
+		}, [avatarEnabled, avatarVideoPath]);
 
 		const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
 			return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
