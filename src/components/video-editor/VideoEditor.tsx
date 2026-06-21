@@ -3586,6 +3586,13 @@ export default function VideoEditor() {
 					vid.addEventListener("error", fail);
 					vid.currentTime = target;
 				});
+				// TEMP DEBUG — verify the frame lands on the right moment. If the
+				// recording has a countdown/pre-roll, requested tMs and the actual
+				// seeked video time will diverge by the countdown length → frames
+				// show the wrong instant. Watch for a CONSTANT gap here.
+				console.log(
+					`[GG-frame] requested tMs=${Math.round(tMs)} → seeked videoTime=${(vid.currentTime * 1000).toFixed(0)}ms (duration=${(vid.duration * 1000).toFixed(0)}ms)`,
+				);
 				const vw = vid.videoWidth;
 				const vh = vid.videoHeight;
 				if (!vw || !vh) return null;
