@@ -887,6 +887,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		// Enabled once we have either the generated clip OR a look thumbnail to
 		// preview the layout before spending credits on generation.
 		const avatarPreviewUrl = avatarOverlay?.previewUrl ?? null;
+		const avatarFramingY = avatarOverlay?.framingY ?? 22;
 		const avatarEnabled = isAvatarOverlayVisible(avatarOverlay, avatarVideoPath);
 		const applyAvatarBubbleLayout = useCallback(() => {
 			const bubble = avatarBubbleRef.current;
@@ -3070,6 +3071,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											ref={avatarVideoRef}
 											src={avatarVideoPath}
 											className="pointer-events-none block h-full w-full object-cover"
+											style={{ objectPosition: `center ${avatarFramingY}%` }}
 											muted
 											playsInline
 											preload="auto"
@@ -3082,6 +3084,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										alt=""
 										aria-hidden="true"
 										className="pointer-events-none block h-full w-full object-cover"
+										style={{ objectPosition: `center ${avatarFramingY}%` }}
 									/>
 								)}
 							</div>
