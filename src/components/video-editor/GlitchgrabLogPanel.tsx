@@ -251,10 +251,16 @@ export function GlitchgrabLogPanel({
 		() => (localStorage.getItem("gg.avatar.source") as "photo" | "library") || "photo",
 	);
 	const [avatarPhotoPath, setAvatarPhotoPath] = useState<string | null>(null);
-	const [avatarLibrary, setAvatarLibrary] = useState<Array<{ id: string; name: string; gender?: string; previewUrl?: string }>>([]);
-	const [avatarLibraryLoading, setAvatarLibraryLoading] = useState(false);
-	const [avatarLibraryError, setAvatarLibraryError] = useState<string | null>(null);
-	const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
+	// HeyGen avatar library = searchable groups (e.g. "Ramisa") → looks.
+	const [avatarQuery, setAvatarQuery] = useState("");
+	const [avatarGroups, setAvatarGroups] = useState<Array<{ id: string; name: string; numLooks: number; previewUrl?: string; isPublic: boolean }>>([]);
+	const [avatarGroupsLoading, setAvatarGroupsLoading] = useState(false);
+	const [avatarGroupsError, setAvatarGroupsError] = useState<string | null>(null);
+	const [selectedGroup, setSelectedGroup] = useState<{ id: string; name: string } | null>(null);
+	const [groupLooks, setGroupLooks] = useState<Array<{ id: string; name: string; previewUrl?: string }>>([]);
+	const [groupLooksLoading, setGroupLooksLoading] = useState(false);
+	const [groupLooksError, setGroupLooksError] = useState<string | null>(null);
+	const [selectedLookId, setSelectedLookId] = useState<string | null>(null);
 	const [avatarTier, setAvatarTier] = useState<"photo" | "iv">(
 		() => (localStorage.getItem("gg.avatar.tier") as "photo" | "iv") || "photo",
 	);
@@ -320,6 +326,7 @@ export function GlitchgrabLogPanel({
 				generateAvatar?: (opts: {
 					photoPath?: string;
 					avatarId?: string;
+					talkingPhotoId?: string;
 					audioPath: string;
 					tier: "photo" | "iv";
 					transparent?: boolean;
@@ -327,9 +334,14 @@ export function GlitchgrabLogPanel({
 				avatarKeyStatus?: () => Promise<{ hasKey: boolean }>;
 				pickAvatarPhoto?: () => Promise<{ path: string | null }>;
 				onAvatarProgress?: (cb: (stage: string) => void) => () => void;
-				listAvatars?: () => Promise<{
+				searchAvatarGroups?: (query?: string) => Promise<{
 					ok: boolean;
-					avatars?: Array<{ id: string; name: string; gender?: string; previewUrl?: string }>;
+					groups?: Array<{ id: string; name: string; numLooks: number; previewUrl?: string; isPublic: boolean }>;
+					error?: string;
+				}>;
+				listGroupLooks?: (groupId: string) => Promise<{
+					ok: boolean;
+					looks?: Array<{ id: string; name: string; previewUrl?: string }>;
 					error?: string;
 				}>;
 			};
@@ -352,19 +364,39 @@ export function GlitchgrabLogPanel({
 	useEffect(() => { localStorage.setItem("gg.avatar.tier", avatarTier); }, [avatarTier]);
 	useEffect(() => { localStorage.setItem("gg.avatar.shape", avatarShape); }, [avatarShape]);
 	useEffect(() => { localStorage.setItem("gg.avatar.source", avatarSource); }, [avatarSource]);
-	// Lazy-load HeyGen's avatar library the first time the user switches to it.
-	useEffect(() => {
-		if (avatarSource !== "library" || avatarLibrary.length > 0 || avatarLibraryLoading) return;
-		setAvatarLibraryLoading(true);
-		setAvatarLibraryError(null);
-		electronAPI()?.listAvatars?.()
+
+	const searchAvatarGroups = useCallback((query: string) => {
+		setAvatarGroupsLoading(true);
+		setAvatarGroupsError(null);
+		electronAPI()?.searchAvatarGroups?.(query)
 			.then((r) => {
-				if (r?.ok && r.avatars) setAvatarLibrary(r.avatars);
-				else setAvatarLibraryError(r?.error || "Could not load avatars");
+				if (r?.ok && r.groups) setAvatarGroups(r.groups);
+				else setAvatarGroupsError(r?.error || "Could not load avatars");
 			})
-			.catch((e) => setAvatarLibraryError(e instanceof Error ? e.message : "Could not load avatars"))
-			.finally(() => setAvatarLibraryLoading(false));
-	}, [avatarSource, avatarLibrary.length, avatarLibraryLoading]);
+			.catch((e) => setAvatarGroupsError(e instanceof Error ? e.message : "Could not load avatars"))
+			.finally(() => setAvatarGroupsLoading(false));
+	}, []);
+
+	// Load groups the first time the user switches to the library.
+	useEffect(() => {
+		if (avatarSource !== "library" || avatarGroups.length > 0 || avatarGroupsLoading) return;
+		searchAvatarGroups("");
+	}, [avatarSource, avatarGroups.length, avatarGroupsLoading, searchAvatarGroups]);
+
+	const openAvatarGroup = useCallback((group: { id: string; name: string }) => {
+		setSelectedGroup(group);
+		setSelectedLookId(null);
+		setGroupLooks([]);
+		setGroupLooksLoading(true);
+		setGroupLooksError(null);
+		electronAPI()?.listGroupLooks?.(group.id)
+			.then((r) => {
+				if (r?.ok && r.looks) setGroupLooks(r.looks);
+				else setGroupLooksError(r?.error || "Could not load looks");
+			})
+			.catch((e) => setGroupLooksError(e instanceof Error ? e.message : "Could not load looks"))
+			.finally(() => setGroupLooksLoading(false));
+	}, []);
 	// Resolve a playable URL for the generated clip preview.
 	useEffect(() => {
 		if (!avatarPath) { setAvatarUrl(null); return; }
@@ -384,7 +416,7 @@ export function GlitchgrabLogPanel({
 		const api = electronAPI();
 		if (!api?.generateAvatar) return;
 		const usingLibrary = avatarSource === "library";
-		if (usingLibrary && !selectedAvatarId) { setAvatarError("Pick a HeyGen avatar first"); return; }
+		if (usingLibrary && !selectedLookId) { setAvatarError("Pick a HeyGen avatar look first"); return; }
 		if (!usingLibrary && !avatarPhotoPath) { setAvatarError("Choose a photo first"); return; }
 		if (!narrationPath) { setAvatarError("Generate narration audio first (Narration tab)"); return; }
 		setAvatarBusy(true);
@@ -394,7 +426,7 @@ export function GlitchgrabLogPanel({
 		try {
 			const res = await api.generateAvatar({
 				photoPath: usingLibrary ? undefined : (avatarPhotoPath ?? undefined),
-				avatarId: usingLibrary ? (selectedAvatarId ?? undefined) : undefined,
+				talkingPhotoId: usingLibrary ? (selectedLookId ?? undefined) : undefined,
 				audioPath: narrationPath,
 				tier: avatarTier,
 				transparent: avatarShape === "circle",
@@ -407,7 +439,7 @@ export function GlitchgrabLogPanel({
 			setAvatarBusy(false);
 			setAvatarStage("");
 		}
-	}, [avatarSource, avatarPhotoPath, selectedAvatarId, narrationPath, avatarTier, avatarShape]);
+	}, [avatarSource, avatarPhotoPath, selectedLookId, narrationPath, avatarTier, avatarShape]);
 
 	// AI script arrives from the bridge after a recording stops → stash it and
 	// jump to the Narration tab so the "Use AI script" button is visible.
@@ -1210,19 +1242,27 @@ export function GlitchgrabLogPanel({
 						<span className="flex items-center gap-1.5"><UserCircle className="h-3.5 w-3.5" /> {avatarPhotoPath ? "Change photo" : "Choose avatar photo"}</span>
 						{avatarPhotoPath && <span className="max-w-[160px] truncate font-mono text-[9px] text-foreground/40">{avatarPhotoPath.split("/").pop()}</span>}
 					</button>
-				) : (
+				) : selectedGroup ? (
+					/* Looks inside the chosen group (e.g. Ramisa's 13 looks) */
 					<div className="flex flex-col gap-1.5">
-						{avatarLibraryLoading && <p className="flex items-center gap-1.5 text-[11px] text-foreground/50"><ArrowClockwise className="h-3 w-3 animate-spin" /> Loading avatars…</p>}
-						{avatarLibraryError && <p className="text-[11px] text-red-400/80">{avatarLibraryError}</p>}
-						{!avatarLibraryLoading && !avatarLibraryError && avatarLibrary.length > 0 && (
-							<div className="grid max-h-[220px] grid-cols-3 gap-1.5 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
-								{avatarLibrary.map((a) => (
+						<button
+							type="button"
+							onClick={() => { setSelectedGroup(null); setSelectedLookId(null); }}
+							className="flex items-center gap-1 self-start text-[11px] text-foreground/50 transition-colors hover:text-foreground/80"
+						>
+							← {selectedGroup.name}
+						</button>
+						{groupLooksLoading && <p className="flex items-center gap-1.5 text-[11px] text-foreground/50"><ArrowClockwise className="h-3 w-3 animate-spin" /> Loading looks…</p>}
+						{groupLooksError && <p className="text-[11px] text-red-400/80">{groupLooksError}</p>}
+						{!groupLooksLoading && !groupLooksError && groupLooks.length > 0 && (
+							<div className="grid max-h-[240px] grid-cols-3 gap-1.5 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+								{groupLooks.map((a) => (
 									<button
 										key={a.id}
 										type="button"
-										onClick={() => setSelectedAvatarId(a.id)}
+										onClick={() => setSelectedLookId(a.id)}
 										title={a.name}
-										className={`relative aspect-square overflow-hidden rounded-md border transition-colors ${selectedAvatarId === a.id ? "border-blue-500 ring-1 ring-blue-500" : "border-foreground/10 hover:border-foreground/30"}`}
+										className={`relative aspect-square overflow-hidden rounded-md border transition-colors ${selectedLookId === a.id ? "border-blue-500 ring-1 ring-blue-500" : "border-foreground/10 hover:border-foreground/30"}`}
 									>
 										{a.previewUrl ? (
 											<img src={a.previewUrl} alt={a.name} className="h-full w-full object-cover" />
@@ -1231,6 +1271,41 @@ export function GlitchgrabLogPanel({
 										)}
 									</button>
 								))}
+							</div>
+						)}
+					</div>
+				) : (
+					/* Search + group grid (type "Ramisa" to find it) */
+					<div className="flex flex-col gap-1.5">
+						<input
+							type="text"
+							value={avatarQuery}
+							onChange={(e) => setAvatarQuery(e.target.value)}
+							onKeyDown={(e) => { if (e.key === "Enter") searchAvatarGroups(avatarQuery); }}
+							placeholder="Search avatars (e.g. Ramisa)…"
+							className="rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-1.5 text-[11px] text-foreground/80 placeholder:text-foreground/30 focus:border-blue-500/50 focus:outline-none"
+						/>
+						{avatarGroupsLoading && <p className="flex items-center gap-1.5 text-[11px] text-foreground/50"><ArrowClockwise className="h-3 w-3 animate-spin" /> Loading avatars…</p>}
+						{avatarGroupsError && <p className="text-[11px] text-red-400/80">{avatarGroupsError}</p>}
+						{!avatarGroupsLoading && !avatarGroupsError && (
+							<div className="grid max-h-[240px] grid-cols-3 gap-1.5 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+								{avatarGroups.map((g) => (
+									<button
+										key={g.id}
+										type="button"
+										onClick={() => openAvatarGroup(g)}
+										title={`${g.name} · ${g.numLooks} looks`}
+										className="relative aspect-square overflow-hidden rounded-md border border-foreground/10 transition-colors hover:border-foreground/40"
+									>
+										{g.previewUrl ? (
+											<img src={g.previewUrl} alt={g.name} className="h-full w-full object-cover" />
+										) : (
+											<span className="flex h-full w-full items-center justify-center p-1 text-[8px] text-foreground/40">{g.name}</span>
+										)}
+										<span className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 py-0.5 text-[8px] text-white/90">{g.name}</span>
+									</button>
+								))}
+								{avatarGroups.length === 0 && <p className="col-span-3 text-[11px] text-foreground/40">No avatars found.</p>}
 							</div>
 						)}
 					</div>
@@ -1274,9 +1349,9 @@ export function GlitchgrabLogPanel({
 				<button
 					type="button"
 					onClick={generateAvatar}
-					disabled={avatarBusy || !narrationPath || (avatarSource === "photo" ? !avatarPhotoPath : !selectedAvatarId)}
+					disabled={avatarBusy || !narrationPath || (avatarSource === "photo" ? !avatarPhotoPath : !selectedLookId)}
 					className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
-					title={!narrationPath ? "Generate narration audio first" : avatarSource === "photo" ? (!avatarPhotoPath ? "Choose a photo first" : "Generate the talking-head avatar") : (!selectedAvatarId ? "Pick a HeyGen avatar first" : "Generate the talking-head avatar")}
+					title={!narrationPath ? "Generate narration audio first" : avatarSource === "photo" ? (!avatarPhotoPath ? "Choose a photo first" : "Generate the talking-head avatar") : (!selectedLookId ? "Pick a HeyGen avatar look first" : "Generate the talking-head avatar")}
 				>
 					{avatarBusy ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> {avatarStage || "Generating…"}</>) : (<><UserCircle className="h-3.5 w-3.5" /> Generate avatar</>)}
 				</button>
