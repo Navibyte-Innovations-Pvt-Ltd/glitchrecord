@@ -622,6 +622,23 @@ export default function VideoEditor() {
 	const [avatarOverlay, setAvatarOverlay] =
 		useState<AvatarOverlaySettings>(DEFAULT_AVATAR_OVERLAY);
 	const [resolvedAvatarVideoUrl, setResolvedAvatarVideoUrl] = useState<string | null>(null);
+	// Stable handlers so the panel's position/size effects don't fire every render
+	// (an unstable callback would snap a freshly-dragged avatar back to its preset).
+	const handleAvatarSettings = useCallback(
+		(patch: Partial<AvatarOverlaySettings>) =>
+			setAvatarOverlay((prev) => ({ ...prev, ...patch })),
+		[],
+	);
+	const handleAvatarMove = useCallback(
+		(positionX: number, positionY: number) =>
+			setAvatarOverlay((prev) => ({
+				...prev,
+				positionPreset: "custom",
+				positionX,
+				positionY,
+			})),
+		[],
+	);
 	const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
 	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
 	// Tracks the videoSourcePath for which the cursor telemetry IPC has already
@@ -5763,6 +5780,7 @@ export default function VideoEditor() {
 			webcamVideoPath={webcam.sourcePath ? resolvedWebcamVideoUrl : null}
 			avatarOverlay={avatarOverlay}
 			avatarVideoPath={avatarOverlay.sourcePath ? resolvedAvatarVideoUrl : null}
+			onAvatarMove={handleAvatarMove}
 			trimRegions={trimRegions}
 			speedRegions={effectiveSpeedRegions}
 			annotationRegions={annotationRegions}
@@ -6469,9 +6487,7 @@ export default function VideoEditor() {
 										sourcePath: clearClip ? null : prev.sourcePath,
 									}))
 								}
-								onAvatarSettings={(patch) =>
-									setAvatarOverlay((prev) => ({ ...prev, ...patch }))
-								}
+								onAvatarSettings={handleAvatarSettings}
 							/>
 						) : (
 							<SettingsPanel
