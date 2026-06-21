@@ -355,6 +355,8 @@ interface VideoPlaybackProps {
 	webcamVideoPath?: string | null;
 	avatarOverlay?: import("./types").AvatarOverlaySettings;
 	avatarVideoPath?: string | null;
+	/** Drag-to-reposition the avatar PiP — reports new fractional X/Y (0–1). */
+	onAvatarMove?: (positionX: number, positionY: number) => void;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
 	aspectRatio: AspectRatio;
@@ -440,6 +442,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			webcamVideoPath,
 			avatarOverlay,
 			avatarVideoPath,
+			onAvatarMove,
 			trimRegions = [],
 			speedRegions = [],
 			aspectRatio,
@@ -910,6 +913,41 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			bubble.style.overflow = "hidden";
 			bubble.style.boxShadow = `0 ${Math.round(layout.size * 0.05)}px ${Math.round(layout.size * 0.18)}px rgba(0,0,0,0.35)`;
 		}, [avatarEnabled, avatarOverlay]);
+
+		// Drag the avatar PiP anywhere in the preview. Converts the pointer to a
+		// fractional (0–1) position in the available area and reports it upward.
+		const handleAvatarPointerDown = useCallback(
+			(e: React.PointerEvent<HTMLDivElement>) => {
+				if (!onAvatarMove) return;
+				const bubble = avatarBubbleRef.current;
+				const overlay = overlayRef.current;
+				if (!bubble || !overlay) return;
+				e.preventDefault();
+				const margin = avatarOverlay?.margin ?? 24;
+				const size = bubble.offsetWidth;
+				const overlayRect = overlay.getBoundingClientRect();
+				const bubbleRect = bubble.getBoundingClientRect();
+				// Where inside the bubble the user grabbed.
+				const grabX = e.clientX - bubbleRect.left;
+				const grabY = e.clientY - bubbleRect.top;
+				const availW = Math.max(1, overlay.clientWidth - size - margin * 2);
+				const availH = Math.max(1, overlay.clientHeight - size - margin * 2);
+				const onMove = (ev: PointerEvent) => {
+					const left = ev.clientX - overlayRect.left - grabX;
+					const top = ev.clientY - overlayRect.top - grabY;
+					const fx = Math.min(1, Math.max(0, (left - margin) / availW));
+					const fy = Math.min(1, Math.max(0, (top - margin) / availH));
+					onAvatarMove(fx, fy);
+				};
+				const onUp = () => {
+					window.removeEventListener("pointermove", onMove);
+					window.removeEventListener("pointerup", onUp);
+				};
+				window.addEventListener("pointermove", onMove);
+				window.addEventListener("pointerup", onUp);
+			},
+			[onAvatarMove, avatarOverlay?.margin],
+		);
 
 		// Re-apply avatar layout on prop changes and window resizes. (A ResizeObserver
 		// on the overlay would loop — our layout mutates a child of the observed node.)
@@ -3017,9 +3055,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							<div
 								ref={avatarBubbleRef}
 								className="absolute"
+								onPointerDown={handleAvatarPointerDown}
 								style={{
 									display: avatarEnabled ? "block" : "none",
-									pointerEvents: "none",
+									pointerEvents: onAvatarMove ? "auto" : "none",
+									cursor: onAvatarMove ? "grab" : "default",
+									touchAction: "none",
 								}}
 							>
 								{avatarVideoPath ? (
