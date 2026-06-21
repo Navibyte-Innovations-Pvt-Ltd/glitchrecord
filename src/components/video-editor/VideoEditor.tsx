@@ -6566,6 +6566,7 @@ export default function VideoEditor() {
 								avatarRegions={avatarRegions}
 								onAddAvatarSpotlight={handleAddAvatarSpotlight}
 								onRemoveAvatarSpotlight={handleRemoveAvatarSpotlight}
+								initialAvatarClip={avatarOverlay.sourcePath}
 							/>
 						) : (
 							<SettingsPanel
