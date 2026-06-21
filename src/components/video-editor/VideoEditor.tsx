@@ -2718,6 +2718,46 @@ export default function VideoEditor() {
 		};
 	}, [avatarOverlay.sourcePath]);
 
+	// Persist the avatar overlay + spotlight regions per recording so a GENERATED
+	// clip (expensive!) and its placement survive a reload — no re-generating.
+	// Debounced so a drag (rapid setAvatarOverlay) doesn't thrash localStorage.
+	useEffect(() => {
+		if (!currentSourcePath) return;
+		const hasContent =
+			avatarOverlay.sourcePath || avatarOverlay.previewUrl || avatarRegions.length > 0;
+		if (!hasContent) return;
+		const t = setTimeout(() => {
+			try {
+				localStorage.setItem(
+					`gg.avatar.proj.${currentSourcePath}`,
+					JSON.stringify({ overlay: avatarOverlay, regions: avatarRegions }),
+				);
+			} catch {
+				/* quota / serialization — ignore */
+			}
+		}, 400);
+		return () => clearTimeout(t);
+	}, [avatarOverlay, avatarRegions, currentSourcePath]);
+
+	// Restore the saved overlay + regions once per recording.
+	const restoredAvatarProjectRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (!currentSourcePath || restoredAvatarProjectRef.current === currentSourcePath) return;
+		restoredAvatarProjectRef.current = currentSourcePath;
+		try {
+			const raw = localStorage.getItem(`gg.avatar.proj.${currentSourcePath}`);
+			if (!raw) return;
+			const d = JSON.parse(raw) as {
+				overlay?: AvatarOverlaySettings;
+				regions?: AvatarRegion[];
+			};
+			if (d.overlay) setAvatarOverlay({ ...DEFAULT_AVATAR_OVERLAY, ...d.overlay });
+			if (Array.isArray(d.regions)) setAvatarRegions(d.regions);
+		} catch {
+			/* corrupt entry — ignore */
+		}
+	}, [currentSourcePath]);
+
 	useEffect(() => {
 		if (!autoApplyFreshRecordingAutoZooms) {
 			pendingFreshRecordingAutoZoomPathRef.current = null;
