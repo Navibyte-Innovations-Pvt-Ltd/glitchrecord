@@ -4319,8 +4319,14 @@ export default function VideoEditor() {
 				setSpeedRegions((prev) =>
 					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
 				);
+				// Audio is an INDEPENDENT layer (e.g. the narration spans the whole
+				// timeline), unlike zoom/annotation/speed which are clip-scoped. An
+				// overlap filter here would delete a spanning narration whenever ANY
+				// clip is removed. Only drop audio that lives ENTIRELY inside the
+				// deleted clip (a snippet that belonged to it); keep everything that
+				// merely crosses the clip's range.
 				setAudioRegions((prev) =>
-					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
+					prev.filter((region) => !(region.startMs >= startMs && region.endMs <= endMs)),
 				);
 			}
 			if (selectedClipId === id) {
