@@ -838,7 +838,8 @@ export function GlitchgrabLogPanel({
 								className="w-full rounded-md border border-foreground/10 bg-foreground/[0.03] px-1.5 py-1 text-[11px] outline-none focus:border-blue-500/40"
 							>
 								<option value="hi">Hindi</option>
-								<option value="en">Hinglish</option>
+								<option value="hinglish">Hinglish</option>
+								<option value="en">English</option>
 							</select>
 						</label>
 						<label className="flex flex-col gap-0.5 w-[78px] shrink-0">
@@ -1040,7 +1041,7 @@ export function GlitchgrabLogPanel({
 			{noteQuestions && noteQuestions.length > 0 && (
 				<div className="flex flex-col gap-3 rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-3">
 					<div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
-						<NoteBlank className="h-3.5 w-3.5" weight="fill" /> You marked {noteQuestions.length} spot{noteQuestions.length === 1 ? "" : "s"} — what should I explain?
+						<NoteBlank className="h-3.5 w-3.5" weight="fill" /> {noteQuestions.length} spot{noteQuestions.length === 1 ? " needs" : "s need"} your input — what should I explain?
 					</div>
 					{noteQuestions.map((q) => (
 						<div key={q.id} className="flex flex-col gap-1.5">
