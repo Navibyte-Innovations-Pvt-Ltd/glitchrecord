@@ -376,6 +376,41 @@ function getErrorMessage(error: unknown): string {
 // (gaps render as the base 1× clip). Used by the Shift-marker speed gesture.
 // Split the clip at [a,b] and set the middle segment to `speed` — a clip-speed
 // segment, so its timeline duration changes with the speed (time-remap).
+// Resizable timeline panel persistence + clamping. Kept module-level so the
+// constants/helpers are not re-created every render and the resize callbacks can
+// depend on a stable, empty dep array.
+const TIMELINE_HEIGHT_KEY = "glitchrecord.editor.timelineHeight";
+const TIMELINE_MIN_HEIGHT = 120;
+// Vertical room reserved above the timeline for the preview + transport controls.
+const TIMELINE_VIEWPORT_RESERVE = 240;
+
+function getTimelineMaxHeight(): number {
+	if (typeof window === "undefined") return TIMELINE_MIN_HEIGHT;
+	return Math.max(TIMELINE_MIN_HEIGHT, window.innerHeight - TIMELINE_VIEWPORT_RESERVE);
+}
+
+function clampTimelineHeight(px: number): number {
+	return Math.min(getTimelineMaxHeight(), Math.max(TIMELINE_MIN_HEIGHT, px));
+}
+
+function readStoredTimelineHeight(): number | null {
+	try {
+		const raw = globalThis.localStorage?.getItem(TIMELINE_HEIGHT_KEY);
+		const parsed = raw ? Number(raw) : Number.NaN;
+		return Number.isFinite(parsed) ? clampTimelineHeight(parsed) : null;
+	} catch {
+		return null;
+	}
+}
+
+function writeStoredTimelineHeight(px: number): void {
+	try {
+		globalThis.localStorage?.setItem(TIMELINE_HEIGHT_KEY, String(px));
+	} catch {
+		// Ignore storage failures (private mode / quota) — resize still works.
+	}
+}
+
 export default function VideoEditor() {
 	const { t } = useI18n();
 	const smokeExportConfig = useMemo(
@@ -393,21 +428,23 @@ export default function VideoEditor() {
 	const initialEditorPreferences = useMemo(() => loadEditorPreferences(), []);
 	// Resizable timeline panel height (px). Persisted so the dragged size survives
 	// reload. `null` = use the default (a share of the window height, clamped below).
-	const TIMELINE_HEIGHT_KEY = "glitchrecord.editor.timelineHeight";
-	const TIMELINE_MIN_HEIGHT = 120;
-	const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(() => {
-		if (typeof window === "undefined") return null;
-		const raw = window.localStorage.getItem(TIMELINE_HEIGHT_KEY);
-		const parsed = raw ? Number(raw) : NaN;
-		return Number.isFinite(parsed) && parsed >= TIMELINE_MIN_HEIGHT ? parsed : null;
-	});
+	const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(() =>
+		readStoredTimelineHeight(),
+	);
 	const timelineResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
 	const timelinePanelRef = useRef<HTMLDivElement>(null);
+	// Latest height during a drag, so we can persist on release without a side
+	// effect inside the state updater (updaters must stay pure).
+	const timelineHeightDuringDragRef = useRef<number | null>(null);
 	const [isResizingTimeline, setIsResizingTimeline] = useState(false);
-	const handleTimelineResizeStart = useCallback((event: ReactPointerEvent) => {
+	const handleTimelineResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
 		event.preventDefault();
 		const startHeight = timelinePanelRef.current?.offsetHeight ?? TIMELINE_MIN_HEIGHT;
 		timelineResizeRef.current = { startY: event.clientY, startHeight };
+		timelineHeightDuringDragRef.current = startHeight;
+		// Pointer capture keeps move/up events flowing even when the cursor leaves
+		// the window, so the drag can't get stuck if released off-window.
+		event.currentTarget.setPointerCapture?.(event.pointerId);
 		setIsResizingTimeline(true);
 	}, []);
 	useEffect(() => {
@@ -416,32 +453,37 @@ export default function VideoEditor() {
 			const drag = timelineResizeRef.current;
 			if (!drag) return;
 			// Drag handle up → grow the timeline (clientY decreases → positive delta).
-			const delta = drag.startY - event.clientY;
-			const max = Math.max(TIMELINE_MIN_HEIGHT, window.innerHeight - 240);
-			const next = Math.min(max, Math.max(TIMELINE_MIN_HEIGHT, drag.startHeight + delta));
+			const next = clampTimelineHeight(drag.startHeight + (drag.startY - event.clientY));
+			timelineHeightDuringDragRef.current = next;
 			setTimelineHeightPx(next);
 		};
-		const onUp = () => {
+		const onEnd = () => {
 			setIsResizingTimeline(false);
 			timelineResizeRef.current = null;
-			setTimelineHeightPx((height) => {
-				if (height != null) {
-					window.localStorage.setItem(TIMELINE_HEIGHT_KEY, String(height));
-				}
-				return height;
-			});
+			const finalHeight = timelineHeightDuringDragRef.current;
+			if (finalHeight != null) writeStoredTimelineHeight(finalHeight);
 		};
 		window.addEventListener("pointermove", onMove);
-		window.addEventListener("pointerup", onUp);
+		window.addEventListener("pointerup", onEnd);
+		window.addEventListener("pointercancel", onEnd);
 		document.body.style.cursor = "ns-resize";
 		document.body.style.userSelect = "none";
 		return () => {
 			window.removeEventListener("pointermove", onMove);
-			window.removeEventListener("pointerup", onUp);
+			window.removeEventListener("pointerup", onEnd);
+			window.removeEventListener("pointercancel", onEnd);
 			document.body.style.cursor = "";
 			document.body.style.userSelect = "";
 		};
 	}, [isResizingTimeline]);
+	// Re-clamp a stored/dragged height when the window shrinks, so the panel can
+	// never exceed the viewport and push the preview off-screen.
+	useEffect(() => {
+		const onResize = () =>
+			setTimelineHeightPx((height) => (height == null ? height : clampTimelineHeight(height)));
+		window.addEventListener("resize", onResize);
+		return () => window.removeEventListener("resize", onResize);
+	}, []);
 	const [videoPath, setVideoPath] = useState<string | null>(null);
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
 	const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
