@@ -488,6 +488,7 @@ export function GlitchgrabLogPanel({
 						error?: string;
 					}>;
 					avatarKeyStatus?: () => Promise<{ hasKey: boolean }>;
+					latestAvatarClip?: () => Promise<{ path: string | null }>;
 					pickAvatarPhoto?: () => Promise<{ path: string | null }>;
 					onAvatarProgress?: (cb: (stage: string) => void) => () => void;
 					searchAvatarGroups?: (query?: string) => Promise<{
@@ -632,12 +633,26 @@ export function GlitchgrabLogPanel({
 	const restoredClipRef = useRef(false);
 	useEffect(() => {
 		if (restoredClipRef.current || avatarPath) return;
-		const fromStorage = storageKey ? localStorage.getItem(`gg.avatar.clip.${storageKey}`) : null;
-		const clip = initialAvatarClip || fromStorage;
-		if (!clip) return;
 		restoredClipRef.current = true;
-		setAvatarPath(clip);
-		onAvatarReady?.(clip, avatarShape); // re-attach to the main overlay
+		const fromStorage = storageKey
+			? localStorage.getItem(`gg.avatar.clip.${storageKey}`)
+			: null;
+		const attach = (clip: string) => {
+			setAvatarPath(clip);
+			onAvatarReady?.(clip, avatarShape); // re-attach to the main overlay
+		};
+		const known = initialAvatarClip || fromStorage;
+		if (known) {
+			attach(known);
+			return;
+		}
+		// No in-app reference — recover the most recent clip from disk.
+		electronAPI()
+			?.latestAvatarClip?.()
+			.then((r) => {
+				if (r?.path) attach(r.path);
+			})
+			.catch(() => {});
 	}, [initialAvatarClip, avatarPath, storageKey, onAvatarReady, avatarShape]);
 
 	// Persist the generated clip path (panel-side fallback).
