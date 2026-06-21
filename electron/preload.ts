@@ -214,7 +214,8 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 	}) => ipcRenderer.invoke("glitchbridge:refine-script", opts),
 	onEventsReady: (cb: (data: { sessionId: string; count: number }) => void) => {
-		const handler = (_e: unknown, data: unknown) => cb(data as { sessionId: string; count: number });
+		const handler = (_e: unknown, data: unknown) =>
+			cb(data as { sessionId: string; count: number });
 		ipcRenderer.on("glitchbridge:events-ready", handler);
 		return () => ipcRenderer.removeListener("glitchbridge:events-ready", handler);
 	},
@@ -542,7 +543,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	writeClipboard: (text: string) => {
 		return ipcRenderer.invoke("clipboard-write-text", text);
 	},
-	generateNarration: (text: string, opts?: { engine?: string; lang?: string; speaker?: string; voice?: string; apiKey?: string; pace?: number }) => {
+	generateNarration: (
+		text: string,
+		opts?: {
+			engine?: string;
+			lang?: string;
+			speaker?: string;
+			voice?: string;
+			apiKey?: string;
+			pace?: number;
+		},
+	) => {
 		return ipcRenderer.invoke("generate-narration", text, opts) as Promise<{
 			ok: boolean;
 			path?: string;
@@ -560,7 +571,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	// Lip-syncs the EXISTING narration audio to a custom photo. Platform key
 	// (HEYGEN_API_KEY) lives in the main process; the renderer never sees it.
 	generateAvatar: (opts: {
-		photoPath: string;
+		photoPath?: string;
+		avatarId?: string;
 		audioPath: string;
 		tier: "photo" | "iv";
 		transparent?: boolean;
@@ -571,8 +583,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			format?: "webm" | "mp4";
 			error?: string;
 		}>,
-	avatarKeyStatus: () =>
-		ipcRenderer.invoke("avatar:key-status") as Promise<{ hasKey: boolean }>,
+	avatarKeyStatus: () => ipcRenderer.invoke("avatar:key-status") as Promise<{ hasKey: boolean }>,
+	listAvatars: () =>
+		ipcRenderer.invoke("avatar:list") as Promise<{
+			ok: boolean;
+			avatars?: Array<{ id: string; name: string; gender?: string; previewUrl?: string }>;
+			error?: string;
+		}>,
 	pickAvatarPhoto: () =>
 		ipcRenderer.invoke("avatar:pick-photo") as Promise<{ path: string | null }>,
 	onAvatarProgress: (cb: (stage: string) => void) => {
@@ -580,7 +597,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("avatar-progress", handler);
 		return () => ipcRenderer.removeListener("avatar-progress", handler);
 	},
-	openNarrationTester: () => ipcRenderer.invoke("open-narration-tester") as Promise<{ ok: boolean }>,
+	openNarrationTester: () =>
+		ipcRenderer.invoke("open-narration-tester") as Promise<{ ok: boolean }>,
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
