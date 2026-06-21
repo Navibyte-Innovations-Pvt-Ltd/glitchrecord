@@ -2,13 +2,15 @@
 // VideoPlayback so the layout math + show/hide rules are unit-testable (the inline
 // version froze the editor via a ResizeObserver loop — pure functions let us catch
 // regressions without rendering Pixi).
-import type { AvatarOverlaySettings } from "./types";
+import type { AvatarOverlaySettings, AvatarRegion } from "./types";
 import { getWebcamOverlayPosition, getWebcamOverlaySizePx } from "./webcamOverlay";
 
 export interface AvatarBubbleLayout {
 	x: number;
 	y: number;
-	size: number;
+	/** Box width/height in px (equal for the corner PiP, differ when full-frame). */
+	width: number;
+	height: number;
 	borderRadius: number;
 }
 
@@ -89,5 +91,61 @@ export function getAvatarBubbleLayout({
 		legacyCorner: "bottom-right",
 	});
 	const borderRadius = settings.shape === "circle" ? size / 2 : Math.round(size * 0.12);
-	return { x, y, size, borderRadius };
+	return { x, y, width: size, height: size, borderRadius };
+}
+
+// The full-frame layout: the avatar covers the whole stage.
+export function getAvatarFullFrameLayout(
+	containerWidth: number,
+	containerHeight: number,
+): AvatarBubbleLayout {
+	return { x: 0, y: 0, width: containerWidth, height: containerHeight, borderRadius: 0 };
+}
+
+// 0→1 "fullness": how much the avatar should be expanded toward full-frame at the
+// given time, across all spotlight regions. Eases in/out over `easeMs` at each
+// region's edges and holds at 1 in the middle (like a zoom envelope), so the
+// avatar slides+grows from the corner to full and back.
+export function getAvatarSpotlightProgress(
+	regions: AvatarRegion[] | undefined | null,
+	currentMs: number,
+	easeMs = 450,
+): number {
+	if (!regions || regions.length === 0 || !Number.isFinite(currentMs)) return 0;
+	let best = 0;
+	for (const r of regions) {
+		if (currentMs < r.startMs || currentMs > r.endMs) continue;
+		const span = r.endMs - r.startMs;
+		if (span <= 0) continue;
+		const ease = Math.min(easeMs, span / 2);
+		const into = currentMs - r.startMs;
+		const outOf = r.endMs - currentMs;
+		let p = 1;
+		if (ease > 0) {
+			if (into < ease) p = into / ease;
+			else if (outOf < ease) p = outOf / ease;
+		}
+		// Smoothstep for a soft slide rather than a linear ramp.
+		const s = p * p * (3 - 2 * p);
+		if (s > best) best = s;
+	}
+	return best;
+}
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+// Blend the corner PiP layout toward the full-frame layout by `t` (0..1).
+export function lerpAvatarLayout(
+	base: AvatarBubbleLayout,
+	full: AvatarBubbleLayout,
+	t: number,
+): AvatarBubbleLayout {
+	const k = Math.min(1, Math.max(0, t));
+	return {
+		x: lerp(base.x, full.x, k),
+		y: lerp(base.y, full.y, k),
+		width: lerp(base.width, full.width, k),
+		height: lerp(base.height, full.height, k),
+		borderRadius: lerp(base.borderRadius, full.borderRadius, k),
+	};
 }
