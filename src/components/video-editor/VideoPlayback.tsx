@@ -1039,26 +1039,39 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			return () => window.removeEventListener("resize", onResize);
 		}, [applyAvatarBubbleLayout, avatarOverlay, avatarRegions, avatarEnabled]);
 
-		// Keep the avatar clip roughly in sync with the timeline: play/pause with
-		// the player and seek when the playhead jumps. (Lip-sync to narration is
-		// exact because the clip's own audio drove generation; we mute it here and
-		// let the narration track carry the sound.)
+		// Keep the avatar clip tightly synced to the timeline so its lips match the
+		// narration. While PLAYING we let the clip run at 1× (matching the timeline)
+		// and only re-seek on real drift — constant seeking would stutter. While
+		// PAUSED we snap to the exact playhead frame. The clip is muted; the
+		// narration track carries the audio.
 		useEffect(() => {
 			const v = avatarVideoRef.current;
 			if (!v || !avatarEnabled) return;
+			const seek = (t: number) => {
+				const dur = Number.isFinite(v.duration) ? v.duration : Number.POSITIVE_INFINITY;
+				try {
+					v.currentTime = Math.max(0, Math.min(t, dur - 0.05));
+				} catch {
+					/* metadata not ready — retry next tick */
+				}
+			};
 			const tick = () => {
 				const target = Math.max(0, currentTimeRef.current / 1000);
-				if (Number.isFinite(target) && Math.abs(v.currentTime - target) > 0.25) {
-					try {
-						v.currentTime = target;
-					} catch {
-						/* seeking before metadata — ignore */
+				if (!Number.isFinite(target)) return;
+				if (isPlayingRef.current) {
+					if (v.paused) {
+						seek(target);
+						void v.play().catch(() => undefined);
+					} else if (Math.abs(v.currentTime - target) > 0.3) {
+						seek(target); // drift correction only
 					}
+				} else {
+					if (!v.paused) v.pause();
+					if (Math.abs(v.currentTime - target) > 0.08) seek(target); // exact frame
 				}
-				if (isPlayingRef.current && v.paused) void v.play().catch(() => undefined);
-				else if (!isPlayingRef.current && !v.paused) v.pause();
 			};
-			const id = window.setInterval(tick, 120);
+			tick();
+			const id = window.setInterval(tick, 200);
 			return () => window.clearInterval(id);
 		}, [avatarEnabled]);
 
@@ -3156,13 +3169,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											src={avatarVideoPath}
 											className="pointer-events-none block h-full w-full object-cover"
 											style={{ objectPosition: avatarObjectPosition }}
+											autoPlay
 											muted
 											playsInline
 											preload="auto"
 											aria-hidden="true"
 											onLoadedData={(e) => {
-												// Force a seek so the element paints a frame even while
-												// paused — otherwise the box stays transparent until play.
+												// autoPlay decodes + paints a first frame (so the box is never
+												// transparent); then snap to the playhead and let the sync loop
+												// pause it if the timeline is paused.
 												const v = e.currentTarget as HTMLVideoElement;
 												try {
 													v.currentTime = Math.max(
