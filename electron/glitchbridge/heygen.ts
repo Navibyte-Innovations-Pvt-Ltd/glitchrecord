@@ -315,23 +315,15 @@ export async function generateAvatar(
 		// then a studio avatar, then our uploaded photo.
 		let character: Record<string, unknown>;
 		if (req.talkingPhotoId) {
-			character = {
-				type: "talking_photo",
-				talking_photo_id: req.talkingPhotoId,
-				// Avatar IV tier → expressive engine = better lip-sync (4× cost).
-				...(req.tier === "iv" ? { talking_photo_style: "expressive" } : {}),
-			};
+			// talking_photo already uses HeyGen's Avatar IV engine by default; there's
+			// no extra style param (talking_photo_style:"expressive" is rejected).
+			character = { type: "talking_photo", talking_photo_id: req.talkingPhotoId };
 		} else if (req.avatarId) {
 			character = { type: "avatar", avatar_id: req.avatarId, avatar_style: "normal" };
 		} else {
 			onProgress("Uploading photo…");
 			const talkingPhotoId = await uploadTalkingPhoto(req.photoPath as string, apiKey);
-			character = {
-				type: "talking_photo",
-				talking_photo_id: talkingPhotoId,
-				// Avatar IV gets richer motion; Photo Avatar stays steady for a small PiP.
-				...(req.tier === "iv" ? { talking_photo_style: "expressive" } : {}),
-			};
+			character = { type: "talking_photo", talking_photo_id: talkingPhotoId };
 		}
 
 		onProgress("Uploading narration…");
