@@ -1064,22 +1064,34 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				const target = Math.max(0, currentTimeRef.current / 1000);
 				if (!Number.isFinite(target)) return;
 				if (isPlayingRef.current) {
-					// PLAYING: let the clip run at 1× (lips animate). Only re-align on a
-					// BIG jump (a scrub) and at most ~once/sec — seeking a playing video
-					// every tick interrupts decode and freezes the lips.
 					if (v.paused) {
 						seek(v, target);
+						v.playbackRate = 1;
 						void v.play().catch(() => undefined);
-					} else if (Math.abs(v.currentTime - target) > 0.75) {
+						return;
+					}
+					// Lip-sync correction WITHOUT visible jumps: a big gap (scrub) hard-
+					// seeks; a small gap is corrected smoothly by nudging playbackRate so
+					// the clip catches up / eases back to the narration position.
+					const drift = target - v.currentTime; // + = clip is behind the timeline
+					if (Math.abs(drift) > 1) {
 						const now = Date.now();
-						if (now - lastReseek > 1000) {
+						if (now - lastReseek > 600) {
 							seek(v, target);
+							v.playbackRate = 1;
 							lastReseek = now;
 						}
+					} else if (drift > 0.06) {
+						v.playbackRate = 1.1; // behind → speed up to catch the narration
+					} else if (drift < -0.06) {
+						v.playbackRate = 0.9; // ahead → ease back
+					} else {
+						v.playbackRate = 1; // locked
 					}
 				} else {
 					// PAUSED: hold the exact playhead frame.
 					if (!v.paused) v.pause();
+					v.playbackRate = 1;
 					if (Math.abs(v.currentTime - target) > 0.08) seek(v, target);
 				}
 			};
