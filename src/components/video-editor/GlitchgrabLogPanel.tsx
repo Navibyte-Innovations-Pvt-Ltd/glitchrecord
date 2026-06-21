@@ -181,6 +181,8 @@ interface GlitchgrabLogPanelProps {
 	zoomRegions?: Array<{ startMs: number; endMs: number; depth?: number; focus?: { cx: number; cy: number } }>;
 	/** Stable per-recording key — script + chat history are saved/restored under it. */
 	storageKey?: string;
+	/** "log" = Events/Narration tabs; "avatar" = dedicated avatar section (own rail item). */
+	view?: "log" | "avatar";
 }
 
 export function GlitchgrabLogPanel({
@@ -193,6 +195,7 @@ export function GlitchgrabLogPanel({
 	onAddNarrationToTimeline,
 	zoomRegions,
 	storageKey,
+	view = "log",
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -240,10 +243,18 @@ export function GlitchgrabLogPanel({
 	const [narrationError, setNarrationError] = useState<string | null>(null);
 	const [narrationStage, setNarrationStage] = useState("");
 	const [narrationElapsed, setNarrationElapsed] = useState(0);
-	const [tab, setTab] = useState<"events" | "narration" | "avatar">("events");
+	const [tab, setTab] = useState<"events" | "narration">("events");
 
 	// ── Avatar (HeyGen talking head) state ──────────────────────
+	// Source: your own photo, or a preset from HeyGen's avatar library.
+	const [avatarSource, setAvatarSource] = useState<"photo" | "library">(
+		() => (localStorage.getItem("gg.avatar.source") as "photo" | "library") || "photo",
+	);
 	const [avatarPhotoPath, setAvatarPhotoPath] = useState<string | null>(null);
+	const [avatarLibrary, setAvatarLibrary] = useState<Array<{ id: string; name: string; gender?: string; previewUrl?: string }>>([]);
+	const [avatarLibraryLoading, setAvatarLibraryLoading] = useState(false);
+	const [avatarLibraryError, setAvatarLibraryError] = useState<string | null>(null);
+	const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
 	const [avatarTier, setAvatarTier] = useState<"photo" | "iv">(
 		() => (localStorage.getItem("gg.avatar.tier") as "photo" | "iv") || "photo",
 	);
@@ -307,7 +318,8 @@ export function GlitchgrabLogPanel({
 				onNarrationProgress?: (cb: (stage: string) => void) => () => void;
 				narrationKeyStatus?: () => Promise<{ hasSarvamKey: boolean }>;
 				generateAvatar?: (opts: {
-					photoPath: string;
+					photoPath?: string;
+					avatarId?: string;
 					audioPath: string;
 					tier: "photo" | "iv";
 					transparent?: boolean;
@@ -315,6 +327,11 @@ export function GlitchgrabLogPanel({
 				avatarKeyStatus?: () => Promise<{ hasKey: boolean }>;
 				pickAvatarPhoto?: () => Promise<{ path: string | null }>;
 				onAvatarProgress?: (cb: (stage: string) => void) => () => void;
+				listAvatars?: () => Promise<{
+					ok: boolean;
+					avatars?: Array<{ id: string; name: string; gender?: string; previewUrl?: string }>;
+					error?: string;
+				}>;
 			};
 		}).electronAPI;
 
@@ -334,6 +351,20 @@ export function GlitchgrabLogPanel({
 	}, []);
 	useEffect(() => { localStorage.setItem("gg.avatar.tier", avatarTier); }, [avatarTier]);
 	useEffect(() => { localStorage.setItem("gg.avatar.shape", avatarShape); }, [avatarShape]);
+	useEffect(() => { localStorage.setItem("gg.avatar.source", avatarSource); }, [avatarSource]);
+	// Lazy-load HeyGen's avatar library the first time the user switches to it.
+	useEffect(() => {
+		if (avatarSource !== "library" || avatarLibrary.length > 0 || avatarLibraryLoading) return;
+		setAvatarLibraryLoading(true);
+		setAvatarLibraryError(null);
+		electronAPI()?.listAvatars?.()
+			.then((r) => {
+				if (r?.ok && r.avatars) setAvatarLibrary(r.avatars);
+				else setAvatarLibraryError(r?.error || "Could not load avatars");
+			})
+			.catch((e) => setAvatarLibraryError(e instanceof Error ? e.message : "Could not load avatars"))
+			.finally(() => setAvatarLibraryLoading(false));
+	}, [avatarSource, avatarLibrary.length, avatarLibraryLoading]);
 	// Resolve a playable URL for the generated clip preview.
 	useEffect(() => {
 		if (!avatarPath) { setAvatarUrl(null); return; }
@@ -352,7 +383,9 @@ export function GlitchgrabLogPanel({
 	const generateAvatar = useCallback(async () => {
 		const api = electronAPI();
 		if (!api?.generateAvatar) return;
-		if (!avatarPhotoPath) { setAvatarError("Choose a photo first"); return; }
+		const usingLibrary = avatarSource === "library";
+		if (usingLibrary && !selectedAvatarId) { setAvatarError("Pick a HeyGen avatar first"); return; }
+		if (!usingLibrary && !avatarPhotoPath) { setAvatarError("Choose a photo first"); return; }
 		if (!narrationPath) { setAvatarError("Generate narration audio first (Narration tab)"); return; }
 		setAvatarBusy(true);
 		setAvatarError(null);
@@ -360,7 +393,8 @@ export function GlitchgrabLogPanel({
 		setAvatarStage("Starting…");
 		try {
 			const res = await api.generateAvatar({
-				photoPath: avatarPhotoPath,
+				photoPath: usingLibrary ? undefined : (avatarPhotoPath ?? undefined),
+				avatarId: usingLibrary ? (selectedAvatarId ?? undefined) : undefined,
 				audioPath: narrationPath,
 				tier: avatarTier,
 				transparent: avatarShape === "circle",
@@ -373,7 +407,7 @@ export function GlitchgrabLogPanel({
 			setAvatarBusy(false);
 			setAvatarStage("");
 		}
-	}, [avatarPhotoPath, narrationPath, avatarTier, avatarShape]);
+	}, [avatarSource, avatarPhotoPath, selectedAvatarId, narrationPath, avatarTier, avatarShape]);
 
 	// AI script arrives from the bridge after a recording stops → stash it and
 	// jump to the Narration tab so the "Use AI script" button is visible.
@@ -812,11 +846,21 @@ export function GlitchgrabLogPanel({
 		<div className="flex h-full w-[260px] flex-col gap-3 p-4">
 			{/* Title */}
 			<div className="flex items-center gap-2">
-				<Sparkle className="h-4 w-4 text-blue-500 shrink-0" />
-				<span className="text-[13px] font-semibold">GlitchGrab</span>
+				{view === "avatar" ? (
+					<>
+						<UserCircle className="h-4 w-4 text-blue-500 shrink-0" />
+						<span className="text-[13px] font-semibold">Avatar</span>
+					</>
+				) : (
+					<>
+						<Sparkle className="h-4 w-4 text-blue-500 shrink-0" />
+						<span className="text-[13px] font-semibold">GlitchGrab</span>
+					</>
+				)}
 			</div>
 
-			{/* Tab bar */}
+			{/* Tab bar (log view only — avatar has its own rail item) */}
+			{view === "log" && (
 			<div className="flex shrink-0 gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
 				<button
 					type="button"
@@ -843,20 +887,10 @@ export function GlitchgrabLogPanel({
 				>
 					<Sparkle className="h-3.5 w-3.5" /> Narration
 				</button>
-				<button
-					type="button"
-					onClick={() => setTab("avatar")}
-					className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-						tab === "avatar"
-							? "bg-foreground/10 text-foreground"
-							: "text-foreground/50 hover:text-foreground/80"
-					}`}
-				>
-					<UserCircle className="h-3.5 w-3.5" /> Avatar
-				</button>
 			</div>
+			)}
 
-			{tab === "events" && (
+			{view === "log" && tab === "events" && (
 			<>
 			{/* Events tab actions */}
 			<div className="flex items-center justify-end gap-1.5">
@@ -919,7 +953,7 @@ export function GlitchgrabLogPanel({
 			)}
 
 			{/* ── Narration generator ─────────────────────────────── */}
-			{tab === "narration" && (
+			{view === "log" && tab === "narration" && (
 			<div className="flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
 				<div className="flex items-center gap-2">
 					<span className="text-[9px] font-mono uppercase tracking-wide text-foreground/30">
@@ -1141,7 +1175,7 @@ export function GlitchgrabLogPanel({
 				)}
 			</div>
 			)}
-			{tab === "avatar" && (
+			{view === "avatar" && (
 			<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-1" style={{ scrollbarWidth: "thin" }}>
 				<p className="text-[11px] leading-snug text-foreground/50">
 					Add an AI talking-head that lip-syncs your narration. Generate narration first, then pick a photo.
@@ -1153,15 +1187,56 @@ export function GlitchgrabLogPanel({
 					</p>
 				)}
 
-				<button
-					type="button"
-					onClick={pickAvatarPhoto}
-					className="flex items-center justify-between rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-2 text-[11px] text-foreground/70 transition-colors hover:border-foreground/25"
-				>
-					<span className="flex items-center gap-1.5"><UserCircle className="h-3.5 w-3.5" /> {avatarPhotoPath ? "Change photo" : "Choose avatar photo"}</span>
-					{avatarPhotoPath && <span className="max-w-[160px] truncate font-mono text-[9px] text-foreground/40">{avatarPhotoPath.split("/").pop()}</span>}
-				</button>
+				{/* Source: custom photo vs HeyGen library */}
+				<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+					{([["photo", "Custom photo"], ["library", "HeyGen avatar"]] as const).map(([val, label]) => (
+						<button
+							key={val}
+							type="button"
+							onClick={() => setAvatarSource(val)}
+							className={`flex flex-1 items-center justify-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarSource === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
+						>
+							{label}
+						</button>
+					))}
+				</div>
 
+				{avatarSource === "photo" ? (
+					<button
+						type="button"
+						onClick={pickAvatarPhoto}
+						className="flex items-center justify-between rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-2 text-[11px] text-foreground/70 transition-colors hover:border-foreground/25"
+					>
+						<span className="flex items-center gap-1.5"><UserCircle className="h-3.5 w-3.5" /> {avatarPhotoPath ? "Change photo" : "Choose avatar photo"}</span>
+						{avatarPhotoPath && <span className="max-w-[160px] truncate font-mono text-[9px] text-foreground/40">{avatarPhotoPath.split("/").pop()}</span>}
+					</button>
+				) : (
+					<div className="flex flex-col gap-1.5">
+						{avatarLibraryLoading && <p className="flex items-center gap-1.5 text-[11px] text-foreground/50"><ArrowClockwise className="h-3 w-3 animate-spin" /> Loading avatars…</p>}
+						{avatarLibraryError && <p className="text-[11px] text-red-400/80">{avatarLibraryError}</p>}
+						{!avatarLibraryLoading && !avatarLibraryError && avatarLibrary.length > 0 && (
+							<div className="grid max-h-[220px] grid-cols-3 gap-1.5 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+								{avatarLibrary.map((a) => (
+									<button
+										key={a.id}
+										type="button"
+										onClick={() => setSelectedAvatarId(a.id)}
+										title={a.name}
+										className={`relative aspect-square overflow-hidden rounded-md border transition-colors ${selectedAvatarId === a.id ? "border-blue-500 ring-1 ring-blue-500" : "border-foreground/10 hover:border-foreground/30"}`}
+									>
+										{a.previewUrl ? (
+											<img src={a.previewUrl} alt={a.name} className="h-full w-full object-cover" />
+										) : (
+											<span className="flex h-full w-full items-center justify-center p-1 text-[8px] text-foreground/40">{a.name}</span>
+										)}
+									</button>
+								))}
+							</div>
+						)}
+					</div>
+				)}
+
+				{avatarSource === "photo" && (
 				<div className="flex flex-col gap-1">
 					<span className="text-[10px] uppercase tracking-wide text-foreground/40">Quality</span>
 					<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
@@ -1178,6 +1253,7 @@ export function GlitchgrabLogPanel({
 						))}
 					</div>
 				</div>
+				)}
 
 				<div className="flex flex-col gap-1">
 					<span className="text-[10px] uppercase tracking-wide text-foreground/40">Shape</span>
@@ -1198,9 +1274,9 @@ export function GlitchgrabLogPanel({
 				<button
 					type="button"
 					onClick={generateAvatar}
-					disabled={avatarBusy || !avatarPhotoPath || !narrationPath}
+					disabled={avatarBusy || !narrationPath || (avatarSource === "photo" ? !avatarPhotoPath : !selectedAvatarId)}
 					className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
-					title={!narrationPath ? "Generate narration audio first" : !avatarPhotoPath ? "Choose a photo first" : "Generate the talking-head avatar"}
+					title={!narrationPath ? "Generate narration audio first" : avatarSource === "photo" ? (!avatarPhotoPath ? "Choose a photo first" : "Generate the talking-head avatar") : (!selectedAvatarId ? "Pick a HeyGen avatar first" : "Generate the talking-head avatar")}
 				>
 					{avatarBusy ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> {avatarStage || "Generating…"}</>) : (<><UserCircle className="h-3.5 w-3.5" /> Generate avatar</>)}
 				</button>
@@ -1225,7 +1301,7 @@ export function GlitchgrabLogPanel({
 			</div>
 			)}
 
-			{!scriptOpen && createPortal(
+			{view === "log" && !scriptOpen && createPortal(
 			<button type="button" data-testid="gg-script-toggle" onClick={() => setScriptOpen(true)} title="Open script writer" className="absolute right-2 top-2 z-30 flex items-center gap-1.5 rounded-md border border-blue-500/30 bg-background/90 px-2.5 py-1.5 text-[11px] font-medium text-blue-300 shadow-md backdrop-blur transition hover:bg-blue-500/10">
 			<Sparkle className="h-3.5 w-3.5" /> Script
 			</button>,
