@@ -995,7 +995,7 @@ app.whenReady().then(async () => {
 	// script from events" button. Requires login (web endpoint is token-gated).
 	// Per-note clarifying questions for the shift-marked spots. Re-uploads events
 	// (cheap) to get a DB session, then asks the web API.
-	ipcMain.handle("glitchbridge:note-questions", async () => {
+	ipcMain.handle("glitchbridge:note-questions", async (_e, frames?: Array<{ id: string; dataUrl: string }>) => {
 		const user = getCurrentUser();
 		if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
 		const session = getCurrentSession();
@@ -1003,7 +1003,9 @@ app.whenReady().then(async () => {
 		if (!events?.length) return { ok: false, error: "No captured events yet." };
 		const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
 		if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
-		const result = await getNoteQuestions({ token: user.token, sessionId: dbSessionId });
+		// frames present = PASS 2 (vision): re-judge the flagged spots WITH screenshots.
+		appendDebugLog("rec", `note-questions: ${frames?.length ? `vision pass (${frames.length} frame${frames.length === 1 ? "" : "s"})` : "text pass"}`);
+		const result = await getNoteQuestions({ token: user.token, sessionId: dbSessionId, frames });
 		if ("error" in result) return { ok: false, error: result.error };
 		return { ok: true, questions: result.questions };
 	});
