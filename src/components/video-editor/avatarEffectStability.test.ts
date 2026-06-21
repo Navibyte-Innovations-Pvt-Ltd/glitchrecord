@@ -52,6 +52,32 @@ describe("the freeze mechanism (unstable callback in effect deps)", () => {
 	});
 });
 
+// Models the avatar-selection RESTORE bug: the persistence effect runs first on
+// mount and clears storage when the live selection is still null — wiping the
+// saved value before the restore effect can read it. Reading a snapshot captured
+// at first render (before any effect) survives the clear.
+describe("avatar selection restore survives the mount-time clear", () => {
+	function runMount(readVia: "live-storage" | "snapshot"): string | null {
+		const store: Record<string, string | null> = { "gg.avatar.lookId": "look-123" };
+		// Snapshot captured during render, BEFORE effects (like a useState lazy init).
+		const snapshot = store["gg.avatar.lookId"];
+		// Effect order on mount: persistence first (selection still null → clears)…
+		const liveSelection: string | null = null;
+		if (liveSelection) store["gg.avatar.lookId"] = liveSelection;
+		else store["gg.avatar.lookId"] = null;
+		// …then restore reads.
+		return readVia === "snapshot" ? snapshot : store["gg.avatar.lookId"];
+	}
+
+	it("reading live storage in the restore effect loses the selection (the bug)", () => {
+		expect(runMount("live-storage")).toBeNull();
+	});
+
+	it("reading the first-render snapshot restores it (the fix)", () => {
+		expect(runMount("snapshot")).toBe("look-123");
+	});
+});
+
 describe("the real fix is in place (no inline avatar callbacks to the panel)", () => {
 	const src = readFileSync(path.join(__dirname, "VideoEditor.tsx"), "utf8");
 
