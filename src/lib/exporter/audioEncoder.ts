@@ -794,12 +794,26 @@ export class AudioProcessor {
 		for (const slice of slices) {
 			outputDurationMs += (slice.sourceEndMs - slice.sourceStartMs) / slice.speed;
 		}
+		// TEMP DEBUG — confirm the narration-truncation root cause with real numbers.
+		// Compare video output vs each overlay's [start,end]+buffer length and the
+		// final audio duration. If an overlay's end exceeds videoOutput but final
+		// outputDuration matches it now, the fix worked. Remove after verifying.
+		console.log(
+			`[AudioExport] videoOutput=${outputDurationMs.toFixed(0)}ms sourceDur=${sourceDurationMs.toFixed(0)}ms speeds=[${speedRegions?.map((s) => s.speed).join(",") ?? ""}] overlays=[${regionEntries.map(({ region, buffer }) => `${region.startMs}-${region.endMs}(buf${(buffer.duration * 1000).toFixed(0)})`).join(" ")}]`,
+		);
 
-		// Extend for audio regions that might exceed the video timeline
+		// Extend for audio regions that might exceed the video timeline.
+		// Overlay regions (narration, added audio) are stored in OUTPUT/timeline
+		// time, NOT source time — so use region.endMs directly. Passing it through
+		// sourceTimeToOutputTime (a source→output map) CLAMPS an overlay that runs
+		// past the video to the video's end: e.g. after the last clip is deleted
+		// the video output shrinks, and the 3:00 narration gets clamped to ~2:37,
+		// truncating the audio on export. Source/companion buffers keep the remap
+		// (they go through scheduleBufferThroughTimeline, not here).
 		for (const { region } of regionEntries) {
-			const regionEndOutput = this.sourceTimeToOutputTime(region.endMs, slices);
-			outputDurationMs = Math.max(outputDurationMs, regionEndOutput);
+			outputDurationMs = Math.max(outputDurationMs, region.endMs);
 		}
+		console.log(`[AudioExport] final audio outputDuration=${outputDurationMs.toFixed(0)}ms`);
 
 		const numChannels = Math.min(primaryBuffer?.numberOfChannels ?? 2, 2);
 		const mutedSourceOutputRangesSec = (clipRegions ?? [])
@@ -977,7 +991,6 @@ export class AudioProcessor {
 					offlineCtx,
 					buffer,
 					region,
-					slices,
 					outputOffsetSec,
 					chunkSec,
 				);
@@ -999,12 +1012,16 @@ export class AudioProcessor {
 		ctx: OfflineAudioContext,
 		buffer: AudioBuffer,
 		region: AudioRegion,
-		slices: TimelineSlice[],
 		chunkOutputStartSec: number,
 		chunkDurationSec: number,
 	): void {
-		const outputStartMs = this.sourceTimeToOutputTime(region.startMs, slices);
-		const outputEndMs = this.sourceTimeToOutputTime(region.endMs, slices);
+		// Overlay regions are already in OUTPUT/timeline time — place them directly.
+		// sourceTimeToOutputTime is only for source-time buffers; remapping an
+		// overlay here clamps/distorts it when speed/trim/clip-deletion make the
+		// video output shorter than the overlay (see prepare() for the duration bug
+		// this mirrors). `slices` is intentionally unused for overlays now.
+		const outputStartMs = region.startMs;
+		const outputEndMs = region.endMs;
 
 		let localStartSec = outputStartMs / 1000 - chunkOutputStartSec;
 		let localEndSec = outputEndMs / 1000 - chunkOutputStartSec;
@@ -1395,27 +1412,6 @@ export class AudioProcessor {
 		}
 
 		return slices;
-	}
-
-	// Map a source-timeline timestamp to the corresponding output-timeline timestamp.
-	private sourceTimeToOutputTime(sourceMs: number, slices: TimelineSlice[]): number {
-		let outputMs = 0;
-
-		for (const slice of slices) {
-			if (sourceMs <= slice.sourceStartMs) {
-				return outputMs;
-			}
-			const sliceDurationMs = slice.sourceEndMs - slice.sourceStartMs;
-			if (sourceMs >= slice.sourceEndMs) {
-				outputMs += sliceDurationMs / slice.speed;
-				continue;
-			}
-			// Source time falls within this slice
-			outputMs += (sourceMs - slice.sourceStartMs) / slice.speed;
-			return outputMs;
-		}
-
-		return outputMs;
 	}
 
 	// Schedule an AudioBuffer through the timeline slices in an OfflineAudioContext.
