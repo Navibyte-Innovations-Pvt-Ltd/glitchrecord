@@ -259,6 +259,8 @@ interface GlitchgrabLogPanelProps {
 	avatarRegions?: Array<{ id: string; startMs: number; endMs: number }>;
 	onAddAvatarSpotlight?: (startMs: number) => void;
 	onRemoveAvatarSpotlight?: (id: string) => void;
+	/** Restored clip path (from the persisted overlay) so the panel preview survives reload. */
+	initialAvatarClip?: string | null;
 }
 
 type AvatarPositionPreset =
@@ -289,6 +291,7 @@ export function GlitchgrabLogPanel({
 	avatarRegions,
 	onAddAvatarSpotlight,
 	onRemoveAvatarSpotlight,
+	initialAvatarClip,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -623,6 +626,26 @@ export function GlitchgrabLogPanel({
 			openAvatarGroup({ id: gid, name: gname }, lookId ?? undefined);
 		}
 	}, [openAvatarGroup, savedAvatarSelection]);
+	// Restore the previously generated clip so the panel preview AND the main PiP
+	// survive a reload — no re-generating. Prefer the persisted overlay clip,
+	// fall back to our own localStorage copy.
+	const restoredClipRef = useRef(false);
+	useEffect(() => {
+		if (restoredClipRef.current || avatarPath) return;
+		const fromStorage = storageKey ? localStorage.getItem(`gg.avatar.clip.${storageKey}`) : null;
+		const clip = initialAvatarClip || fromStorage;
+		if (!clip) return;
+		restoredClipRef.current = true;
+		setAvatarPath(clip);
+		onAvatarReady?.(clip, avatarShape); // re-attach to the main overlay
+	}, [initialAvatarClip, avatarPath, storageKey, onAvatarReady, avatarShape]);
+
+	// Persist the generated clip path (panel-side fallback).
+	useEffect(() => {
+		if (!storageKey || !avatarPath) return;
+		localStorage.setItem(`gg.avatar.clip.${storageKey}`, avatarPath);
+	}, [avatarPath, storageKey]);
+
 	// Resolve a playable URL for the generated clip preview.
 	useEffect(() => {
 		if (!avatarPath) {
