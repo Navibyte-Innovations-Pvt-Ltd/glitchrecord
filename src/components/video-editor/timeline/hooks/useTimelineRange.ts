@@ -1,5 +1,5 @@
 import type { Range } from "dnd-timeline";
-import { useCallback, useEffect, useMemo, useState, type RefObject, type WheelEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type WheelEvent } from "react";
 import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
 
 interface UseTimelineRangeParams {
@@ -43,9 +43,16 @@ export function resolveTimelineWheelPanDeltaPx({
 
 export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineRangeParams) {
 	const [range, setRange] = useState<Range>(() => createInitialRange(totalMs));
+	const prevTotalMsRef = useRef(totalMs);
 
 	useEffect(() => {
-		setRange(createInitialRange(totalMs));
+		const prevTotalMs = prevTotalMsRef.current;
+		prevTotalMsRef.current = totalMs;
+		// Only reset zoom on first load (0 → non-zero). Speed/stretch changes
+		// totalMs while the user has a zoom level set — don't clobber it.
+		if (prevTotalMs === 0 && totalMs > 0) {
+			setRange(createInitialRange(totalMs));
+		}
 	}, [totalMs]);
 
 	const clampedRange = useMemo<Range>(() => {
