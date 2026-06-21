@@ -2,8 +2,20 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
+import { app } from "electron";
 import { approvedLocalReadPaths } from "./ipc/state";
 import { getMediaContentType } from "./mediaTypes";
+
+// Generated avatar clips live in a fixed app dir. The session approved-path set is
+// reset per project load (recordings/webcam), which would 403 the avatar clip — so
+// we permanently allow our own avatars dir.
+let cachedAvatarsDir: string | null = null;
+function avatarsDir(): string {
+	if (!cachedAvatarsDir) {
+		cachedAvatarsDir = path.resolve(app.getPath("userData"), "avatars");
+	}
+	return cachedAvatarsDir;
+}
 
 let mediaServerBaseUrl: string | null = null;
 let mediaServerStartPromise: Promise<string> | null = null;
@@ -59,7 +71,11 @@ async function resolveRealPath(filePath: string): Promise<string | null> {
 }
 
 export function isAllowedMediaPath(realPath: string): boolean {
-	return approvedLocalReadPaths.has(realPath);
+	if (approvedLocalReadPaths.has(realPath)) return true;
+	// Always serve our own generated avatar clips.
+	const dir = avatarsDir();
+	const resolved = path.resolve(realPath);
+	return resolved === dir || resolved.startsWith(dir + path.sep);
 }
 
 async function handleMediaRequest(
