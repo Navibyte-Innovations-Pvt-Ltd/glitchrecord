@@ -55,8 +55,8 @@ export function getAvatarBubbleLayout({
 		size,
 		margin: settings.margin,
 		positionPreset: settings.positionPreset,
-		positionX: 1,
-		positionY: 1,
+		positionX: settings.positionX ?? 1,
+		positionY: settings.positionY ?? 1,
 		legacyCorner: "bottom-right",
 	});
 	const borderRadius = settings.shape === "circle" ? size / 2 : Math.round(size * 0.12);
