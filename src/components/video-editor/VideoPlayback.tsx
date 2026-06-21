@@ -3161,13 +3161,24 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 									touchAction: "none",
 								}}
 							>
+								{/* Placeholder image behind — guarantees the box is never empty
+									even if the video fails to paint/load. */}
+								{avatarPreviewUrl ? (
+									<img
+										src={avatarPreviewUrl}
+										alt=""
+										aria-hidden="true"
+										className="pointer-events-none absolute inset-0 block h-full w-full object-cover"
+										style={{ objectPosition: avatarObjectPosition }}
+									/>
+								) : null}
 								{avatarVideoPath ? (
 									<>
 										{/* biome-ignore lint/a11y/useMediaCaption: decorative avatar overlay */}
 										<video
 											ref={avatarVideoRef}
 											src={avatarVideoPath}
-											className="pointer-events-none block h-full w-full object-cover"
+											className="pointer-events-none absolute inset-0 block h-full w-full object-cover"
 											style={{ objectPosition: avatarObjectPosition }}
 											autoPlay
 											muted
@@ -3175,9 +3186,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											preload="auto"
 											aria-hidden="true"
 											onLoadedData={(e) => {
-												// autoPlay decodes + paints a first frame (so the box is never
-												// transparent); then snap to the playhead and let the sync loop
-												// pause it if the timeline is paused.
 												const v = e.currentTarget as HTMLVideoElement;
 												try {
 													v.currentTime = Math.max(
@@ -3188,17 +3196,16 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 													/* metadata not ready — the sync loop will retry */
 												}
 											}}
+											onError={(e) => {
+												console.error(
+													"[GG-avatar] video failed to load",
+													avatarVideoPath,
+													(e.currentTarget as HTMLVideoElement).error,
+												);
+											}}
 										/>
 									</>
-								) : (
-									<img
-										src={avatarPreviewUrl ?? undefined}
-										alt=""
-										aria-hidden="true"
-										className="pointer-events-none block h-full w-full object-cover"
-										style={{ objectPosition: avatarObjectPosition }}
-									/>
-								)}
+								) : null}
 							</div>
 						) : null}
 						{activeCaptionLayout && autoCaptionSettings ? (
