@@ -1760,33 +1760,32 @@ export function GlitchgrabLogPanel({
 						</div>
 					)}
 
-					{avatarSource === "photo" && (
-						<div className="flex flex-col gap-1">
-							<span className="text-[10px] uppercase tracking-wide text-foreground/40">
-								Quality
-							</span>
-							<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
-								{(
-									[
-										["photo", "Photo Avatar", "~$3 / 3-min"],
-										["iv", "Avatar IV", "~$12 / 3-min"],
-									] as const
-								).map(([val, label, cost]) => (
-									<button
-										key={val}
-										type="button"
-										onClick={() => setAvatarTier(val)}
-										className={`flex flex-1 flex-col items-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarTier === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
-									>
-										{label}
-										<span className="text-[9px] text-foreground/40">
-											{cost}
-										</span>
-									</button>
-								))}
-							</div>
+					<div className="flex flex-col gap-1">
+						<span className="text-[10px] uppercase tracking-wide text-foreground/40">
+							Quality / lip-sync
+						</span>
+						<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+							{(
+								[
+									["photo", "Photo Avatar", "~$3 / 3-min"],
+									["iv", "Avatar IV", "~$12 / 3-min"],
+								] as const
+							).map(([val, label, cost]) => (
+								<button
+									key={val}
+									type="button"
+									onClick={() => setAvatarTier(val)}
+									className={`flex flex-1 flex-col items-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarTier === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
+								>
+									{label}
+									<span className="text-[9px] text-foreground/40">{cost}</span>
+								</button>
+							))}
 						</div>
-					)}
+						<span className="text-[9px] text-foreground/35">
+							Avatar IV = better lip-sync (esp. non-English), 4× the cost.
+						</span>
+					</div>
 
 					<div className="flex flex-col gap-1">
 						<span className="text-[10px] uppercase tracking-wide text-foreground/40">
