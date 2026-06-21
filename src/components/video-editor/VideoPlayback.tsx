@@ -352,6 +352,8 @@ interface VideoPlaybackProps {
 	cropRegion?: import("./types").CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamVideoPath?: string | null;
+	avatarOverlay?: import("./types").AvatarOverlaySettings;
+	avatarVideoPath?: string | null;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
 	aspectRatio: AspectRatio;
@@ -435,6 +437,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cropRegion,
 			webcam,
 			webcamVideoPath,
+			avatarOverlay,
+			avatarVideoPath,
 			trimRegions = [],
 			speedRegions = [],
 			aspectRatio,
@@ -517,6 +521,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
 		const webcamBubbleRef = useRef<HTMLDivElement | null>(null);
 		const webcamBubbleInnerRef = useRef<HTMLDivElement | null>(null);
+		const avatarBubbleRef = useRef<HTMLDivElement | null>(null);
+		const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
 		const [webcamVideoDimensions, setWebcamVideoDimensions] = useState<{
 			width: number;
 			height: number;
@@ -872,6 +878,85 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				webcamVideoPath,
 			],
 		);
+
+		// ── Avatar PiP overlay (HeyGen talking head) ────────────────
+		// Enabled once we have either the generated clip OR a look thumbnail to
+		// preview the layout before spending credits on generation.
+		const avatarPreviewUrl = avatarOverlay?.previewUrl ?? null;
+		const avatarEnabled =
+			(avatarOverlay?.enabled ?? false) && !!(avatarVideoPath || avatarPreviewUrl);
+		const avatarSize = avatarOverlay?.size ?? 26;
+		const avatarMargin = avatarOverlay?.margin ?? 24;
+		const avatarPositionPreset = avatarOverlay?.positionPreset ?? "bottom-right";
+		const avatarShape = avatarOverlay?.shape ?? "box";
+		const applyAvatarBubbleLayout = useCallback(() => {
+			const bubble = avatarBubbleRef.current;
+			const overlay = overlayRef.current;
+			if (!bubble || !overlay || !avatarEnabled) {
+				if (bubble) bubble.style.display = "none";
+				return;
+			}
+			const size = getWebcamOverlaySizePx({
+				containerWidth: overlay.clientWidth,
+				containerHeight: overlay.clientHeight,
+				sizePercent: avatarSize,
+				margin: avatarMargin,
+				zoomScale: 1,
+				reactToZoom: false,
+			});
+			const { x, y } = getWebcamOverlayPosition({
+				containerWidth: overlay.clientWidth,
+				containerHeight: overlay.clientHeight,
+				size,
+				margin: avatarMargin,
+				positionPreset: avatarPositionPreset,
+				positionX: 1,
+				positionY: 1,
+				legacyCorner: "bottom-right",
+			});
+			bubble.style.display = "block";
+			bubble.style.left = `${x}px`;
+			bubble.style.top = `${y}px`;
+			bubble.style.width = `${size}px`;
+			bubble.style.height = `${size}px`;
+			bubble.style.borderRadius =
+				avatarShape === "circle" ? "50%" : `${Math.round(size * 0.12)}px`;
+			bubble.style.overflow = "hidden";
+			bubble.style.boxShadow = `0 ${Math.round(size * 0.05)}px ${Math.round(size * 0.18)}px rgba(0,0,0,0.35)`;
+		}, [avatarEnabled, avatarSize, avatarMargin, avatarPositionPreset, avatarShape]);
+
+		// Re-apply avatar layout on prop changes and container resizes.
+		useEffect(() => {
+			applyAvatarBubbleLayout();
+			const overlay = overlayRef.current;
+			if (!overlay || typeof ResizeObserver === "undefined") return;
+			const ro = new ResizeObserver(() => applyAvatarBubbleLayout());
+			ro.observe(overlay);
+			return () => ro.disconnect();
+		}, [applyAvatarBubbleLayout]);
+
+		// Keep the avatar clip roughly in sync with the timeline: play/pause with
+		// the player and seek when the playhead jumps. (Lip-sync to narration is
+		// exact because the clip's own audio drove generation; we mute it here and
+		// let the narration track carry the sound.)
+		useEffect(() => {
+			const v = avatarVideoRef.current;
+			if (!v || !avatarEnabled) return;
+			const tick = () => {
+				const target = Math.max(0, currentTimeRef.current / 1000);
+				if (Number.isFinite(target) && Math.abs(v.currentTime - target) > 0.25) {
+					try {
+						v.currentTime = target;
+					} catch {
+						/* seeking before metadata — ignore */
+					}
+				}
+				if (isPlayingRef.current && v.paused) void v.play().catch(() => undefined);
+				else if (!isPlayingRef.current && !v.paused) v.pause();
+			};
+			const id = window.setInterval(tick, 120);
+			return () => window.clearInterval(id);
+		}, [avatarEnabled]);
 
 		const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
 			return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
@@ -2941,6 +3026,38 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										</div>
 									</div>
 								</div>
+							</div>
+						) : null}
+						{avatarOverlay && (avatarVideoPath || avatarPreviewUrl) ? (
+							<div
+								ref={avatarBubbleRef}
+								className="absolute"
+								style={{
+									display: avatarEnabled ? "block" : "none",
+									pointerEvents: "none",
+								}}
+							>
+								{avatarVideoPath ? (
+									<>
+										{/* biome-ignore lint/a11y/useMediaCaption: decorative avatar overlay */}
+										<video
+											ref={avatarVideoRef}
+											src={avatarVideoPath}
+											className="pointer-events-none block h-full w-full object-cover"
+											muted
+											playsInline
+											preload="auto"
+											aria-hidden="true"
+										/>
+									</>
+								) : (
+									<img
+										src={avatarPreviewUrl ?? undefined}
+										alt=""
+										aria-hidden="true"
+										className="pointer-events-none block h-full w-full object-cover"
+									/>
+								)}
 							</div>
 						) : null}
 						{activeCaptionLayout && autoCaptionSettings ? (
