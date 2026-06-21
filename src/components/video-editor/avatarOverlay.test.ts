@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getAvatarBubbleLayout, isAvatarOverlayVisible } from "./avatarOverlay";
+import {
+	getAvatarBubbleLayout,
+	getAvatarObjectPosition,
+	isAvatarOverlayVisible,
+	panAvatarFraming,
+} from "./avatarOverlay";
 import { DEFAULT_AVATAR_OVERLAY } from "./types";
 
 const base = { ...DEFAULT_AVATAR_OVERLAY, enabled: true };
@@ -31,6 +36,59 @@ describe("isAvatarOverlayVisible", () => {
 		expect(isAvatarOverlayVisible({ ...base, previewUrl: null }, "file:///avatar.mp4")).toBe(
 			true,
 		);
+	});
+});
+
+describe("getAvatarObjectPosition (face framing inside the box)", () => {
+	it("formats both axes as percentages", () => {
+		expect(getAvatarObjectPosition({ ...base, framingX: 50, framingY: 22 })).toBe("50% 22%");
+		expect(getAvatarObjectPosition({ ...base, framingX: 0, framingY: 100 })).toBe("0% 100%");
+	});
+	it("clamps out-of-range values", () => {
+		expect(getAvatarObjectPosition({ ...base, framingX: -20, framingY: 180 })).toBe("0% 100%");
+	});
+	it("falls back when NaN (so the style is never 'NaN%')", () => {
+		expect(
+			getAvatarObjectPosition({ ...base, framingX: Number.NaN, framingY: Number.NaN }),
+		).toBe("50% 22%");
+	});
+});
+
+describe("panAvatarFraming (Shift+drag to slide the face)", () => {
+	it("dragging right reveals the left side (framingX decreases)", () => {
+		const r = panAvatarFraming({
+			startX: 50,
+			startY: 50,
+			deltaXpx: 100,
+			deltaYpx: 0,
+			boxW: 200,
+			boxH: 200,
+		});
+		expect(r.framingX).toBe(0); // 50 - (100/200)*100 = 0
+		expect(r.framingY).toBe(50);
+	});
+	it("dragging down reveals the top (framingY decreases)", () => {
+		const r = panAvatarFraming({
+			startX: 50,
+			startY: 50,
+			deltaXpx: 0,
+			deltaYpx: 50,
+			boxW: 200,
+			boxH: 200,
+		});
+		expect(r.framingY).toBe(25); // 50 - (50/200)*100
+	});
+	it("clamps to 0–100", () => {
+		const r = panAvatarFraming({
+			startX: 10,
+			startY: 90,
+			deltaXpx: 500,
+			deltaYpx: -500,
+			boxW: 200,
+			boxH: 200,
+		});
+		expect(r.framingX).toBe(0);
+		expect(r.framingY).toBe(100);
 	});
 });
 
