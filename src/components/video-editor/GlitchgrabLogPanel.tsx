@@ -255,6 +255,10 @@ interface GlitchgrabLogPanelProps {
 		size?: number;
 		framingY?: number;
 	}) => void;
+	/** Spotlight regions (avatar goes full-frame) + add/remove at the playhead. */
+	avatarRegions?: Array<{ id: string; startMs: number; endMs: number }>;
+	onAddAvatarSpotlight?: (startMs: number) => void;
+	onRemoveAvatarSpotlight?: (id: string) => void;
 }
 
 type AvatarPositionPreset =
@@ -282,6 +286,9 @@ export function GlitchgrabLogPanel({
 	onAvatarReady,
 	onAvatarPreview,
 	onAvatarSettings,
+	avatarRegions,
+	onAddAvatarSpotlight,
+	onRemoveAvatarSpotlight,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -1844,6 +1851,52 @@ export function GlitchgrabLogPanel({
 						<span className="text-[9px] text-foreground/35">
 							Lower = more of the top. Or <b>Shift+drag</b> the avatar to pan the
 							face.
+						</span>
+					</div>
+
+					{/* Spotlight — avatar grows to full-frame for a moment */}
+					<div className="flex flex-col gap-1.5">
+						<span className="text-[10px] uppercase tracking-wide text-foreground/40">
+							Full-screen moments
+						</span>
+						<button
+							type="button"
+							onClick={() => {
+								const sec = playbackRef?.current?.timelineTime ?? 0;
+								onAddAvatarSpotlight?.(Math.max(0, sec * 1000));
+							}}
+							className="flex items-center justify-center gap-1.5 rounded-md border border-foreground/15 bg-foreground/[0.04] px-2.5 py-1.5 text-[11px] text-foreground/70 transition-colors hover:border-blue-500/40 hover:text-foreground"
+						>
+							<UserCircle className="h-3.5 w-3.5" /> Avatar full-screen at playhead
+						</button>
+						{avatarRegions && avatarRegions.length > 0 && (
+							<div className="flex flex-col gap-1">
+								{avatarRegions
+									.slice()
+									.sort((a, b) => a.startMs - b.startMs)
+									.map((r) => (
+										<div
+											key={r.id}
+											className="flex items-center justify-between rounded border border-foreground/10 bg-foreground/[0.03] px-2 py-1 text-[10px] text-foreground/60"
+										>
+											<span className="font-mono">
+												{formatStartSec(r.startMs / 1000)} →{" "}
+												{formatStartSec(r.endMs / 1000)}
+											</span>
+											<button
+												type="button"
+												onClick={() => onRemoveAvatarSpotlight?.(r.id)}
+												className="text-foreground/40 transition-colors hover:text-red-400"
+												title="Remove"
+											>
+												✕
+											</button>
+										</div>
+									))}
+							</div>
+						)}
+						<span className="text-[9px] text-foreground/35">
+							Avatar slides from the corner to full-screen for ~3s, then back.
 						</span>
 					</div>
 
