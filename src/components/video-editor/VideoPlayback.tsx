@@ -3189,13 +3189,19 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											src={avatarVideoPath}
 											className="pointer-events-none absolute inset-0 block h-full w-full object-cover"
 											style={{ objectPosition: avatarObjectPosition }}
-											autoPlay
 											muted
 											playsInline
 											preload="auto"
 											aria-hidden="true"
 											onLoadedData={(e) => {
 												const v = e.currentTarget as HTMLVideoElement;
+												// React's `muted` attribute is unreliable — force the property so
+												// the clip's baked-in narration audio never leaks (the timeline
+												// narration track is the only audio). NO autoplay: the clip plays
+												// only when the editor is playing (driven by the sync loop). We
+												// just seek once to paint a first frame so the box isn't empty.
+												v.muted = true;
+												v.volume = 0;
 												try {
 													v.currentTime = Math.max(
 														0.05,
