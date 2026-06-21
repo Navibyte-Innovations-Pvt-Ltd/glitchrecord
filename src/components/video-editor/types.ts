@@ -144,6 +144,32 @@ export interface WebcamOverlaySettings {
 	margin: number;
 }
 
+// AI talking-head avatar overlay (HeyGen). A generated clip shown as a PiP over
+// the recording; lip-syncs the narration. Modeled on the webcam overlay.
+export interface AvatarOverlaySettings {
+	enabled: boolean;
+	/** Local path to the generated avatar clip (mp4/webm). */
+	sourcePath: string | null;
+	/** Look/preview thumbnail (HeyGen URL) — shown before a clip exists. */
+	previewUrl: string | null;
+	positionPreset: WebcamPositionPreset;
+	/** Overlay size as % of the stage's shorter side. */
+	size: number;
+	/** "box" = rounded rectangle; "circle" = round cutout. */
+	shape: "box" | "circle";
+	margin: number;
+}
+
+export const DEFAULT_AVATAR_OVERLAY: AvatarOverlaySettings = {
+	enabled: false,
+	sourcePath: null,
+	previewUrl: null,
+	positionPreset: "bottom-right",
+	size: 26,
+	shape: "box",
+	margin: 24,
+};
+
 export const DEFAULT_CURSOR_SIZE = 3.0;
 export const DEFAULT_CURSOR_SMOOTHING = 0.67;
 export const DEFAULT_CURSOR_MOTION_BLUR = 0.4;
