@@ -14,6 +14,7 @@ import {
 	NoteBlank,
 	Sparkle,
 	TextT,
+	UserCircle,
 } from "@phosphor-icons/react";
 
 interface CaptureEvent {
@@ -239,7 +240,23 @@ export function GlitchgrabLogPanel({
 	const [narrationError, setNarrationError] = useState<string | null>(null);
 	const [narrationStage, setNarrationStage] = useState("");
 	const [narrationElapsed, setNarrationElapsed] = useState(0);
-	const [tab, setTab] = useState<"events" | "narration">("events");
+	const [tab, setTab] = useState<"events" | "narration" | "avatar">("events");
+
+	// ── Avatar (HeyGen talking head) state ──────────────────────
+	const [avatarPhotoPath, setAvatarPhotoPath] = useState<string | null>(null);
+	const [avatarTier, setAvatarTier] = useState<"photo" | "iv">(
+		() => (localStorage.getItem("gg.avatar.tier") as "photo" | "iv") || "photo",
+	);
+	// "box" = opaque rounded PiP; "circle" = transparent matte we key out.
+	const [avatarShape, setAvatarShape] = useState<"box" | "circle">(
+		() => (localStorage.getItem("gg.avatar.shape") as "box" | "circle") || "box",
+	);
+	const [avatarBusy, setAvatarBusy] = useState(false);
+	const [avatarStage, setAvatarStage] = useState("");
+	const [avatarPath, setAvatarPath] = useState<string | null>(null);
+	const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+	const [avatarError, setAvatarError] = useState<string | null>(null);
+	const [avatarHasKey, setAvatarHasKey] = useState<boolean | null>(null);
 	// TTS model/voice settings — restored from localStorage so the user picks once.
 	const [engine, setEngine] = useState(() => localStorage.getItem("gg.tts.engine") || "sarvam");
 	const [lang, setLang] = useState(() => localStorage.getItem("gg.tts.lang") || "hi");
@@ -289,6 +306,15 @@ export function GlitchgrabLogPanel({
 				revealInFolder?: (p: string) => void;
 				onNarrationProgress?: (cb: (stage: string) => void) => () => void;
 				narrationKeyStatus?: () => Promise<{ hasSarvamKey: boolean }>;
+				generateAvatar?: (opts: {
+					photoPath: string;
+					audioPath: string;
+					tier: "photo" | "iv";
+					transparent?: boolean;
+				}) => Promise<{ ok: boolean; path?: string; format?: "webm" | "mp4"; error?: string }>;
+				avatarKeyStatus?: () => Promise<{ hasKey: boolean }>;
+				pickAvatarPhoto?: () => Promise<{ path: string | null }>;
+				onAvatarProgress?: (cb: (stage: string) => void) => () => void;
 			};
 		}).electronAPI;
 
@@ -297,6 +323,57 @@ export function GlitchgrabLogPanel({
 		const unsub = electronAPI()?.onNarrationProgress?.((stage) => setNarrationStage(stage));
 		return () => unsub?.();
 	}, []);
+
+	// ── Avatar wiring ───────────────────────────────────────────
+	useEffect(() => {
+		electronAPI()?.avatarKeyStatus?.().then((s) => setAvatarHasKey(!!s?.hasKey)).catch(() => setAvatarHasKey(false));
+	}, []);
+	useEffect(() => {
+		const unsub = electronAPI()?.onAvatarProgress?.((stage) => setAvatarStage(stage));
+		return () => unsub?.();
+	}, []);
+	useEffect(() => { localStorage.setItem("gg.avatar.tier", avatarTier); }, [avatarTier]);
+	useEffect(() => { localStorage.setItem("gg.avatar.shape", avatarShape); }, [avatarShape]);
+	// Resolve a playable URL for the generated clip preview.
+	useEffect(() => {
+		if (!avatarPath) { setAvatarUrl(null); return; }
+		let alive = true;
+		electronAPI()?.getLocalMediaUrl?.(avatarPath).then((r) => {
+			if (alive && r?.success && r.url) setAvatarUrl(r.url);
+		}).catch(() => {});
+		return () => { alive = false; };
+	}, [avatarPath]);
+
+	const pickAvatarPhoto = useCallback(async () => {
+		const res = await electronAPI()?.pickAvatarPhoto?.();
+		if (res?.path) setAvatarPhotoPath(res.path);
+	}, []);
+
+	const generateAvatar = useCallback(async () => {
+		const api = electronAPI();
+		if (!api?.generateAvatar) return;
+		if (!avatarPhotoPath) { setAvatarError("Choose a photo first"); return; }
+		if (!narrationPath) { setAvatarError("Generate narration audio first (Narration tab)"); return; }
+		setAvatarBusy(true);
+		setAvatarError(null);
+		setAvatarPath(null);
+		setAvatarStage("Starting…");
+		try {
+			const res = await api.generateAvatar({
+				photoPath: avatarPhotoPath,
+				audioPath: narrationPath,
+				tier: avatarTier,
+				transparent: avatarShape === "circle",
+			});
+			if (res.ok && res.path) setAvatarPath(res.path);
+			else setAvatarError(res.error || "Avatar generation failed");
+		} catch (e) {
+			setAvatarError(e instanceof Error ? e.message : "Avatar generation failed");
+		} finally {
+			setAvatarBusy(false);
+			setAvatarStage("");
+		}
+	}, [avatarPhotoPath, narrationPath, avatarTier, avatarShape]);
 
 	// AI script arrives from the bridge after a recording stops → stash it and
 	// jump to the Narration tab so the "Use AI script" button is visible.
@@ -766,6 +843,17 @@ export function GlitchgrabLogPanel({
 				>
 					<Sparkle className="h-3.5 w-3.5" /> Narration
 				</button>
+				<button
+					type="button"
+					onClick={() => setTab("avatar")}
+					className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+						tab === "avatar"
+							? "bg-foreground/10 text-foreground"
+							: "text-foreground/50 hover:text-foreground/80"
+					}`}
+				>
+					<UserCircle className="h-3.5 w-3.5" /> Avatar
+				</button>
 			</div>
 
 			{tab === "events" && (
@@ -1053,6 +1141,90 @@ export function GlitchgrabLogPanel({
 				)}
 			</div>
 			)}
+			{tab === "avatar" && (
+			<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-1" style={{ scrollbarWidth: "thin" }}>
+				<p className="text-[11px] leading-snug text-foreground/50">
+					Add an AI talking-head that lip-syncs your narration. Generate narration first, then pick a photo.
+				</p>
+
+				{avatarHasKey === false && (
+					<p className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] px-2.5 py-1.5 text-[10px] text-amber-300/90">
+						HEYGEN_API_KEY not set — add it to the environment to enable avatar generation.
+					</p>
+				)}
+
+				<button
+					type="button"
+					onClick={pickAvatarPhoto}
+					className="flex items-center justify-between rounded-md border border-foreground/10 bg-foreground/[0.04] px-2.5 py-2 text-[11px] text-foreground/70 transition-colors hover:border-foreground/25"
+				>
+					<span className="flex items-center gap-1.5"><UserCircle className="h-3.5 w-3.5" /> {avatarPhotoPath ? "Change photo" : "Choose avatar photo"}</span>
+					{avatarPhotoPath && <span className="max-w-[160px] truncate font-mono text-[9px] text-foreground/40">{avatarPhotoPath.split("/").pop()}</span>}
+				</button>
+
+				<div className="flex flex-col gap-1">
+					<span className="text-[10px] uppercase tracking-wide text-foreground/40">Quality</span>
+					<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+						{([["photo", "Photo Avatar", "~$3 / 3-min"], ["iv", "Avatar IV", "~$12 / 3-min"]] as const).map(([val, label, cost]) => (
+							<button
+								key={val}
+								type="button"
+								onClick={() => setAvatarTier(val)}
+								className={`flex flex-1 flex-col items-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarTier === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
+							>
+								{label}
+								<span className="text-[9px] text-foreground/40">{cost}</span>
+							</button>
+						))}
+					</div>
+				</div>
+
+				<div className="flex flex-col gap-1">
+					<span className="text-[10px] uppercase tracking-wide text-foreground/40">Shape</span>
+					<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
+						{([["box", "Rounded box"], ["circle", "Circle (cutout)"]] as const).map(([val, label]) => (
+							<button
+								key={val}
+								type="button"
+								onClick={() => setAvatarShape(val)}
+								className={`flex flex-1 items-center justify-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${avatarShape === val ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80"}`}
+							>
+								{label}
+							</button>
+						))}
+					</div>
+				</div>
+
+				<button
+					type="button"
+					onClick={generateAvatar}
+					disabled={avatarBusy || !avatarPhotoPath || !narrationPath}
+					className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[12px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
+					title={!narrationPath ? "Generate narration audio first" : !avatarPhotoPath ? "Choose a photo first" : "Generate the talking-head avatar"}
+				>
+					{avatarBusy ? (<><ArrowClockwise className="h-3.5 w-3.5 animate-spin" /> {avatarStage || "Generating…"}</>) : (<><UserCircle className="h-3.5 w-3.5" /> Generate avatar</>)}
+				</button>
+
+				{!narrationPath && <p className="text-[10px] text-foreground/40">No narration audio yet — make it in the Narration tab.</p>}
+				{avatarError && <p className="text-[11px] text-red-400/80">{avatarError}</p>}
+
+				{avatarUrl && (
+					<div className="flex flex-col gap-1.5">
+						<span className="text-[10px] uppercase tracking-wide text-foreground/40">Preview</span>
+						{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+						<video src={avatarUrl} controls className="w-full rounded-md border border-foreground/10 bg-black" />
+						<button
+							type="button"
+							onClick={() => { if (avatarPath) electronAPI()?.revealInFolder?.(avatarPath); }}
+							className="text-left text-[11px] text-foreground/50 transition-colors hover:text-foreground/80"
+						>
+							Reveal file →
+						</button>
+					</div>
+				)}
+			</div>
+			)}
+
 			{!scriptOpen && createPortal(
 			<button type="button" data-testid="gg-script-toggle" onClick={() => setScriptOpen(true)} title="Open script writer" className="absolute right-2 top-2 z-30 flex items-center gap-1.5 rounded-md border border-blue-500/30 bg-background/90 px-2.5 py-1.5 text-[11px] font-medium text-blue-300 shadow-md backdrop-blur transition hover:bg-blue-500/10">
 			<Sparkle className="h-3.5 w-3.5" /> Script
