@@ -2745,14 +2745,22 @@ export default function VideoEditor() {
 		if (!currentSourcePath || restoredAvatarProjectRef.current === currentSourcePath) return;
 		restoredAvatarProjectRef.current = currentSourcePath;
 		try {
+			// The generated clip is saved under its own key on generation — treat it
+			// as authoritative so a reload never drops back to the placeholder image.
+			const clipPath = localStorage.getItem(`gg.avatar.clip.${currentSourcePath}`);
 			const raw = localStorage.getItem(`gg.avatar.proj.${currentSourcePath}`);
-			if (!raw) return;
-			const d = JSON.parse(raw) as {
-				overlay?: AvatarOverlaySettings;
-				regions?: AvatarRegion[];
-			};
-			if (d.overlay) setAvatarOverlay({ ...DEFAULT_AVATAR_OVERLAY, ...d.overlay });
-			if (Array.isArray(d.regions)) setAvatarRegions(d.regions);
+			if (!raw && !clipPath) return;
+			let overlay = { ...DEFAULT_AVATAR_OVERLAY };
+			if (raw) {
+				const d = JSON.parse(raw) as {
+					overlay?: AvatarOverlaySettings;
+					regions?: AvatarRegion[];
+				};
+				if (d.overlay) overlay = { ...overlay, ...d.overlay };
+				if (Array.isArray(d.regions)) setAvatarRegions(d.regions);
+			}
+			if (clipPath) overlay = { ...overlay, enabled: true, sourcePath: clipPath };
+			if (overlay.sourcePath || overlay.previewUrl) setAvatarOverlay(overlay);
 		} catch {
 			/* corrupt entry — ignore */
 		}
