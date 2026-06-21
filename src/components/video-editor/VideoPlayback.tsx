@@ -1055,23 +1055,32 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					/* metadata not ready — retry next tick */
 				}
 			};
+			let lastReseek = 0;
 			const tick = () => {
 				const target = Math.max(0, currentTimeRef.current / 1000);
 				if (!Number.isFinite(target)) return;
 				if (isPlayingRef.current) {
+					// PLAYING: let the clip run at 1× (lips animate). Only re-align on a
+					// BIG jump (a scrub) and at most ~once/sec — seeking a playing video
+					// every tick interrupts decode and freezes the lips.
 					if (v.paused) {
 						seek(target);
 						void v.play().catch(() => undefined);
-					} else if (Math.abs(v.currentTime - target) > 0.3) {
-						seek(target); // drift correction only
+					} else if (Math.abs(v.currentTime - target) > 0.75) {
+						const now = Date.now();
+						if (now - lastReseek > 1000) {
+							seek(target);
+							lastReseek = now;
+						}
 					}
 				} else {
+					// PAUSED: hold the exact playhead frame.
 					if (!v.paused) v.pause();
-					if (Math.abs(v.currentTime - target) > 0.08) seek(target); // exact frame
+					if (Math.abs(v.currentTime - target) > 0.08) seek(target);
 				}
 			};
 			tick();
-			const id = window.setInterval(tick, 200);
+			const id = window.setInterval(tick, 250);
 			return () => window.clearInterval(id);
 		}, [avatarEnabled]);
 
