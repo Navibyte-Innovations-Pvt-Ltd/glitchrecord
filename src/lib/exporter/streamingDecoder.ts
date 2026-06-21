@@ -73,6 +73,11 @@ export class StreamingVideoDecoder {
 	private demuxer: WebDemuxer | null = null;
 	private decoder: WorkerVideoDecoder | null = null;
 	private cancelled = false;
+	// Set by decodeAll() while a run is active: wakes the consumer/feed loops that
+	// may be parked inside an `await` (frameResolve / backpressure waiters) so
+	// cancel() can actually unwind them — the boolean flag alone never resolves a
+	// pending promise. Null when no run is in flight.
+	private cancelWake: (() => void) | null = null;
 	private metadata: DecodedVideoInfo | null = null;
 	private pendingFrames: VideoFrame[] = [];
 	private readonly maxDecodeQueue: number;
@@ -261,6 +266,18 @@ export class StreamingVideoDecoder {
 		let decodeDone = false;
 		let firstDecodedFrameTimestampUs: number | null = null;
 		let decodedFrameTimelineOffsetUs = 0;
+
+		// Let cancel() unwind whichever loop is parked: settle a pending
+		// getNextFrame() and release backpressure waiters. Both loops re-check
+		// `this.cancelled` at their tops and then break.
+		this.cancelWake = () => {
+			if (frameResolve) {
+				const resolve = frameResolve;
+				frameResolve = null;
+				resolve(null);
+			}
+			notifyBackpressureProgress();
+		};
 
 		this.decoder = new WorkerVideoDecoder({
 			output: (frame: VideoFrame) => {
@@ -555,6 +572,7 @@ export class StreamingVideoDecoder {
 			this.decoder.close();
 		}
 		this.decoder = null;
+		this.cancelWake = null;
 
 		const requiredEndSec = segments.length > 0 ? segments[segments.length - 1].endSec : 0;
 		if (
@@ -656,6 +674,10 @@ export class StreamingVideoDecoder {
 
 	cancel(): void {
 		this.cancelled = true;
+		// Wake a consumer parked in getNextFrame() or a feed loop parked on
+		// backpressure — the flag alone never settles those promises, so without
+		// this the decode loop (and the whole export) hangs on cancel.
+		this.cancelWake?.();
 	}
 
 	getDemuxer() {
