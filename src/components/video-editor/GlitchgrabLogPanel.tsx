@@ -1842,7 +1842,8 @@ export function GlitchgrabLogPanel({
 							className="w-full"
 						/>
 						<span className="text-[9px] text-foreground/35">
-							Lower = show more of the top (face)
+							Lower = more of the top. Or <b>Shift+drag</b> the avatar to pan the
+							face.
 						</span>
 					</div>
 
