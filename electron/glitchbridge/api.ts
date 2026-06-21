@@ -121,6 +121,10 @@ export async function generateScript(params: {
 export async function getNoteQuestions(params: {
   token: string;
   sessionId: string;
+  // PASS 2: a screenshot per still-unclear group (id → data URL). When present
+  // the API re-judges those groups WITH the picture and returns only the ones
+  // vision still can't resolve. Omit for PASS 1 (text-only).
+  frames?: Array<{ id: string; dataUrl: string }>;
 }): Promise<
   | { questions: Array<{ id: string; tMs: number; label: string; question: string; options: string[] }> }
   | { error: string }
@@ -132,6 +136,7 @@ export async function getNoteQuestions(params: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${params.token}`,
       },
+      body: params.frames && params.frames.length > 0 ? JSON.stringify({ frames: params.frames }) : undefined,
     });
     const data = (await res.json().catch(() => null)) as
       | { success: boolean; data?: { questions: Array<{ id: string; tMs: number; label: string; question: string; options: string[] }> }; error?: string }
