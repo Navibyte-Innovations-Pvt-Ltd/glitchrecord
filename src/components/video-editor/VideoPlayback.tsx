@@ -925,14 +925,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			bubble.style.boxShadow = `0 ${Math.round(size * 0.05)}px ${Math.round(size * 0.18)}px rgba(0,0,0,0.35)`;
 		}, [avatarEnabled, avatarSize, avatarMargin, avatarPositionPreset, avatarShape]);
 
-		// Re-apply avatar layout on prop changes and container resizes.
+		// Re-apply avatar layout on prop changes and window resizes. (A ResizeObserver
+		// on the overlay would loop — our layout mutates a child of the observed node.)
 		useEffect(() => {
 			applyAvatarBubbleLayout();
-			const overlay = overlayRef.current;
-			if (!overlay || typeof ResizeObserver === "undefined") return;
-			const ro = new ResizeObserver(() => applyAvatarBubbleLayout());
-			ro.observe(overlay);
-			return () => ro.disconnect();
+			const onResize = () => applyAvatarBubbleLayout();
+			window.addEventListener("resize", onResize);
+			return () => window.removeEventListener("resize", onResize);
 		}, [applyAvatarBubbleLayout]);
 
 		// Keep the avatar clip roughly in sync with the timeline: play/pause with
