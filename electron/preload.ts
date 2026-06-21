@@ -585,6 +585,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			error?: string;
 		}>,
 	avatarKeyStatus: () => ipcRenderer.invoke("avatar:key-status") as Promise<{ hasKey: boolean }>,
+	latestAvatarClip: () =>
+		ipcRenderer.invoke("avatar:latest-clip") as Promise<{ path: string | null }>,
 	searchAvatarGroups: (query?: string) =>
 		ipcRenderer.invoke("avatar:search-groups", query) as Promise<{
 			ok: boolean;
