@@ -131,6 +131,9 @@ const PhSettings = (props: { className?: string; weight?: "fill" | "regular" }) 
 const PhListBullets = (props: { className?: string; weight?: "fill" | "regular" }) => (
 	<ListBullets weight={props.weight ?? "regular"} className={props.className} />
 );
+const PhAvatar = (props: { className?: string; weight?: "fill" | "regular" }) => (
+	<User weight={props.weight ?? "regular"} className={props.className} />
+);
 
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { extensionHost } from "@/lib/extensions";
@@ -1694,6 +1697,11 @@ export default function VideoEditor() {
 				id: "glitchgrab" as const,
 				label: "GlitchGrab Log",
 				icon: PhListBullets,
+			},
+			{
+				id: "avatar" as const,
+				label: "Avatar",
+				icon: PhAvatar,
 			},
 			{
 				id: "settings" as const,
@@ -6356,8 +6364,9 @@ export default function VideoEditor() {
 						{/* Panel */}
 						{activeEffectSection === "extensions" ? (
 							<ExtensionManager />
-						) : activeEffectSection === "glitchgrab" ? (
+						) : activeEffectSection === "glitchgrab" || activeEffectSection === "avatar" ? (
 							<GlitchgrabLogPanel
+								view={activeEffectSection === "avatar" ? "avatar" : "log"}
 								playbackRef={narrationPlaybackRef}
 								timelineDurationSec={timelineDuration}
 								onCaptureFrame={captureFrameAtMs}
