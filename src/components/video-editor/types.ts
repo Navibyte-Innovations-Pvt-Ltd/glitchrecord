@@ -180,6 +180,14 @@ export const DEFAULT_AVATAR_OVERLAY: AvatarOverlaySettings = {
 	margin: 24,
 };
 
+// A "spotlight" window where the avatar animates from its corner PiP to full-frame
+// (covering the recording) and back. Cloned from the ZoomRegion idea.
+export interface AvatarRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+}
+
 export const DEFAULT_CURSOR_SIZE = 3.0;
 export const DEFAULT_CURSOR_SMOOTHING = 0.67;
 export const DEFAULT_CURSOR_MOTION_BLUR = 0.4;
