@@ -181,7 +181,8 @@ def generate_sarvam(text, args, device):
     if not key:
         raise RuntimeError("SARVAM_API_KEY not set — paste your Sarvam key in the tester")
 
-    tlc = {"hi": "hi-IN", "en": "en-IN"}.get(args.lang, args.lang if "-" in args.lang else "hi-IN")
+    # hinglish = romanized Hindi+English code-mix → hi-IN (bulbul reads it natively).
+    tlc = {"hi": "hi-IN", "hinglish": "hi-IN", "en": "en-IN"}.get(args.lang, args.lang if "-" in args.lang else "hi-IN")
     speaker = args.voice or "shubh"
     chunks = chunk_text(text, 2000)
     n = len(chunks)
