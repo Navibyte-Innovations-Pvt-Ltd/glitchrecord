@@ -24,8 +24,10 @@ export type AvatarTier = "photo" | "iv";
 export interface AvatarRequest {
 	/** Custom photo (png/jpg) → talking_photo. Omit when using a HeyGen library avatar. */
 	photoPath?: string;
-	/** HeyGen library avatar id (from listAvatars). Takes precedence over photoPath. */
+	/** HeyGen studio avatar id (character type "avatar"). */
 	avatarId?: string;
+	/** Existing talking_photo id — e.g. a "look" from an avatar group like Ramisa. */
+	talkingPhotoId?: string;
 	/** Absolute path to the narration audio (mp3/wav) to lip-sync. */
 	audioPath: string;
 	tier: AvatarTier;
@@ -41,6 +43,15 @@ export interface HeyGenAvatar {
 	name: string;
 	gender?: string;
 	previewUrl?: string;
+}
+
+// An avatar group (e.g. the public "Ramisa") — a named set of looks.
+export interface HeyGenAvatarGroup {
+	id: string;
+	name: string;
+	numLooks: number;
+	previewUrl?: string;
+	isPublic: boolean;
 }
 
 export interface AvatarResult {
@@ -85,37 +96,76 @@ export function hasHeyGenKey(): boolean {
 	return key() !== null;
 }
 
-// HeyGen's studio avatar library (preset realistic avatars). Each can be driven
-// by our narration audio just like a custom photo. Returns a trimmed list.
-export async function listAvatars(): Promise<{
+// HeyGen avatar groups — both the user's own photo avatars AND the public
+// library (e.g. "Ramisa", 416 public groups). `query` filters by name so the
+// panel can search. Each group has N "looks" (fetch with listGroupLooks).
+export async function listAvatarGroups(query?: string): Promise<{
 	ok: boolean;
-	avatars?: HeyGenAvatar[];
+	groups?: HeyGenAvatarGroup[];
 	error?: string;
 }> {
 	const apiKey = key();
 	if (!apiKey) return { ok: false, error: "HEYGEN_API_KEY not set" };
 	try {
-		const res = await fetch(`${API}/v2/avatars`, { headers: { "x-api-key": apiKey } });
-		if (!res.ok) return { ok: false, error: `List avatars ${res.status}` };
+		const res = await fetch(`${API}/v2/avatar_group.list?include_public=true`, {
+			headers: { "x-api-key": apiKey },
+		});
+		if (!res.ok) return { ok: false, error: `List avatar groups ${res.status}` };
 		const data = (await res.json()) as {
 			data?: {
-				avatars?: Array<{
-					avatar_id?: string;
-					avatar_name?: string;
-					gender?: string;
-					preview_image_url?: string;
+				avatar_group_list?: Array<{
+					id?: string;
+					name?: string;
+					num_looks?: number;
+					preview_image?: string;
+					group_type?: string;
 				}>;
 			};
 		};
-		const avatars: HeyGenAvatar[] = (data.data?.avatars ?? [])
-			.filter((a) => a.avatar_id)
-			.map((a) => ({
-				id: a.avatar_id as string,
-				name: a.avatar_name || (a.avatar_id as string),
-				gender: a.gender,
-				previewUrl: a.preview_image_url,
+		const q = query?.trim().toLowerCase();
+		const groups: HeyGenAvatarGroup[] = (data.data?.avatar_group_list ?? [])
+			.filter((g) => g.id && (!q || (g.name ?? "").toLowerCase().includes(q)))
+			.map((g) => ({
+				id: g.id as string,
+				name: g.name || (g.id as string),
+				numLooks: g.num_looks ?? 0,
+				previewUrl: g.preview_image,
+				isPublic: g.group_type === "PUBLIC",
 			}));
-		return { ok: true, avatars };
+		return { ok: true, groups };
+	} catch (e) {
+		return { ok: false, error: e instanceof Error ? e.message : String(e) };
+	}
+}
+
+// The looks (talking-photo variants) inside an avatar group. Each look's id is a
+// talking_photo_id usable directly for generation.
+export async function listGroupLooks(groupId: string): Promise<{
+	ok: boolean;
+	looks?: HeyGenAvatar[];
+	error?: string;
+}> {
+	const apiKey = key();
+	if (!apiKey) return { ok: false, error: "HEYGEN_API_KEY not set" };
+	try {
+		const res = await fetch(`${API}/v2/avatar_group/${encodeURIComponent(groupId)}/avatars`, {
+			headers: { "x-api-key": apiKey },
+		});
+		if (!res.ok) return { ok: false, error: `List looks ${res.status}` };
+		const data = (await res.json()) as {
+			data?: {
+				avatar_list?: Array<{
+					id?: string;
+					name?: string;
+					image_url?: string;
+					status?: string;
+				}>;
+			};
+		};
+		const looks: HeyGenAvatar[] = (data.data?.avatar_list ?? [])
+			.filter((a) => a.id && a.status !== "failed")
+			.map((a) => ({ id: a.id as string, name: a.name || "look", previewUrl: a.image_url }));
+		return { ok: true, looks };
 	} catch (e) {
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
@@ -249,9 +299,9 @@ export async function generateAvatar(
 ): Promise<AvatarResult> {
 	const apiKey = key();
 	if (!apiKey) return { ok: false, error: "HEYGEN_API_KEY not set in the environment" };
-	if (!req.avatarId && !req.photoPath)
+	if (!req.avatarId && !req.talkingPhotoId && !req.photoPath)
 		return { ok: false, error: "Choose a photo or a HeyGen avatar" };
-	if (req.photoPath && !req.avatarId && !fssync.existsSync(req.photoPath))
+	if (req.photoPath && !req.avatarId && !req.talkingPhotoId && !fssync.existsSync(req.photoPath))
 		return { ok: false, error: "Photo file not found" };
 	if (!fssync.existsSync(req.audioPath))
 		return { ok: false, error: "Narration audio not found — generate narration first" };
@@ -259,9 +309,12 @@ export async function generateAvatar(
 	try {
 		await fs.mkdir(outDir, { recursive: true });
 
-		// Build the character: a HeyGen library avatar, or our uploaded photo.
+		// Build the character. Precedence: an avatar-group look (talking_photo id),
+		// then a studio avatar, then our uploaded photo.
 		let character: Record<string, unknown>;
-		if (req.avatarId) {
+		if (req.talkingPhotoId) {
+			character = { type: "talking_photo", talking_photo_id: req.talkingPhotoId };
+		} else if (req.avatarId) {
 			character = { type: "avatar", avatar_id: req.avatarId, avatar_style: "normal" };
 		} else {
 			onProgress("Uploading photo…");
