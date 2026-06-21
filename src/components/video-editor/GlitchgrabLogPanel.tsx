@@ -249,7 +249,20 @@ interface GlitchgrabLogPanelProps {
 		shape: "box" | "circle";
 		clearClip?: boolean;
 	}) => void;
+	/** Live position/size of the avatar PiP overlay. */
+	onAvatarSettings?: (patch: { positionPreset?: AvatarPositionPreset; size?: number }) => void;
 }
+
+type AvatarPositionPreset =
+	| "top-left"
+	| "top-center"
+	| "top-right"
+	| "center-left"
+	| "center"
+	| "center-right"
+	| "bottom-left"
+	| "bottom-center"
+	| "bottom-right";
 
 export function GlitchgrabLogPanel({
 	playbackRef,
@@ -264,6 +277,7 @@ export function GlitchgrabLogPanel({
 	view = "log",
 	onAvatarReady,
 	onAvatarPreview,
+	onAvatarSettings,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -351,6 +365,13 @@ export function GlitchgrabLogPanel({
 	// "box" = opaque rounded PiP; "circle" = transparent matte we key out.
 	const [avatarShape, setAvatarShape] = useState<"box" | "circle">(
 		() => (localStorage.getItem("gg.avatar.shape") as "box" | "circle") || "box",
+	);
+	const [avatarPosition, setAvatarPosition] = useState<AvatarPositionPreset>(
+		() =>
+			(localStorage.getItem("gg.avatar.position") as AvatarPositionPreset) || "bottom-right",
+	);
+	const [avatarSizePct, setAvatarSizePct] = useState<number>(
+		() => Number(localStorage.getItem("gg.avatar.size")) || 26,
 	);
 	const [avatarBusy, setAvatarBusy] = useState(false);
 	const [avatarStage, setAvatarStage] = useState("");
@@ -489,6 +510,28 @@ export function GlitchgrabLogPanel({
 	useEffect(() => {
 		localStorage.setItem("gg.avatar.source", avatarSource);
 	}, [avatarSource]);
+	useEffect(() => {
+		localStorage.setItem("gg.avatar.position", avatarPosition);
+		onAvatarSettings?.({ positionPreset: avatarPosition });
+	}, [avatarPosition, onAvatarSettings]);
+	useEffect(() => {
+		localStorage.setItem("gg.avatar.size", String(avatarSizePct));
+		onAvatarSettings?.({ size: avatarSizePct });
+	}, [avatarSizePct, onAvatarSettings]);
+	// Persist the chosen group + look so the selection survives panel remounts.
+	useEffect(() => {
+		if (selectedGroup) {
+			localStorage.setItem("gg.avatar.groupId", selectedGroup.id);
+			localStorage.setItem("gg.avatar.groupName", selectedGroup.name);
+		} else {
+			localStorage.removeItem("gg.avatar.groupId");
+			localStorage.removeItem("gg.avatar.groupName");
+		}
+	}, [selectedGroup]);
+	useEffect(() => {
+		if (selectedLookId) localStorage.setItem("gg.avatar.lookId", selectedLookId);
+		else localStorage.removeItem("gg.avatar.lookId");
+	}, [selectedLookId]);
 
 	const searchAvatarGroups = useCallback((query: string) => {
 		setAvatarGroupsLoading(true);
@@ -511,23 +554,47 @@ export function GlitchgrabLogPanel({
 		searchAvatarGroups("");
 	}, [avatarSource, avatarGroups.length, avatarGroupsLoading, searchAvatarGroups]);
 
-	const openAvatarGroup = useCallback((group: { id: string; name: string }) => {
-		setSelectedGroup(group);
-		setSelectedLookId(null);
-		setGroupLooks([]);
-		setGroupLooksLoading(true);
-		setGroupLooksError(null);
-		electronAPI()
-			?.listGroupLooks?.(group.id)
-			.then((r) => {
-				if (r?.ok && r.looks) setGroupLooks(r.looks);
-				else setGroupLooksError(r?.error || "Could not load looks");
-			})
-			.catch((e) =>
-				setGroupLooksError(e instanceof Error ? e.message : "Could not load looks"),
-			)
-			.finally(() => setGroupLooksLoading(false));
-	}, []);
+	const openAvatarGroup = useCallback(
+		(group: { id: string; name: string }, preselectLookId?: string) => {
+			setSelectedGroup(group);
+			setSelectedLookId(preselectLookId ?? null);
+			setGroupLooks([]);
+			setGroupLooksLoading(true);
+			setGroupLooksError(null);
+			electronAPI()
+				?.listGroupLooks?.(group.id)
+				.then((r) => {
+					if (r?.ok && r.looks) {
+						setGroupLooks(r.looks);
+						// Restore the saved look + re-show its placeholder PiP.
+						const look = preselectLookId
+							? r.looks.find((l) => l.id === preselectLookId)
+							: undefined;
+						if (look)
+							onAvatarPreview?.({
+								previewUrl: look.previewUrl ?? null,
+								shape: avatarShape,
+							});
+					} else setGroupLooksError(r?.error || "Could not load looks");
+				})
+				.catch((e) =>
+					setGroupLooksError(e instanceof Error ? e.message : "Could not load looks"),
+				)
+				.finally(() => setGroupLooksLoading(false));
+		},
+		[onAvatarPreview, avatarShape],
+	);
+
+	// On mount, restore the previously chosen group + look (so it doesn't reset).
+	const restoredAvatarRef = useRef(false);
+	useEffect(() => {
+		if (restoredAvatarRef.current) return;
+		restoredAvatarRef.current = true;
+		const gid = localStorage.getItem("gg.avatar.groupId");
+		const gname = localStorage.getItem("gg.avatar.groupName");
+		const lookId = localStorage.getItem("gg.avatar.lookId");
+		if (gid && gname) openAvatarGroup({ id: gid, name: gname }, lookId ?? undefined);
+	}, [openAvatarGroup]);
 	// Resolve a playable URL for the generated clip preview.
 	useEffect(() => {
 		if (!avatarPath) {
@@ -1687,6 +1754,56 @@ export function GlitchgrabLogPanel({
 								</button>
 							))}
 						</div>
+					</div>
+
+					{/* Position — 3×3 preset grid */}
+					<div className="flex flex-col gap-1">
+						<span className="text-[10px] uppercase tracking-wide text-foreground/40">
+							Position
+						</span>
+						<div className="grid w-[84px] grid-cols-3 gap-1">
+							{(
+								[
+									"top-left",
+									"top-center",
+									"top-right",
+									"center-left",
+									"center",
+									"center-right",
+									"bottom-left",
+									"bottom-center",
+									"bottom-right",
+								] as const
+							).map((preset) => (
+								<button
+									key={preset}
+									type="button"
+									title={preset}
+									onClick={() => setAvatarPosition(preset)}
+									className={`flex h-6 w-6 rounded border transition-colors ${avatarPosition === preset ? "border-blue-500 bg-blue-500/20" : "border-foreground/15 bg-foreground/[0.04] hover:border-foreground/40"}`}
+								>
+									<span
+										className={`block h-1.5 w-1.5 rounded-[1px] ${avatarPosition === preset ? "bg-blue-400" : "bg-foreground/30"} ${preset.includes("top") ? "self-start" : preset.includes("bottom") ? "self-end" : "self-center"} ${preset.includes("left") ? "mr-auto" : preset.includes("right") ? "ml-auto" : "mx-auto"}`}
+									/>
+								</button>
+							))}
+						</div>
+					</div>
+
+					{/* Size */}
+					<div className="flex flex-col gap-1">
+						<span className="flex items-center justify-between text-[10px] uppercase tracking-wide text-foreground/40">
+							Size{" "}
+							<span className="font-mono text-foreground/50">{avatarSizePct}%</span>
+						</span>
+						<input
+							type="range"
+							min={12}
+							max={60}
+							value={avatarSizePct}
+							onChange={(e) => setAvatarSizePct(Number(e.target.value))}
+							className="w-full"
+						/>
 					</div>
 
 					<button
