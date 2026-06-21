@@ -3542,6 +3542,70 @@ export default function VideoEditor() {
 		[getActivePlayback, mapTimelineTimeToSourceTime],
 	);
 
+	// Grab a still frame from the RAW recording at a given recording-time (ms).
+	// Used by the narration panel's vision pass: it hands the API a screenshot of
+	// each ambiguous marked element so the model can SEE it instead of asking.
+	// We use an OFFSCREEN <video> (not the editor's live preview) so seeking to
+	// grab a frame never disturbs what the user is watching. Note events carry
+	// `t` in RECORDING time, which is exactly this video's timeline — no
+	// timeline/trim mapping needed (that only matters for the edited output).
+	const frameVideoRef = useRef<HTMLVideoElement | null>(null);
+	const captureFrameAtMs = useCallback(
+		async (tMs: number): Promise<string | null> => {
+			if (!videoPath) return null;
+			try {
+				let v = frameVideoRef.current;
+				if (!v || v.dataset.src !== videoPath) {
+					v?.remove();
+					v = document.createElement("video");
+					v.muted = true;
+					v.preload = "auto";
+					v.crossOrigin = "anonymous";
+					v.style.cssText = "position:fixed;left:-99999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
+					v.dataset.src = videoPath;
+					v.src = videoPath;
+					document.body.appendChild(v);
+					frameVideoRef.current = v;
+				}
+				const vid = v;
+				if (vid.readyState < 2) {
+					await new Promise<void>((resolve, reject) => {
+						const ok = () => { cleanup(); resolve(); };
+						const fail = () => { cleanup(); reject(new Error("frame video load failed")); };
+						const cleanup = () => { vid.removeEventListener("loadeddata", ok); vid.removeEventListener("error", fail); };
+						vid.addEventListener("loadeddata", ok);
+						vid.addEventListener("error", fail);
+					});
+				}
+				const target = Math.max(0, Math.min(tMs / 1000, (vid.duration || tMs / 1000) - 0.05));
+				await new Promise<void>((resolve, reject) => {
+					const ok = () => { cleanup(); resolve(); };
+					const fail = () => { cleanup(); reject(new Error("frame seek failed")); };
+					const cleanup = () => { vid.removeEventListener("seeked", ok); vid.removeEventListener("error", fail); };
+					vid.addEventListener("seeked", ok);
+					vid.addEventListener("error", fail);
+					vid.currentTime = target;
+				});
+				const vw = vid.videoWidth;
+				const vh = vid.videoHeight;
+				if (!vw || !vh) return null;
+				const scale = Math.min(1, 1280 / vw);
+				const cw = Math.round(vw * scale);
+				const ch = Math.round(vh * scale);
+				const canvas = document.createElement("canvas");
+				canvas.width = cw;
+				canvas.height = ch;
+				const ctx = canvas.getContext("2d");
+				if (!ctx) return null;
+				ctx.drawImage(vid, 0, 0, cw, ch);
+				return canvas.toDataURL("image/jpeg", 0.6);
+			} catch {
+				return null;
+			}
+		},
+		[videoPath],
+	);
+
 	// Mirror playhead (in TIMELINE time) + play state into a ref so the narration
 	// sync-preview can read them in a rAF loop without re-rendering per frame.
 	const handlePlaybackTimeUpdate = useCallback(
@@ -6283,6 +6347,7 @@ export default function VideoEditor() {
 							<GlitchgrabLogPanel
 								playbackRef={narrationPlaybackRef}
 								timelineDurationSec={timelineDuration}
+								onCaptureFrame={captureFrameAtMs}
 								onSeekTimeline={handleSeek}
 								onTogglePlay={togglePlayPause}
 								onSetRecordingMuted={setNarrationPreviewMuted}
