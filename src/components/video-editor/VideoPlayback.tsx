@@ -987,7 +987,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				window.addEventListener("pointermove", onMove);
 				window.addEventListener("pointerup", onUp);
 			},
-			[onAvatarMove, onAvatarFraming, avatarOverlay?.margin, avatarOverlay?.framingX, avatarOverlay?.framingY],
+			[
+				onAvatarMove,
+				onAvatarFraming,
+				avatarOverlay?.margin,
+				avatarOverlay?.framingX,
+				avatarOverlay?.framingY,
+			],
 		);
 
 		// Re-apply avatar layout on prop changes and window resizes. (A ResizeObserver
@@ -3099,7 +3105,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								onPointerDown={handleAvatarPointerDown}
 								style={{
 									display: avatarEnabled ? "block" : "none",
-									pointerEvents: onAvatarMove || onAvatarFraming ? "auto" : "none",
+									pointerEvents:
+										onAvatarMove || onAvatarFraming ? "auto" : "none",
 									cursor: onAvatarMove || onAvatarFraming ? "grab" : "default",
 									touchAction: "none",
 								}}
