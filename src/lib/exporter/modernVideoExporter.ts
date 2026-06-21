@@ -3538,6 +3538,12 @@ export class ModernVideoExporter {
 
 	cancel(): void {
 		this.cancelled = true;
+		// Wake any render-loop await that's parked on encoder backpressure. Without
+		// this, a frame stuck at `await waitForEncodeCapacity()` never resolves (the
+		// flag alone doesn't settle the promise), so the export — and the Cancel
+		// button — hang. The waiter re-checks `this.cancelled` and returns (see
+		// encodeRenderedFrameNative).
+		this.notifyEncodeCapacityAvailable();
 		if (this.streamingDecoder) {
 			this.streamingDecoder.cancel();
 		}
