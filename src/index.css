@@ -147,6 +147,16 @@
 	}
 }
 
+/* Opt back INTO text selection inside content panels (the global body rule sets
+   user-select:none for the Electron chrome). Apply to script/chat/question text. */
+@layer utilities {
+	.gg-selectable,
+	.gg-selectable * {
+		-webkit-user-select: text;
+		user-select: text;
+	}
+}
+
 /* Smooth timeline cursor animations */
 @layer utilities {
 	.timeline-cursor-smooth {
