@@ -33,6 +33,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Span } from "dnd-timeline";
 import { motion } from "motion/react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -390,6 +391,57 @@ export default function VideoEditor() {
 		typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "darwin" : "",
 	);
 	const initialEditorPreferences = useMemo(() => loadEditorPreferences(), []);
+	// Resizable timeline panel height (px). Persisted so the dragged size survives
+	// reload. `null` = use the default (a share of the window height, clamped below).
+	const TIMELINE_HEIGHT_KEY = "glitchrecord.editor.timelineHeight";
+	const TIMELINE_MIN_HEIGHT = 160;
+	const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(() => {
+		if (typeof window === "undefined") return null;
+		const raw = window.localStorage.getItem(TIMELINE_HEIGHT_KEY);
+		const parsed = raw ? Number(raw) : NaN;
+		return Number.isFinite(parsed) && parsed >= TIMELINE_MIN_HEIGHT ? parsed : null;
+	});
+	const timelineResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+	const timelinePanelRef = useRef<HTMLDivElement>(null);
+	const [isResizingTimeline, setIsResizingTimeline] = useState(false);
+	const handleTimelineResizeStart = useCallback((event: ReactPointerEvent) => {
+		event.preventDefault();
+		const startHeight = timelinePanelRef.current?.offsetHeight ?? TIMELINE_MIN_HEIGHT;
+		timelineResizeRef.current = { startY: event.clientY, startHeight };
+		setIsResizingTimeline(true);
+	}, []);
+	useEffect(() => {
+		if (!isResizingTimeline) return;
+		const onMove = (event: PointerEvent) => {
+			const drag = timelineResizeRef.current;
+			if (!drag) return;
+			// Drag handle up → grow the timeline (clientY decreases → positive delta).
+			const delta = drag.startY - event.clientY;
+			const max = Math.max(TIMELINE_MIN_HEIGHT, window.innerHeight - 240);
+			const next = Math.min(max, Math.max(TIMELINE_MIN_HEIGHT, drag.startHeight + delta));
+			setTimelineHeightPx(next);
+		};
+		const onUp = () => {
+			setIsResizingTimeline(false);
+			timelineResizeRef.current = null;
+			setTimelineHeightPx((height) => {
+				if (height != null) {
+					window.localStorage.setItem(TIMELINE_HEIGHT_KEY, String(height));
+				}
+				return height;
+			});
+		};
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
+		document.body.style.cursor = "ns-resize";
+		document.body.style.userSelect = "none";
+		return () => {
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onUp);
+			document.body.style.cursor = "";
+			document.body.style.userSelect = "";
+		};
+	}, [isResizingTimeline]);
 	const [videoPath, setVideoPath] = useState<string | null>(null);
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
 	const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
@@ -6688,11 +6740,28 @@ export default function VideoEditor() {
 						</div>
 					</div>
 				</div>
+				{/* Drag handle — pull up/down to resize the timeline panel. */}
 				<div
+					role="separator"
+					aria-orientation="horizontal"
+					aria-label="Resize timeline"
+					onPointerDown={handleTimelineResizeStart}
+					className="group relative flex-shrink-0 -my-1 flex h-3 cursor-ns-resize touch-none items-center justify-center"
+				>
+					<div
+						className={`h-[3px] w-12 rounded-full transition-colors ${
+							isResizingTimeline
+								? "bg-[#2563EB]"
+								: "bg-foreground/15 group-hover:bg-[#2563EB]/60"
+						}`}
+					/>
+				</div>
+				<div
+					ref={timelinePanelRef}
 					className="flex-shrink-0 flex flex-col"
 					style={{
-						height: "15%",
-						minHeight: 160,
+						height: timelineHeightPx != null ? `${timelineHeightPx}px` : "15%",
+						minHeight: TIMELINE_MIN_HEIGHT,
 					}}
 				>
 					<TimelineEditor
