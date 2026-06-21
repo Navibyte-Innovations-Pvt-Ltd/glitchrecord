@@ -6469,6 +6469,9 @@ export default function VideoEditor() {
 										sourcePath: clearClip ? null : prev.sourcePath,
 									}))
 								}
+								onAvatarSettings={(patch) =>
+									setAvatarOverlay((prev) => ({ ...prev, ...patch }))
+								}
 							/>
 						) : (
 							<SettingsPanel
