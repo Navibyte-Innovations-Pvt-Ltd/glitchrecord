@@ -128,6 +128,7 @@ import { applyCanvasSceneTransform } from "@/lib/extensions/sceneTransform";
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
 import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
 import { AnnotationOverlay } from "./AnnotationOverlay";
+import { getAvatarBubbleLayout, isAvatarOverlayVisible } from "./avatarOverlay";
 import {
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
@@ -883,47 +884,32 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		// Enabled once we have either the generated clip OR a look thumbnail to
 		// preview the layout before spending credits on generation.
 		const avatarPreviewUrl = avatarOverlay?.previewUrl ?? null;
-		const avatarEnabled =
-			(avatarOverlay?.enabled ?? false) && !!(avatarVideoPath || avatarPreviewUrl);
-		const avatarSize = avatarOverlay?.size ?? 26;
-		const avatarMargin = avatarOverlay?.margin ?? 24;
-		const avatarPositionPreset = avatarOverlay?.positionPreset ?? "bottom-right";
-		const avatarShape = avatarOverlay?.shape ?? "box";
+		const avatarEnabled = isAvatarOverlayVisible(avatarOverlay, avatarVideoPath);
 		const applyAvatarBubbleLayout = useCallback(() => {
 			const bubble = avatarBubbleRef.current;
 			const overlay = overlayRef.current;
-			if (!bubble || !overlay || !avatarEnabled) {
+			if (!bubble || !overlay || !avatarOverlay || !avatarEnabled) {
 				if (bubble) bubble.style.display = "none";
 				return;
 			}
-			const size = getWebcamOverlaySizePx({
+			const layout = getAvatarBubbleLayout({
 				containerWidth: overlay.clientWidth,
 				containerHeight: overlay.clientHeight,
-				sizePercent: avatarSize,
-				margin: avatarMargin,
-				zoomScale: 1,
-				reactToZoom: false,
+				settings: avatarOverlay,
 			});
-			const { x, y } = getWebcamOverlayPosition({
-				containerWidth: overlay.clientWidth,
-				containerHeight: overlay.clientHeight,
-				size,
-				margin: avatarMargin,
-				positionPreset: avatarPositionPreset,
-				positionX: 1,
-				positionY: 1,
-				legacyCorner: "bottom-right",
-			});
+			if (!layout) {
+				bubble.style.display = "none";
+				return;
+			}
 			bubble.style.display = "block";
-			bubble.style.left = `${x}px`;
-			bubble.style.top = `${y}px`;
-			bubble.style.width = `${size}px`;
-			bubble.style.height = `${size}px`;
-			bubble.style.borderRadius =
-				avatarShape === "circle" ? "50%" : `${Math.round(size * 0.12)}px`;
+			bubble.style.left = `${layout.x}px`;
+			bubble.style.top = `${layout.y}px`;
+			bubble.style.width = `${layout.size}px`;
+			bubble.style.height = `${layout.size}px`;
+			bubble.style.borderRadius = `${layout.borderRadius}px`;
 			bubble.style.overflow = "hidden";
-			bubble.style.boxShadow = `0 ${Math.round(size * 0.05)}px ${Math.round(size * 0.18)}px rgba(0,0,0,0.35)`;
-		}, [avatarEnabled, avatarSize, avatarMargin, avatarPositionPreset, avatarShape]);
+			bubble.style.boxShadow = `0 ${Math.round(layout.size * 0.05)}px ${Math.round(layout.size * 0.18)}px rgba(0,0,0,0.35)`;
+		}, [avatarEnabled, avatarOverlay]);
 
 		// Re-apply avatar layout on prop changes and window resizes. (A ResizeObserver
 		// on the overlay would loop — our layout mutates a child of the observed node.)
