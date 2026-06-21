@@ -83,6 +83,26 @@ describe("getAvatarBubbleLayout", () => {
 		expect(box.borderRadius).toBeLessThan(box.size / 2);
 	});
 
+	it("custom position honors dragged X/Y fractions", () => {
+		const topLeft = getAvatarBubbleLayout({
+			containerWidth: 1280,
+			containerHeight: 720,
+			settings: { ...base, positionPreset: "custom", positionX: 0, positionY: 0 },
+		});
+		const botRight = getAvatarBubbleLayout({
+			containerWidth: 1280,
+			containerHeight: 720,
+			settings: { ...base, positionPreset: "custom", positionX: 1, positionY: 1 },
+		});
+		expect(topLeft && botRight).toBeTruthy();
+		if (!topLeft || !botRight) return;
+		// X=0,Y=0 hugs the top-left margin; X=1,Y=1 pushes to the far corner.
+		expect(topLeft.x).toBeLessThan(botRight.x);
+		expect(topLeft.y).toBeLessThan(botRight.y);
+		expect(topLeft.x).toBeCloseTo(base.margin);
+		expect(topLeft.y).toBeCloseTo(base.margin);
+	});
+
 	it("bottom-right preset sits in the lower-right quadrant", () => {
 		const layout = getAvatarBubbleLayout({
 			containerWidth: 1280,
