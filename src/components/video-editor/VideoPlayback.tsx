@@ -130,8 +130,11 @@ import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUt
 import { AnnotationOverlay } from "./AnnotationOverlay";
 import {
 	getAvatarBubbleLayout,
+	getAvatarFullFrameLayout,
 	getAvatarObjectPosition,
+	getAvatarSpotlightProgress,
 	isAvatarOverlayVisible,
+	lerpAvatarLayout,
 	panAvatarFraming,
 } from "./avatarOverlay";
 import {
@@ -360,6 +363,8 @@ interface VideoPlaybackProps {
 	webcamVideoPath?: string | null;
 	avatarOverlay?: import("./types").AvatarOverlaySettings;
 	avatarVideoPath?: string | null;
+	/** Spotlight regions — avatar grows to full-frame during these. */
+	avatarRegions?: import("./types").AvatarRegion[];
 	/** Drag-to-reposition the avatar PiP — reports new fractional X/Y (0–1). */
 	onAvatarMove?: (positionX: number, positionY: number) => void;
 	/** Shift+drag to pan the photo inside the box — reports framing X/Y (0–100%). */
@@ -449,6 +454,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			webcamVideoPath,
 			avatarOverlay,
 			avatarVideoPath,
+			avatarRegions,
 			onAvatarMove,
 			onAvatarFraming,
 			trimRegions = [],
@@ -899,31 +905,57 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			? getAvatarObjectPosition(avatarOverlay)
 			: "50% 22%";
 		const avatarEnabled = isAvatarOverlayVisible(avatarOverlay, avatarVideoPath);
+		// Latest-value refs so the layout function can run inside the per-frame
+		// animation loop WITHOUT a stale closure (and without re-subscribing it —
+		// that's what caused the earlier freezes). Updated every render below.
+		const avatarOverlayRef = useRef(avatarOverlay);
+		avatarOverlayRef.current = avatarOverlay;
+		const avatarRegionsRef = useRef(avatarRegions);
+		avatarRegionsRef.current = avatarRegions;
+		const avatarVideoPathRef = useRef(avatarVideoPath);
+		avatarVideoPathRef.current = avatarVideoPath;
 		const applyAvatarBubbleLayout = useCallback(() => {
 			const bubble = avatarBubbleRef.current;
 			const overlay = overlayRef.current;
-			if (!bubble || !overlay || !avatarOverlay || !avatarEnabled) {
+			const settings = avatarOverlayRef.current;
+			if (
+				!bubble ||
+				!overlay ||
+				!settings ||
+				!isAvatarOverlayVisible(settings, avatarVideoPathRef.current)
+			) {
 				if (bubble) bubble.style.display = "none";
 				return;
 			}
-			const layout = getAvatarBubbleLayout({
-				containerWidth: overlay.clientWidth,
-				containerHeight: overlay.clientHeight,
-				settings: avatarOverlay,
+			const cw = overlay.clientWidth;
+			const ch = overlay.clientHeight;
+			const base = getAvatarBubbleLayout({
+				containerWidth: cw,
+				containerHeight: ch,
+				settings,
 			});
-			if (!layout) {
+			if (!base) {
 				bubble.style.display = "none";
 				return;
 			}
+			// Spotlight: blend toward full-frame during an avatar region.
+			const progress = getAvatarSpotlightProgress(
+				avatarRegionsRef.current,
+				currentTimeRef.current,
+			);
+			const layout =
+				progress > 0
+					? lerpAvatarLayout(base, getAvatarFullFrameLayout(cw, ch), progress)
+					: base;
 			bubble.style.display = "block";
 			bubble.style.left = `${layout.x}px`;
 			bubble.style.top = `${layout.y}px`;
-			bubble.style.width = `${layout.size}px`;
-			bubble.style.height = `${layout.size}px`;
+			bubble.style.width = `${layout.width}px`;
+			bubble.style.height = `${layout.height}px`;
 			bubble.style.borderRadius = `${layout.borderRadius}px`;
 			bubble.style.overflow = "hidden";
-			bubble.style.boxShadow = `0 ${Math.round(layout.size * 0.05)}px ${Math.round(layout.size * 0.18)}px rgba(0,0,0,0.35)`;
-		}, [avatarEnabled, avatarOverlay]);
+			bubble.style.boxShadow = `0 ${Math.round(layout.width * 0.05)}px ${Math.round(layout.width * 0.18)}px rgba(0,0,0,0.35)`;
+		}, []);
 
 		// Drag the avatar PiP. Plain drag MOVES it; Shift+drag PANS the photo inside
 		// the box (so a face that's cropped to a corner can be slid into frame).
@@ -998,12 +1030,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 		// Re-apply avatar layout on prop changes and window resizes. (A ResizeObserver
 		// on the overlay would loop — our layout mutates a child of the observed node.)
+		// applyAvatarBubbleLayout is stable (reads refs); the extra deps re-run this
+		// when settings/regions change so a paused drag/slider updates immediately.
 		useEffect(() => {
 			applyAvatarBubbleLayout();
 			const onResize = () => applyAvatarBubbleLayout();
 			window.addEventListener("resize", onResize);
 			return () => window.removeEventListener("resize", onResize);
-		}, [applyAvatarBubbleLayout]);
+		}, [applyAvatarBubbleLayout, avatarOverlay, avatarRegions, avatarEnabled]);
 
 		// Keep the avatar clip roughly in sync with the timeline: play/pause with
 		// the player and seek when the playhead jumps. (Lip-sync to narration is
@@ -1218,6 +1252,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 				updateOverlayForRegion(activeRegion);
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+				applyAvatarBubbleLayout();
 			}
 		}, [
 			updateOverlayForRegion,
@@ -1959,6 +1994,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
 			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+			applyAvatarBubbleLayout();
 		}, [applyWebcamBubbleLayout, pixiReady, videoReady]);
 
 		const syncWebcamMedia = useCallback(() => {
@@ -2511,6 +2547,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				applyTransform({ scale: appliedScale, x: appliedX, y: appliedY }, targetFocus);
 
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+				applyAvatarBubbleLayout();
 
 				const timeMs = currentTimeRef.current;
 				const effectsCanvas = cursorEffectsCanvasRef.current;
