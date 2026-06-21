@@ -2703,16 +2703,34 @@ export default function VideoEditor() {
 		};
 	}, [webcam.sourcePath]);
 
-	// Resolve the generated avatar clip to a playable URL (mirrors webcam).
+	// Resolve the generated avatar clip to a playable URL. MUST be the media-server
+	// http URL — a file:// URL is blocked by the renderer ("Not allowed to load
+	// local resource"), which silently leaves the PiP video transparent. So we call
+	// getLocalMediaUrl directly (no file:// fallback) and retry until the media
+	// server is ready, rather than using resolveVideoUrl.
 	useEffect(() => {
 		let cancelled = false;
-		if (!avatarOverlay.sourcePath) {
+		const src = avatarOverlay.sourcePath;
+		if (!src) {
 			setResolvedAvatarVideoUrl(null);
 			return;
 		}
-		void resolveVideoUrl(avatarOverlay.sourcePath).then((url) => {
-			if (!cancelled) setResolvedAvatarVideoUrl(url);
-		});
+		const tryResolve = async (attempt: number) => {
+			try {
+				const r = await window.electronAPI.getLocalMediaUrl(src);
+				if (cancelled) return;
+				if (r?.success && r.url) {
+					setResolvedAvatarVideoUrl(r.url);
+					return;
+				}
+			} catch {
+				/* media server not ready — retry below */
+			}
+			if (!cancelled && attempt < 8) {
+				setTimeout(() => void tryResolve(attempt + 1), 500);
+			}
+		};
+		void tryResolve(0);
 		return () => {
 			cancelled = true;
 		};
