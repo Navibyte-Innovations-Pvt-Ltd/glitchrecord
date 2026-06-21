@@ -914,6 +914,21 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		avatarRegionsRef.current = avatarRegions;
 		const avatarVideoPathRef = useRef(avatarVideoPath);
 		avatarVideoPathRef.current = avatarVideoPath;
+		// TEMP DIAGNOSTIC: surface why the avatar PiP may not appear.
+		// biome-ignore lint/correctness/useExhaustiveDependencies: diagnostic
+		useEffect(() => {
+			console.log("[GG-avatar] state", {
+				hasOverlay: !!avatarOverlay,
+				enabled: avatarOverlay?.enabled,
+				sourcePath: avatarOverlay?.sourcePath,
+				avatarVideoPath,
+				avatarPreviewUrl,
+				avatarEnabled,
+				bubblePresent: !!avatarBubbleRef.current,
+				overlayPresent: !!overlayRef.current,
+			});
+		}, [avatarOverlay, avatarVideoPath, avatarPreviewUrl, avatarEnabled]);
+
 		const applyAvatarBubbleLayout = useCallback(() => {
 			const bubble = avatarBubbleRef.current;
 			const overlay = overlayRef.current;
@@ -3160,6 +3175,16 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											playsInline
 											preload="auto"
 											aria-hidden="true"
+											onLoadedData={() =>
+												console.log("[GG-avatar] video loaded", avatarVideoPath)
+											}
+											onError={(e) =>
+												console.error(
+													"[GG-avatar] video FAILED",
+													avatarVideoPath,
+													(e.currentTarget as HTMLVideoElement).error,
+												)
+											}
 										/>
 									</>
 								) : (
