@@ -193,6 +193,7 @@ import {
 	type AudioRegion,
 	type AutoCaptionSettings,
 	type AvatarOverlaySettings,
+	type AvatarRegion,
 	type CaptionCue,
 	type ClipRegion,
 	type CropRegion,
@@ -622,6 +623,8 @@ export default function VideoEditor() {
 	const [avatarOverlay, setAvatarOverlay] =
 		useState<AvatarOverlaySettings>(DEFAULT_AVATAR_OVERLAY);
 	const [resolvedAvatarVideoUrl, setResolvedAvatarVideoUrl] = useState<string | null>(null);
+	// Spotlight regions — the avatar grows to full-frame during these.
+	const [avatarRegions, setAvatarRegions] = useState<AvatarRegion[]>([]);
 	// Stable handlers so the panel's position/size effects don't fire every render
 	// (an unstable callback would snap a freshly-dragged avatar back to its preset).
 	const handleAvatarSettings = useCallback(
@@ -644,6 +647,17 @@ export default function VideoEditor() {
 			setAvatarOverlay((prev) => ({ ...prev, framingX, framingY })),
 		[],
 	);
+	// Add a ~3s "spotlight" (avatar goes full-frame) starting at the playhead.
+	const handleAddAvatarSpotlight = useCallback((startMs: number) => {
+		const start = Math.max(0, Math.round(startMs));
+		setAvatarRegions((prev) => [
+			...prev,
+			{ id: `av-${start}-${prev.length}`, startMs: start, endMs: start + 3000 },
+		]);
+	}, []);
+	const handleRemoveAvatarSpotlight = useCallback((id: string) => {
+		setAvatarRegions((prev) => prev.filter((r) => r.id !== id));
+	}, []);
 	const handleAvatarReady = useCallback(
 		(clipPath: string, shape: "box" | "circle", previewUrl?: string) =>
 			setAvatarOverlay((prev) => ({
@@ -5815,6 +5829,7 @@ export default function VideoEditor() {
 			webcamVideoPath={webcam.sourcePath ? resolvedWebcamVideoUrl : null}
 			avatarOverlay={avatarOverlay}
 			avatarVideoPath={avatarOverlay.sourcePath ? resolvedAvatarVideoUrl : null}
+			avatarRegions={avatarRegions}
 			onAvatarMove={handleAvatarMove}
 			onAvatarFraming={handleAvatarFraming}
 			trimRegions={trimRegions}
@@ -6508,6 +6523,9 @@ export default function VideoEditor() {
 								onAvatarReady={handleAvatarReady}
 								onAvatarPreview={handleAvatarPreview}
 								onAvatarSettings={handleAvatarSettings}
+								avatarRegions={avatarRegions}
+								onAddAvatarSpotlight={handleAddAvatarSpotlight}
+								onRemoveAvatarSpotlight={handleRemoveAvatarSpotlight}
 							/>
 						) : (
 							<SettingsPanel
