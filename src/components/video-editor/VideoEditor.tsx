@@ -7,21 +7,21 @@ import {
 	Cursor,
 	DownloadSimple as Download,
 	FolderOpen,
+	Gauge,
 	Gear,
 	ListBullets,
 	Pause,
 	Camera as PhCameraRegular,
 	Play,
-	Gauge,
 	Plus,
 	PuzzlePiece,
 	Record as RecordIcon,
 	ArrowClockwise as Redo2,
 	Scissors,
-	ArrowLineRight as TrimToEndIcon,
 	SkipBack,
 	SkipForward,
 	Sparkle,
+	ArrowLineRight as TrimToEndIcon,
 	ArrowCounterClockwise as Undo2,
 	UserCircle as User,
 	SpeakerLow as Volume1,
@@ -91,8 +91,6 @@ import {
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
 import { rippleAudioRegionsForRemovedSegments } from "./audioRegionRipple";
-import { planClipSpeedChange, snapClipSpeed, snapStretchSpeed } from "./clipSpeedChange";
-import { trimRangesToEnd } from "./trimToEnd";
 import {
 	carveSpeedRegion,
 	dissolveRetimeGroup,
@@ -101,6 +99,7 @@ import {
 	planSpeedPointInsert,
 	resolveInternalBoundaryDrag,
 } from "./clipRetime";
+import { planClipSpeedChange, snapClipSpeed, snapStretchSpeed } from "./clipSpeedChange";
 import { ExtensionIcon } from "./ExtensionIcon";
 import { calculateMp4ExportDimensions, calculateMp4SourceDimensions } from "./exportDimensions";
 import { resolveSavingExportProgress } from "./exportProgressState";
@@ -108,6 +107,7 @@ import { resolveExportStartSettings } from "./exportStartSettings";
 import { resolveExportStatusModel } from "./exportStatusModel";
 import { resolveMp4ExportRouting } from "./mp4ExportRouting";
 import { resolveMp4ExportSettings } from "./mp4ExportSettings";
+import { trimRangesToEnd } from "./trimToEnd";
 import { useNvidiaCudaExportOptIn } from "./useNvidiaCudaExportOptIn";
 
 const PhCursorFill = (props: { className?: string; weight?: "fill" | "regular" }) => (
@@ -142,7 +142,6 @@ import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
-import { GlitchgrabLogPanel } from "./GlitchgrabLogPanel";
 import {
 	createEditorHistoryStack,
 	type EditorHistorySnapshot,
@@ -160,6 +159,7 @@ import {
 	saveEditorPresets,
 	serializeEditorPresetSnapshot,
 } from "./editorPreferences";
+import { GlitchgrabLogPanel } from "./GlitchgrabLogPanel";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import { hasUnsavedProjectChanges } from "./projectDirtyState";
 import {
@@ -192,6 +192,7 @@ import {
 	type AnnotationRegion,
 	type AudioRegion,
 	type AutoCaptionSettings,
+	type AvatarOverlaySettings,
 	type CaptionCue,
 	type ClipRegion,
 	type CropRegion,
@@ -205,6 +206,7 @@ import {
 	DEFAULT_ANNOTATION_STYLE,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_AUTO_ZOOM_DEPTH,
+	DEFAULT_AVATAR_OVERLAY,
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
 	DEFAULT_CONNECTED_ZOOM_GAP_MS,
@@ -483,7 +485,9 @@ export default function VideoEditor() {
 	// never exceed the viewport and push the preview off-screen.
 	useEffect(() => {
 		const onResize = () =>
-			setTimelineHeightPx((height) => (height == null ? height : clampTimelineHeight(height)));
+			setTimelineHeightPx((height) =>
+				height == null ? height : clampTimelineHeight(height),
+			);
 		window.addEventListener("resize", onResize);
 		return () => window.removeEventListener("resize", onResize);
 	}, []);
@@ -614,6 +618,10 @@ export default function VideoEditor() {
 		initialEditorPreferences.webcam ?? DEFAULT_WEBCAM_OVERLAY,
 	);
 	const [resolvedWebcamVideoUrl, setResolvedWebcamVideoUrl] = useState<string | null>(null);
+	// AI talking-head avatar overlay (set from the Avatar panel after generation).
+	const [avatarOverlay, setAvatarOverlay] =
+		useState<AvatarOverlaySettings>(DEFAULT_AVATAR_OVERLAY);
+	const [resolvedAvatarVideoUrl, setResolvedAvatarVideoUrl] = useState<string | null>(null);
 	const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
 	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
 	// Tracks the videoSourcePath for which the cursor telemetry IPC has already
@@ -1807,7 +1815,9 @@ export default function VideoEditor() {
 			currentProjectPath?.split(/[\\/]/).pop() ??
 			currentSourcePath?.split(/[\\/]/).pop() ??
 			"";
-		const withoutExtension = fileName.replace(/\.(?:glitchrecord|recordly)$/i, "").replace(/\.[^.]+$/, "");
+		const withoutExtension = fileName
+			.replace(/\.(?:glitchrecord|recordly)$/i, "")
+			.replace(/\.[^.]+$/, "");
 		return withoutExtension || t("editor.project.untitled", "Untitled");
 	}, [currentProjectPath, currentSourcePath, t]);
 
@@ -2511,7 +2521,8 @@ export default function VideoEditor() {
 								enabled: Boolean(sessionResult.session?.webcamPath),
 								sourcePath: sessionResult.session?.webcamPath ?? null,
 								timeOffsetMs:
-									sessionResult.session?.timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS,
+									sessionResult.session?.timeOffsetMs ??
+									DEFAULT_WEBCAM_TIME_OFFSET_MS,
 							}));
 							return;
 						}
@@ -2625,6 +2636,21 @@ export default function VideoEditor() {
 			cancelled = true;
 		};
 	}, [webcam.sourcePath]);
+
+	// Resolve the generated avatar clip to a playable URL (mirrors webcam).
+	useEffect(() => {
+		let cancelled = false;
+		if (!avatarOverlay.sourcePath) {
+			setResolvedAvatarVideoUrl(null);
+			return;
+		}
+		void resolveVideoUrl(avatarOverlay.sourcePath).then((url) => {
+			if (!cancelled) setResolvedAvatarVideoUrl(url);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [avatarOverlay.sourcePath]);
 
 	useEffect(() => {
 		if (!autoApplyFreshRecordingAutoZooms) {
@@ -3085,7 +3111,10 @@ export default function VideoEditor() {
 	useEffect(() => {
 		if (currentProjectPath || !currentSourcePath || !currentProjectSnapshot) return;
 		const timer = window.setTimeout(() => {
-			void window.electronAPI.saveRecordingProject?.(currentSourcePath, currentProjectSnapshot);
+			void window.electronAPI.saveRecordingProject?.(
+				currentSourcePath,
+				currentProjectSnapshot,
+			);
 		}, 1500);
 		return () => window.clearTimeout(timer);
 	}, [currentProjectPath, currentSourcePath, currentProjectSnapshot]);
@@ -3569,7 +3598,8 @@ export default function VideoEditor() {
 					v.muted = true;
 					v.preload = "auto";
 					v.crossOrigin = "anonymous";
-					v.style.cssText = "position:fixed;left:-99999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
+					v.style.cssText =
+						"position:fixed;left:-99999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
 					v.dataset.src = videoPath;
 					v.src = videoPath;
 					document.body.appendChild(v);
@@ -3578,18 +3608,39 @@ export default function VideoEditor() {
 				const vid = v;
 				if (vid.readyState < 2) {
 					await new Promise<void>((resolve, reject) => {
-						const ok = () => { cleanup(); resolve(); };
-						const fail = () => { cleanup(); reject(new Error("frame video load failed")); };
-						const cleanup = () => { vid.removeEventListener("loadeddata", ok); vid.removeEventListener("error", fail); };
+						const ok = () => {
+							cleanup();
+							resolve();
+						};
+						const fail = () => {
+							cleanup();
+							reject(new Error("frame video load failed"));
+						};
+						const cleanup = () => {
+							vid.removeEventListener("loadeddata", ok);
+							vid.removeEventListener("error", fail);
+						};
 						vid.addEventListener("loadeddata", ok);
 						vid.addEventListener("error", fail);
 					});
 				}
-				const target = Math.max(0, Math.min(tMs / 1000, (vid.duration || tMs / 1000) - 0.05));
+				const target = Math.max(
+					0,
+					Math.min(tMs / 1000, (vid.duration || tMs / 1000) - 0.05),
+				);
 				await new Promise<void>((resolve, reject) => {
-					const ok = () => { cleanup(); resolve(); };
-					const fail = () => { cleanup(); reject(new Error("frame seek failed")); };
-					const cleanup = () => { vid.removeEventListener("seeked", ok); vid.removeEventListener("error", fail); };
+					const ok = () => {
+						cleanup();
+						resolve();
+					};
+					const fail = () => {
+						cleanup();
+						reject(new Error("frame seek failed"));
+					};
+					const cleanup = () => {
+						vid.removeEventListener("seeked", ok);
+						vid.removeEventListener("error", fail);
+					};
 					vid.addEventListener("seeked", ok);
 					vid.addEventListener("error", fail);
 					vid.currentTime = target;
@@ -3626,7 +3677,8 @@ export default function VideoEditor() {
 	const handlePlaybackTimeUpdate = useCallback(
 		(t: number) => {
 			setCurrentTime(t);
-			narrationPlaybackRef.current.timelineTime = mapSourceTimeToTimelineTime(t * 1000) / 1000;
+			narrationPlaybackRef.current.timelineTime =
+				mapSourceTimeToTimelineTime(t * 1000) / 1000;
 		},
 		[mapSourceTimeToTimelineTime],
 	);
@@ -3645,7 +3697,9 @@ export default function VideoEditor() {
 	const handlePreviewSkipBack = useCallback(() => {
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
-		const previous = [...keyframes].reverse().find((keyframe) => keyframe.time < currentMs - 50);
+		const previous = [...keyframes]
+			.reverse()
+			.find((keyframe) => keyframe.time < currentMs - 50);
 		handleSeek(previous ? previous.time / 1000 : Math.max(0, timelinePlayheadTime - 5));
 	}, [handleSeek, timelinePlayheadTime]);
 
@@ -3653,9 +3707,7 @@ export default function VideoEditor() {
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
 		const next = keyframes.find((keyframe) => keyframe.time > currentMs + 50);
-		handleSeek(
-			next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5),
-		);
+		handleSeek(next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5));
 	}, [handleSeek, timelineDuration, timelinePlayheadTime]);
 
 	const handleSelectZoom = useCallback((id: string | null) => {
@@ -3911,44 +3963,47 @@ export default function VideoEditor() {
 	// two points (then it's editable/draggable like any clip region).
 	const [pendingMarkerMs, setPendingMarkerMs] = useState<number | null>(null);
 	const pendingMarkerRef = useRef<number | null>(null);
-	const handleShiftMarker = useCallback((ms: number) => {
-		const rounded = Math.round(ms);
-		// first marker — remember it and show the line
-		if (pendingMarkerRef.current === null) {
-			pendingMarkerRef.current = rounded;
-			setPendingMarkerMs(rounded);
-			return;
-		}
-		// second marker — carve a clip-speed segment between the two points. As a
-		// clip segment its timeline duration follows its speed (time-remap): change
-		// the speed and the clip grows/shrinks; content after it shifts.
-		const a = Math.min(pendingMarkerRef.current, rounded);
-		const b = Math.max(pendingMarkerRef.current, rounded);
-		pendingMarkerRef.current = null;
-		setPendingMarkerMs(null);
-		if (b - a >= 100) {
-			// Pre-mint the carved id so we can auto-SELECT it. The seam between the
-			// carved segment and its right neighbour is invisible (clips render as one
-			// continuous bar); auto-selecting lets the seam-drag reroute the resize to
-			// THIS segment's right edge instead of trimming the neighbour.
-			const carvedId = `clip-${nextClipIdRef.current++}`;
-			// Carve the span between the two markers into its own clip at 1× — NO speed
-			// change by default — and select it. The user sets the speed themselves by
-			// dragging the carved segment's edge (squeeze = faster, stretch = slower),
-			// which reflows source correctly via the clip-resize path. Defaulting to 2×
-			// surprised users; a plain 1× split is the neutral starting point.
-			const split = carveSpeedRegion(
-				clipRegions,
-				a,
-				b,
-				1,
-				() => `clip-${nextClipIdRef.current++}`,
-				carvedId,
-			);
-			setClipRegions(split);
-			handleSelectClip(carvedId);
-		}
-	}, [handleSelectClip, clipRegions, setClipRegions]);
+	const handleShiftMarker = useCallback(
+		(ms: number) => {
+			const rounded = Math.round(ms);
+			// first marker — remember it and show the line
+			if (pendingMarkerRef.current === null) {
+				pendingMarkerRef.current = rounded;
+				setPendingMarkerMs(rounded);
+				return;
+			}
+			// second marker — carve a clip-speed segment between the two points. As a
+			// clip segment its timeline duration follows its speed (time-remap): change
+			// the speed and the clip grows/shrinks; content after it shifts.
+			const a = Math.min(pendingMarkerRef.current, rounded);
+			const b = Math.max(pendingMarkerRef.current, rounded);
+			pendingMarkerRef.current = null;
+			setPendingMarkerMs(null);
+			if (b - a >= 100) {
+				// Pre-mint the carved id so we can auto-SELECT it. The seam between the
+				// carved segment and its right neighbour is invisible (clips render as one
+				// continuous bar); auto-selecting lets the seam-drag reroute the resize to
+				// THIS segment's right edge instead of trimming the neighbour.
+				const carvedId = `clip-${nextClipIdRef.current++}`;
+				// Carve the span between the two markers into its own clip at 1× — NO speed
+				// change by default — and select it. The user sets the speed themselves by
+				// dragging the carved segment's edge (squeeze = faster, stretch = slower),
+				// which reflows source correctly via the clip-resize path. Defaulting to 2×
+				// surprised users; a plain 1× split is the neutral starting point.
+				const split = carveSpeedRegion(
+					clipRegions,
+					a,
+					b,
+					1,
+					() => `clip-${nextClipIdRef.current++}`,
+					carvedId,
+				);
+				setClipRegions(split);
+				handleSelectClip(carvedId);
+			}
+		},
+		[handleSelectClip, clipRegions, setClipRegions],
+	);
 
 	// Drag a speed region's edge: stretch wider → slower, squeeze narrower → faster.
 	// speed = sourceMs / timelineWidth, snapped to the clean 0.05 grid (0.1 … 30).
@@ -4010,18 +4065,15 @@ export default function VideoEditor() {
 	// (the "cut the right side fully" gesture). Clips/zooms/annotations/audio/speed
 	// fully past the playhead are removed; a region spanning it is clipped to end
 	// there. Undoable via the editor history like any other edit.
-	const handleTrimToEnd = useCallback(
-		(cutMs: number) => {
-			const cut = Math.round(cutMs);
-			if (cut <= 0) return;
-			setClipRegions((prev) => trimRangesToEnd(prev, cut));
-			setZoomRegions((prev) => trimRangesToEnd(prev, cut));
-			setAnnotationRegions((prev) => trimRangesToEnd(prev, cut));
-			setAudioRegions((prev) => trimRangesToEnd(prev, cut));
-			setSpeedRegions((prev) => trimRangesToEnd(prev, cut));
-		},
-		[],
-	);
+	const handleTrimToEnd = useCallback((cutMs: number) => {
+		const cut = Math.round(cutMs);
+		if (cut <= 0) return;
+		setClipRegions((prev) => trimRangesToEnd(prev, cut));
+		setZoomRegions((prev) => trimRangesToEnd(prev, cut));
+		setAnnotationRegions((prev) => trimRangesToEnd(prev, cut));
+		setAudioRegions((prev) => trimRangesToEnd(prev, cut));
+		setSpeedRegions((prev) => trimRangesToEnd(prev, cut));
+	}, []);
 
 	// Add a DaVinci-style speed point at the playhead: split the clip into a
 	// linked retime pair (both at the current speed) whose seam can then be
@@ -4044,7 +4096,9 @@ export default function VideoEditor() {
 				if (selectedClipId === target.id) {
 					setSelectedClipId(result.left.id);
 				}
-				return prev.flatMap((c) => (c.id === target.id ? [result.left, result.right] : [c]));
+				return prev.flatMap((c) =>
+					c.id === target.id ? [result.left, result.right] : [c],
+				);
 			});
 		},
 		[selectedClipId],
@@ -4127,7 +4181,12 @@ export default function VideoEditor() {
 				const sourceContent = (oldClip.endMs - oldClip.startMs) * oldSpeed;
 				const newWidth = newEnd - oldClip.startMs;
 				const speed = snapStretchSpeed(sourceContent, newWidth);
-				const plan = planClipSpeedChange({ clipRegions, zoomRegions, selectedClipId: id, speed });
+				const plan = planClipSpeedChange({
+					clipRegions,
+					zoomRegions,
+					selectedClipId: id,
+					speed,
+				});
 				if (plan && !("blockedReason" in plan)) {
 					setClipRegions(plan.clipRegions);
 					setZoomRegions(plan.zoomRegions);
@@ -4307,7 +4366,12 @@ export default function VideoEditor() {
 			// Deleting a SPEED segment removes the speed EFFECT (revert to 1× and reflow
 			// the timeline back) instead of cutting the footage out.
 			if (deletedClip && deletedClip.speed !== 1) {
-				const plan = planClipSpeedChange({ clipRegions, zoomRegions, selectedClipId: id, speed: 1 });
+				const plan = planClipSpeedChange({
+					clipRegions,
+					zoomRegions,
+					selectedClipId: id,
+					speed: 1,
+				});
 				if (plan && !("blockedReason" in plan)) {
 					setClipRegions(plan.clipRegions);
 					setZoomRegions(plan.zoomRegions);
@@ -4354,7 +4418,12 @@ export default function VideoEditor() {
 	}, []);
 
 	const handleAudioAdded = useCallback(
-		(span: Span, audioPath: string, trackIndex?: number, opts?: { focusAudioPanel?: boolean }) => {
+		(
+			span: Span,
+			audioPath: string,
+			trackIndex?: number,
+			opts?: { focusAudioPanel?: boolean },
+		) => {
 			const id = `audio-${nextAudioIdRef.current++}`;
 			const newRegion: AudioRegion = {
 				id,
@@ -5692,6 +5761,8 @@ export default function VideoEditor() {
 			cropRegion={cropRegion}
 			webcam={webcam}
 			webcamVideoPath={webcam.sourcePath ? resolvedWebcamVideoUrl : null}
+			avatarOverlay={avatarOverlay}
+			avatarVideoPath={avatarOverlay.sourcePath ? resolvedAvatarVideoUrl : null}
 			trimRegions={trimRegions}
 			speedRegions={effectiveSpeedRegions}
 			annotationRegions={annotationRegions}
@@ -5729,7 +5800,10 @@ export default function VideoEditor() {
 				// embeddedVideoPreviewVolume already folds in the mutes + previewVolume;
 				// × the shared mix headroom so the video + narration + source audio can't
 				// sum past the device clip point (the "speaker tearing" fix).
-				Math.max(0, Math.min(1, audio.embeddedVideoPreviewVolume * audio.previewMixHeadroom))
+				Math.max(
+					0,
+					Math.min(1, audio.embeddedVideoPreviewVolume * audio.previewMixHeadroom),
+				)
 			}
 			suspendRendering={suspendRendering}
 		/>
@@ -6364,7 +6438,8 @@ export default function VideoEditor() {
 						{/* Panel */}
 						{activeEffectSection === "extensions" ? (
 							<ExtensionManager />
-						) : activeEffectSection === "glitchgrab" || activeEffectSection === "avatar" ? (
+						) : activeEffectSection === "glitchgrab" ||
+							activeEffectSection === "avatar" ? (
 							<GlitchgrabLogPanel
 								view={activeEffectSection === "avatar" ? "avatar" : "log"}
 								playbackRef={narrationPlaybackRef}
@@ -6376,6 +6451,24 @@ export default function VideoEditor() {
 								onAddNarrationToTimeline={handleAddNarrationToTimeline}
 								zoomRegions={zoomRegions}
 								storageKey={currentSourcePath ?? undefined}
+								onAvatarReady={(clipPath, shape, previewUrl) =>
+									setAvatarOverlay((prev) => ({
+										...prev,
+										enabled: true,
+										sourcePath: clipPath,
+										previewUrl: previewUrl ?? prev.previewUrl,
+										shape,
+									}))
+								}
+								onAvatarPreview={({ previewUrl, shape, clearClip }) =>
+									setAvatarOverlay((prev) => ({
+										...prev,
+										enabled: !!(previewUrl || (!clearClip && prev.sourcePath)),
+										previewUrl,
+										shape,
+										sourcePath: clearClip ? null : prev.sourcePath,
+									}))
+								}
 							/>
 						) : (
 							<SettingsPanel
@@ -6769,7 +6862,10 @@ export default function VideoEditor() {
 									variant="ghost"
 									size="icon"
 									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
-									title={t("editor.toolbar.addSpeedPoint", "Add speed point (retime) at playhead")}
+									title={t(
+										"editor.toolbar.addSpeedPoint",
+										"Add speed point (retime) at playhead",
+									)}
 								>
 									<Gauge className="w-4 h-4" />
 								</Button>
