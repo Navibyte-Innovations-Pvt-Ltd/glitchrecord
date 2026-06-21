@@ -249,8 +249,12 @@ interface GlitchgrabLogPanelProps {
 		shape: "box" | "circle";
 		clearClip?: boolean;
 	}) => void;
-	/** Live position/size of the avatar PiP overlay. */
-	onAvatarSettings?: (patch: { positionPreset?: AvatarPositionPreset; size?: number }) => void;
+	/** Live position/size/framing of the avatar PiP overlay. */
+	onAvatarSettings?: (patch: {
+		positionPreset?: AvatarPositionPreset;
+		size?: number;
+		framingY?: number;
+	}) => void;
 }
 
 type AvatarPositionPreset =
@@ -373,6 +377,10 @@ export function GlitchgrabLogPanel({
 	const [avatarSizePct, setAvatarSizePct] = useState<number>(
 		() => Number(localStorage.getItem("gg.avatar.size")) || 26,
 	);
+	const [avatarFramingY, setAvatarFramingY] = useState<number>(() => {
+		const v = localStorage.getItem("gg.avatar.framingY");
+		return v === null ? 22 : Number(v);
+	});
 	const [avatarBusy, setAvatarBusy] = useState(false);
 	const [avatarStage, setAvatarStage] = useState("");
 	const [avatarPath, setAvatarPath] = useState<string | null>(null);
@@ -518,6 +526,10 @@ export function GlitchgrabLogPanel({
 		localStorage.setItem("gg.avatar.size", String(avatarSizePct));
 		onAvatarSettings?.({ size: avatarSizePct });
 	}, [avatarSizePct, onAvatarSettings]);
+	useEffect(() => {
+		localStorage.setItem("gg.avatar.framingY", String(avatarFramingY));
+		onAvatarSettings?.({ framingY: avatarFramingY });
+	}, [avatarFramingY, onAvatarSettings]);
 	// Persist the chosen group + look so the selection survives panel remounts.
 	useEffect(() => {
 		if (selectedGroup) {
@@ -1804,6 +1816,25 @@ export function GlitchgrabLogPanel({
 							onChange={(e) => setAvatarSizePct(Number(e.target.value))}
 							className="w-full"
 						/>
+					</div>
+
+					{/* Framing — vertical crop so the face sits in the box */}
+					<div className="flex flex-col gap-1">
+						<span className="flex items-center justify-between text-[10px] uppercase tracking-wide text-foreground/40">
+							Face framing{" "}
+							<span className="font-mono text-foreground/50">{avatarFramingY}%</span>
+						</span>
+						<input
+							type="range"
+							min={0}
+							max={100}
+							value={avatarFramingY}
+							onChange={(e) => setAvatarFramingY(Number(e.target.value))}
+							className="w-full"
+						/>
+						<span className="text-[9px] text-foreground/35">
+							Lower = show more of the top (face)
+						</span>
 					</div>
 
 					<button
