@@ -315,7 +315,12 @@ export async function generateAvatar(
 		// then a studio avatar, then our uploaded photo.
 		let character: Record<string, unknown>;
 		if (req.talkingPhotoId) {
-			character = { type: "talking_photo", talking_photo_id: req.talkingPhotoId };
+			character = {
+				type: "talking_photo",
+				talking_photo_id: req.talkingPhotoId,
+				// Avatar IV tier → expressive engine = better lip-sync (4× cost).
+				...(req.tier === "iv" ? { talking_photo_style: "expressive" } : {}),
+			};
 		} else if (req.avatarId) {
 			character = { type: "avatar", avatar_id: req.avatarId, avatar_style: "normal" };
 		} else {
