@@ -5,7 +5,6 @@ import {
 	getTimelineViewportStretchFactor,
 	TIMELINE_AXIS_HEIGHT_PX,
 	TIMELINE_ROW_MIN_HEIGHT_PX,
-	TIMELINE_VISIBLE_ROW_COUNT,
 } from "./timelineLayout";
 
 describe("timelineLayout", () => {
@@ -31,11 +30,12 @@ describe("timelineLayout", () => {
 		);
 	});
 
-	it("stretches content height to keep a two-row viewport", () => {
-		expect(TIMELINE_VISIBLE_ROW_COUNT).toBe(2);
+	it("fills the viewport without over-stretching (panel is resizable)", () => {
+		// Content fills the available height; per-row min-height drives scroll.
+		// Dragging the panel taller reveals more rows instead of scaling the same two.
 		expect(getTimelineViewportStretchFactor(2)).toBe(1);
-		expect(getTimelineViewportStretchFactor(4)).toBe(2);
-		expect(getTimelineViewportStretchFactor(5)).toBe(2.5);
+		expect(getTimelineViewportStretchFactor(4)).toBe(1);
+		expect(getTimelineViewportStretchFactor(5)).toBe(1);
 		expect(getTimelineViewportStretchFactor(0)).toBe(1);
 	});
 });
