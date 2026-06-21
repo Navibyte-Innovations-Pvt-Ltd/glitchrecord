@@ -639,6 +639,11 @@ export default function VideoEditor() {
 			})),
 		[],
 	);
+	const handleAvatarFraming = useCallback(
+		(framingX: number, framingY: number) =>
+			setAvatarOverlay((prev) => ({ ...prev, framingX, framingY })),
+		[],
+	);
 	const handleAvatarReady = useCallback(
 		(clipPath: string, shape: "box" | "circle", previewUrl?: string) =>
 			setAvatarOverlay((prev) => ({
@@ -5811,6 +5816,7 @@ export default function VideoEditor() {
 			avatarOverlay={avatarOverlay}
 			avatarVideoPath={avatarOverlay.sourcePath ? resolvedAvatarVideoUrl : null}
 			onAvatarMove={handleAvatarMove}
+			onAvatarFraming={handleAvatarFraming}
 			trimRegions={trimRegions}
 			speedRegions={effectiveSpeedRegions}
 			annotationRegions={annotationRegions}
