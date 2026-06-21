@@ -573,6 +573,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	generateAvatar: (opts: {
 		photoPath?: string;
 		avatarId?: string;
+		talkingPhotoId?: string;
 		audioPath: string;
 		tier: "photo" | "iv";
 		transparent?: boolean;
@@ -584,10 +585,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			error?: string;
 		}>,
 	avatarKeyStatus: () => ipcRenderer.invoke("avatar:key-status") as Promise<{ hasKey: boolean }>,
-	listAvatars: () =>
-		ipcRenderer.invoke("avatar:list") as Promise<{
+	searchAvatarGroups: (query?: string) =>
+		ipcRenderer.invoke("avatar:search-groups", query) as Promise<{
 			ok: boolean;
-			avatars?: Array<{ id: string; name: string; gender?: string; previewUrl?: string }>;
+			groups?: Array<{
+				id: string;
+				name: string;
+				numLooks: number;
+				previewUrl?: string;
+				isPublic: boolean;
+			}>;
+			error?: string;
+		}>,
+	listGroupLooks: (groupId: string) =>
+		ipcRenderer.invoke("avatar:group-looks", groupId) as Promise<{
+			ok: boolean;
+			looks?: Array<{ id: string; name: string; previewUrl?: string }>;
 			error?: string;
 		}>,
 	pickAvatarPhoto: () =>
