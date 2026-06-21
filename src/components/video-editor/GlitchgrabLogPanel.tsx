@@ -363,6 +363,14 @@ export function GlitchgrabLogPanel({
 	const [groupLooksLoading, setGroupLooksLoading] = useState(false);
 	const [groupLooksError, setGroupLooksError] = useState<string | null>(null);
 	const [selectedLookId, setSelectedLookId] = useState<string | null>(null);
+	// Captured ONCE at first render (lazy init runs before any effect) so the
+	// persistence effects — which clear localStorage when selection is null on
+	// mount — can't wipe the saved selection before restore reads it.
+	const [savedAvatarSelection] = useState(() => ({
+		gid: localStorage.getItem("gg.avatar.groupId"),
+		gname: localStorage.getItem("gg.avatar.groupName"),
+		lookId: localStorage.getItem("gg.avatar.lookId"),
+	}));
 	const [avatarTier, setAvatarTier] = useState<"photo" | "iv">(
 		() => (localStorage.getItem("gg.avatar.tier") as "photo" | "iv") || "photo",
 	);
@@ -602,11 +610,12 @@ export function GlitchgrabLogPanel({
 	useEffect(() => {
 		if (restoredAvatarRef.current) return;
 		restoredAvatarRef.current = true;
-		const gid = localStorage.getItem("gg.avatar.groupId");
-		const gname = localStorage.getItem("gg.avatar.groupName");
-		const lookId = localStorage.getItem("gg.avatar.lookId");
-		if (gid && gname) openAvatarGroup({ id: gid, name: gname }, lookId ?? undefined);
-	}, [openAvatarGroup]);
+		const { gid, gname, lookId } = savedAvatarSelection;
+		if (gid && gname) {
+			setAvatarSource("library");
+			openAvatarGroup({ id: gid, name: gname }, lookId ?? undefined);
+		}
+	}, [openAvatarGroup, savedAvatarSelection]);
 	// Resolve a playable URL for the generated clip preview.
 	useEffect(() => {
 		if (!avatarPath) {
