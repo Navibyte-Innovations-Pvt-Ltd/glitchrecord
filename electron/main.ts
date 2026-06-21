@@ -30,7 +30,13 @@ import {
 	validateToken,
 } from "./glitchbridge/api";
 import { clearAuth, saveAuth, setSelectedRepo } from "./glitchbridge/auth";
-import { type AvatarTier, generateAvatar, hasHeyGenKey, listAvatars } from "./glitchbridge/heygen";
+import {
+	type AvatarTier,
+	generateAvatar,
+	hasHeyGenKey,
+	listAvatarGroups,
+	listGroupLooks,
+} from "./glitchbridge/heygen";
 import {
 	appendDebugLog,
 	broadcastRecordingStart,
@@ -1334,8 +1340,9 @@ app.whenReady().then(async () => {
 	// Whether the platform HeyGen key is configured (so the panel can prompt).
 	ipcMain.handle("avatar:key-status", () => ({ hasKey: hasHeyGenKey() }));
 
-	// HeyGen's studio avatar library — for the "pick a HeyGen avatar" mode.
-	ipcMain.handle("avatar:list", () => listAvatars());
+	// HeyGen avatar groups (incl. public like "Ramisa") + the looks inside a group.
+	ipcMain.handle("avatar:search-groups", (_e, query?: string) => listAvatarGroups(query));
+	ipcMain.handle("avatar:group-looks", (_e, groupId: string) => listGroupLooks(groupId));
 
 	// Native picker for the avatar's custom photo (renderer File.path is gone in
 	// modern Electron, so resolve the absolute path here).
@@ -1359,6 +1366,7 @@ app.whenReady().then(async () => {
 			opts: {
 				photoPath?: string;
 				avatarId?: string;
+				talkingPhotoId?: string;
 				audioPath: string;
 				tier: AvatarTier;
 				transparent?: boolean;
@@ -1370,12 +1378,13 @@ app.whenReady().then(async () => {
 			const outDir = path.join(app.getPath("userData"), "avatars");
 			appendDebugLog(
 				"rec",
-				`avatar: generate ${opts.avatarId ? `avatar=${opts.avatarId}` : "photo"} tier=${opts.tier} transparent=${!!opts.transparent}`,
+				`avatar: generate ${opts.talkingPhotoId ? `look=${opts.talkingPhotoId}` : opts.avatarId ? `avatar=${opts.avatarId}` : "photo"} tier=${opts.tier} transparent=${!!opts.transparent}`,
 			);
 			const result = await generateAvatar(
 				{
 					photoPath: opts.photoPath,
 					avatarId: opts.avatarId,
+					talkingPhotoId: opts.talkingPhotoId,
 					audioPath: opts.audioPath,
 					tier: opts.tier,
 					transparent: opts.transparent,
