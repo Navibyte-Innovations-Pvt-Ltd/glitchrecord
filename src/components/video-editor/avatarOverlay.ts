@@ -22,6 +22,35 @@ export function isAvatarOverlayVisible(
 	return Boolean(videoPath || settings.previewUrl);
 }
 
+// CSS object-position for the avatar media inside its box. Lets the user pan the
+// face into frame (Shift+drag / framing slider). Clamped to 0–100 each axis.
+export function getAvatarObjectPosition(settings: AvatarOverlaySettings): string {
+	const clamp = (n: number, fallback: number) =>
+		Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : fallback;
+	const x = clamp(settings.framingX, 50);
+	const y = clamp(settings.framingY, 22);
+	return `${x}% ${y}%`;
+}
+
+// Convert a Shift-drag delta (px) into new framing percentages. Dragging the photo
+// right reveals its left side → framingX decreases (hence the minus).
+export function panAvatarFraming(opts: {
+	startX: number;
+	startY: number;
+	deltaXpx: number;
+	deltaYpx: number;
+	boxW: number;
+	boxH: number;
+}): { framingX: number; framingY: number } {
+	const w = Math.max(1, opts.boxW);
+	const h = Math.max(1, opts.boxH);
+	const clamp = (n: number) => Math.min(100, Math.max(0, n));
+	return {
+		framingX: clamp(opts.startX - (opts.deltaXpx / w) * 100),
+		framingY: clamp(opts.startY - (opts.deltaYpx / h) * 100),
+	};
+}
+
 // Position + size + corner radius for the bubble. Returns null when there's no
 // room (container not laid out yet) so callers can hide instead of drawing NaN.
 export function getAvatarBubbleLayout({
