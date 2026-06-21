@@ -174,7 +174,9 @@ export async function listGroupLooks(groupId: string): Promise<{
 function mimeFor(p: string): string {
 	const lower = p.toLowerCase();
 	if (lower.endsWith(".mp3")) return "audio/mpeg";
-	if (lower.endsWith(".wav")) return "audio/wav";
+	// HeyGen sniffs RIFF WAV as audio/x-wav and rejects an audio/wav header
+	// ("Content type not match audio/wav != audio/x-wav").
+	if (lower.endsWith(".wav")) return "audio/x-wav";
 	if (lower.endsWith(".m4a")) return "audio/mp4";
 	if (lower.endsWith(".png")) return "image/png";
 	if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
