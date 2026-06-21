@@ -1023,7 +1023,7 @@ export function GlitchgrabLogPanel({
 			</button>,
 			(document.getElementById("gg-editor-row") ?? document.body))}
 			{scriptOpen && createPortal(
-			<div className="flex w-[420px] shrink-0 flex-col rounded-lg border border-foreground/10 bg-background shadow-lg">
+			<div className="gg-selectable flex w-[420px] shrink-0 flex-col rounded-lg border border-foreground/10 bg-background shadow-lg">
 			<div className="flex items-center justify-between border-b border-foreground/10 px-3 py-2">
 			<span className="flex items-center gap-1.5 text-[13px] font-semibold"><Sparkle className="h-4 w-4 text-blue-500" /> Script Writer</span>
 			<button type="button" onClick={() => setScriptOpen(false)} title="Close" className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition hover:bg-foreground/[0.06] hover:text-foreground">✕</button>
