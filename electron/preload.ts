@@ -556,6 +556,30 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("narration-progress", handler);
 		return () => ipcRenderer.removeListener("narration-progress", handler);
 	},
+	// ── HeyGen talking-head avatar ──────────────────────────────
+	// Lip-syncs the EXISTING narration audio to a custom photo. Platform key
+	// (HEYGEN_API_KEY) lives in the main process; the renderer never sees it.
+	generateAvatar: (opts: {
+		photoPath: string;
+		audioPath: string;
+		tier: "photo" | "iv";
+		transparent?: boolean;
+	}) =>
+		ipcRenderer.invoke("avatar:generate", opts) as Promise<{
+			ok: boolean;
+			path?: string;
+			format?: "webm" | "mp4";
+			error?: string;
+		}>,
+	avatarKeyStatus: () =>
+		ipcRenderer.invoke("avatar:key-status") as Promise<{ hasKey: boolean }>,
+	pickAvatarPhoto: () =>
+		ipcRenderer.invoke("avatar:pick-photo") as Promise<{ path: string | null }>,
+	onAvatarProgress: (cb: (stage: string) => void) => {
+		const handler = (_e: unknown, stage: string) => cb(stage);
+		ipcRenderer.on("avatar-progress", handler);
+		return () => ipcRenderer.removeListener("avatar-progress", handler);
+	},
 	openNarrationTester: () => ipcRenderer.invoke("open-narration-tester") as Promise<{ ok: boolean }>,
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
