@@ -1,5 +1,6 @@
 import type { RowDefinition } from "dnd-timeline";
 import { useRow } from "dnd-timeline";
+import { TIMELINE_ROW_MAX_HEIGHT_PX, TIMELINE_ROW_MIN_HEIGHT_PX } from "./timelineLayout";
 
 interface RowProps extends RowDefinition {
 	children: React.ReactNode;
@@ -31,8 +32,13 @@ export default function Row({
 
 	return (
 		<div
-			className="bg-transparent relative flex-1 min-h-[22px] max-h-[40px]"
-			style={{ ...rowWrapperStyle, marginBottom: 2 }}
+			className="bg-transparent relative flex-1"
+			style={{
+				...rowWrapperStyle,
+				marginBottom: 2,
+				minHeight: TIMELINE_ROW_MIN_HEIGHT_PX,
+				maxHeight: TIMELINE_ROW_MAX_HEIGHT_PX,
+			}}
 		>
 			{label && (
 				<div
@@ -49,8 +55,8 @@ export default function Row({
 			)}
 			<div
 				ref={setNodeRef}
-				className="relative h-full min-h-[22px] overflow-hidden"
-				style={rowStyle}
+				className="relative h-full overflow-hidden"
+				style={{ ...rowStyle, minHeight: TIMELINE_ROW_MIN_HEIGHT_PX }}
 				onMouseEnter={onMouseEnter}
 				onMouseMove={onMouseMove}
 				onMouseLeave={onMouseLeave}
