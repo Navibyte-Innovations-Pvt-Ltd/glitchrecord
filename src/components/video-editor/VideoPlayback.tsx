@@ -1056,16 +1056,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 			};
 			let lastReseek = 0;
-			let lastLog = 0;
 			const tick = () => {
 				const target = Math.max(0, currentTimeRef.current / 1000);
-				// TEMP: one line/sec so we can see why lips don't move.
-				if (Date.now() - lastLog > 1000) {
-					lastLog = Date.now();
-					console.log(
-						`[GG-avatar-sync] playing=${isPlayingRef.current} target=${target.toFixed(2)} vTime=${v.currentTime.toFixed(2)} vPaused=${v.paused} ready=${v.readyState} err=${v.error?.code ?? "none"}`,
-					);
-				}
 				if (!Number.isFinite(target)) return;
 				if (isPlayingRef.current) {
 					// PLAYING: let the clip run at 1× (lips animate). Only re-align on a
