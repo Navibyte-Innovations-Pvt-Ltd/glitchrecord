@@ -128,7 +128,12 @@ import { applyCanvasSceneTransform } from "@/lib/extensions/sceneTransform";
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
 import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
 import { AnnotationOverlay } from "./AnnotationOverlay";
-import { getAvatarBubbleLayout, isAvatarOverlayVisible } from "./avatarOverlay";
+import {
+	getAvatarBubbleLayout,
+	getAvatarObjectPosition,
+	isAvatarOverlayVisible,
+	panAvatarFraming,
+} from "./avatarOverlay";
 import {
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
@@ -357,6 +362,8 @@ interface VideoPlaybackProps {
 	avatarVideoPath?: string | null;
 	/** Drag-to-reposition the avatar PiP — reports new fractional X/Y (0–1). */
 	onAvatarMove?: (positionX: number, positionY: number) => void;
+	/** Shift+drag to pan the photo inside the box — reports framing X/Y (0–100%). */
+	onAvatarFraming?: (framingX: number, framingY: number) => void;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
 	aspectRatio: AspectRatio;
@@ -443,6 +450,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			avatarOverlay,
 			avatarVideoPath,
 			onAvatarMove,
+			onAvatarFraming,
 			trimRegions = [],
 			speedRegions = [],
 			aspectRatio,
@@ -887,7 +895,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		// Enabled once we have either the generated clip OR a look thumbnail to
 		// preview the layout before spending credits on generation.
 		const avatarPreviewUrl = avatarOverlay?.previewUrl ?? null;
-		const avatarFramingY = avatarOverlay?.framingY ?? 22;
+		const avatarObjectPosition = avatarOverlay
+			? getAvatarObjectPosition(avatarOverlay)
+			: "50% 22%";
 		const avatarEnabled = isAvatarOverlayVisible(avatarOverlay, avatarVideoPath);
 		const applyAvatarBubbleLayout = useCallback(() => {
 			const bubble = avatarBubbleRef.current;
@@ -915,14 +925,44 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			bubble.style.boxShadow = `0 ${Math.round(layout.size * 0.05)}px ${Math.round(layout.size * 0.18)}px rgba(0,0,0,0.35)`;
 		}, [avatarEnabled, avatarOverlay]);
 
-		// Drag the avatar PiP anywhere in the preview. Converts the pointer to a
-		// fractional (0–1) position in the available area and reports it upward.
+		// Drag the avatar PiP. Plain drag MOVES it; Shift+drag PANS the photo inside
+		// the box (so a face that's cropped to a corner can be slid into frame).
 		const handleAvatarPointerDown = useCallback(
 			(e: React.PointerEvent<HTMLDivElement>) => {
-				if (!onAvatarMove) return;
 				const bubble = avatarBubbleRef.current;
 				const overlay = overlayRef.current;
 				if (!bubble || !overlay) return;
+
+				// Shift+drag → pan the image framing.
+				if (e.shiftKey && onAvatarFraming) {
+					e.preventDefault();
+					const startClientX = e.clientX;
+					const startClientY = e.clientY;
+					const startX = avatarOverlay?.framingX ?? 50;
+					const startY = avatarOverlay?.framingY ?? 22;
+					const boxW = bubble.offsetWidth;
+					const boxH = bubble.offsetHeight;
+					const onMove = (ev: PointerEvent) => {
+						const { framingX, framingY } = panAvatarFraming({
+							startX,
+							startY,
+							deltaXpx: ev.clientX - startClientX,
+							deltaYpx: ev.clientY - startClientY,
+							boxW,
+							boxH,
+						});
+						onAvatarFraming(framingX, framingY);
+					};
+					const onUp = () => {
+						window.removeEventListener("pointermove", onMove);
+						window.removeEventListener("pointerup", onUp);
+					};
+					window.addEventListener("pointermove", onMove);
+					window.addEventListener("pointerup", onUp);
+					return;
+				}
+
+				if (!onAvatarMove) return;
 				e.preventDefault();
 				const margin = avatarOverlay?.margin ?? 24;
 				const size = bubble.offsetWidth;
@@ -947,7 +987,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				window.addEventListener("pointermove", onMove);
 				window.addEventListener("pointerup", onUp);
 			},
-			[onAvatarMove, avatarOverlay?.margin],
+			[onAvatarMove, onAvatarFraming, avatarOverlay?.margin, avatarOverlay?.framingX, avatarOverlay?.framingY],
 		);
 
 		// Re-apply avatar layout on prop changes and window resizes. (A ResizeObserver
@@ -3059,8 +3099,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								onPointerDown={handleAvatarPointerDown}
 								style={{
 									display: avatarEnabled ? "block" : "none",
-									pointerEvents: onAvatarMove ? "auto" : "none",
-									cursor: onAvatarMove ? "grab" : "default",
+									pointerEvents: onAvatarMove || onAvatarFraming ? "auto" : "none",
+									cursor: onAvatarMove || onAvatarFraming ? "grab" : "default",
 									touchAction: "none",
 								}}
 							>
@@ -3071,7 +3111,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											ref={avatarVideoRef}
 											src={avatarVideoPath}
 											className="pointer-events-none block h-full w-full object-cover"
-											style={{ objectPosition: `center ${avatarFramingY}%` }}
+											style={{ objectPosition: avatarObjectPosition }}
 											muted
 											playsInline
 											preload="auto"
@@ -3084,7 +3124,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										alt=""
 										aria-hidden="true"
 										className="pointer-events-none block h-full w-full object-cover"
-										style={{ objectPosition: `center ${avatarFramingY}%` }}
+										style={{ objectPosition: avatarObjectPosition }}
 									/>
 								)}
 							</div>
