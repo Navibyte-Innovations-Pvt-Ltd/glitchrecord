@@ -211,6 +211,10 @@
 	input[type="range"]::-webkit-slider-thumb {
 		-webkit-appearance: none;
 		appearance: none;
+		/* border-box → total box is exactly 16px; margin-top = (track 4 − thumb 16)/2
+		   recenters the thumb on the 4px runnable-track instead of riding off-center. */
+		box-sizing: border-box;
+		margin-top: -6px;
 		width: 16px;
 		height: 16px;
 		border-radius: 50%;
