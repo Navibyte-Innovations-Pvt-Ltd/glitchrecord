@@ -184,6 +184,77 @@ describe("createVideoEventHandlers", () => {
 		expect(cancelVideoFrameCallback).toHaveBeenCalledWith(23);
 	});
 
+	it("stops at the timeline content end instead of playing into trailing source", () => {
+		// The recording is 10s but the edited timeline ends at 6s of source (last clip).
+		// Without the clamp, playback ran on to 10s invisibly past the marker — causing
+		// the end-of-play flicker + an unresponsive timeline. It must pause AT 6s.
+		let presentedFrameCallback: PresentedFrameCallback | null = null;
+		const video = createMockVideo({
+			currentTime: 6.2,
+			duration: 10,
+			requestVideoFrameCallback: vi.fn((callback) => {
+				presentedFrameCallback = callback;
+				return 31;
+			}),
+			cancelVideoFrameCallback: vi.fn(),
+		});
+		const onTimeUpdate = vi.fn();
+		const handlers = createVideoEventHandlers({
+			video,
+			isSeekingRef: createMutableRef(false),
+			isPlayingRef: createMutableRef(false),
+			allowPlaybackRef: createMutableRef(true),
+			currentTimeRef: createMutableRef(0),
+			timeUpdateAnimationRef: createMutableRef<number | null>(null),
+			onPlayStateChange: vi.fn(),
+			onTimeUpdate,
+			trimRegionsRef: createMutableRef([]),
+			speedRegionsRef: createMutableRef([]),
+			playbackEndSourceMsRef: createMutableRef<number | null>(6_000),
+		});
+
+		handlers.handlePlay();
+		// A frame is presented past the content end.
+		presentedFrameCallback?.(0, { mediaTime: 6.2 });
+
+		expect(video.pause).toHaveBeenCalled();
+		// Playhead lands exactly on the content end (6s), not the trailing 6.2/10.
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(6);
+	});
+
+	it("keeps playing normally before the content end (no premature stop)", () => {
+		let presentedFrameCallback: PresentedFrameCallback | null = null;
+		const video = createMockVideo({
+			currentTime: 3,
+			duration: 10,
+			requestVideoFrameCallback: vi.fn((callback) => {
+				presentedFrameCallback = callback;
+				return 33;
+			}),
+			cancelVideoFrameCallback: vi.fn(),
+		});
+		const onTimeUpdate = vi.fn();
+		const handlers = createVideoEventHandlers({
+			video,
+			isSeekingRef: createMutableRef(false),
+			isPlayingRef: createMutableRef(false),
+			allowPlaybackRef: createMutableRef(true),
+			currentTimeRef: createMutableRef(0),
+			timeUpdateAnimationRef: createMutableRef<number | null>(null),
+			onPlayStateChange: vi.fn(),
+			onTimeUpdate,
+			trimRegionsRef: createMutableRef([]),
+			speedRegionsRef: createMutableRef([]),
+			playbackEndSourceMsRef: createMutableRef<number | null>(6_000),
+		});
+
+		handlers.handlePlay();
+		presentedFrameCallback?.(0, { mediaTime: 3 });
+
+		expect(video.pause).not.toHaveBeenCalled();
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(3);
+	});
+
 	it("skips removed footage after a paused seek", () => {
 		const video = createMockVideo({
 			currentTime: 1.25,
