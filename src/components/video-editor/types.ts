@@ -327,13 +327,18 @@ export function getClipSourceSpans(clips: ClipRegion[]): ClipSourceSpan[] {
 
 export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: number): number {
 	const baseDurationMs = Math.max(0, Math.round(sourceDurationMs));
+	// With no clips, the whole recording IS the timeline.
 	if (clips.length === 0) {
 		return baseDurationMs;
 	}
 
+	// Clips define the edited timeline — it ends where the LAST clip ends. We do NOT
+	// floor at the raw source length: when clips consume less source than the recording
+	// has (e.g. slow-mo, or a trailing cut), flooring at the source would auto-append the
+	// leftover footage and leave the playhead a 'dead zone' past the content (freeze bug).
 	return clips.reduce(
 		(durationMs, clip) => Math.max(durationMs, Math.max(0, Math.round(clip.endMs))),
-		baseDurationMs,
+		0,
 	);
 }
 
