@@ -140,6 +140,15 @@ describe("clip timeline mapping", () => {
 		expect(mapSourceTimeToTimelineTime(5_900, clips)).toBe(6_000);
 	});
 
+	it("clamps source past a SLOW last clip to its TIMELINE end (no end-of-play flicker)", () => {
+		// A 0.1× clip displays 10s but only consumes 1s of source. When playback's source
+		// time overshoots past 1s, the playhead must land on the clip's TIMELINE end
+		// (10_000) — returning the tiny source value (1_000) made the marker jump left for
+		// a frame before snapping right (the reported flicker).
+		const slow = [{ id: "slow-1", startMs: 0, endMs: 10_000, speed: 0.1 }];
+		expect(mapSourceTimeToTimelineTime(1_500, slow)).toBe(10_000);
+	});
+
 	it("finds clips only inside visible kept spans", () => {
 		expect(findClipAtTimelineTime(500, clips)?.id).toBe("clip-1");
 		expect(findClipAtTimelineTime(5_000, clips)).toBeNull();
