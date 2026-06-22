@@ -1,6 +1,14 @@
 import { Application, BlurFilter, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
+import {
+	type AvatarBubbleLayout,
+	getAvatarBubbleLayout,
+	getAvatarFullFrameLayout,
+	getAvatarObjectPosition,
+	getAvatarSpotlightProgress,
+	lerpAvatarLayout,
+} from "@/components/video-editor/avatarOverlay";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import {
 	CAPTION_FONT_WEIGHT,
@@ -14,9 +22,11 @@ import {
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
+	AvatarOverlaySettings,
+	AvatarRegion,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -127,6 +137,9 @@ interface FrameRenderConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	avatar?: AvatarOverlaySettings;
+	avatarUrl?: string | null;
+	avatarRegions?: AvatarRegion[];
 	videoWidth: number;
 	videoHeight: number;
 	annotationRegions?: AnnotationRegion[];
@@ -501,6 +514,17 @@ export class FrameRenderer {
 	private compositeCtx: CanvasRenderingContext2D | null = null;
 	private lastEmittedClickTimeMs = -1;
 	private cleanupWebcamSource: (() => void) | null = null;
+	// AI talking-head avatar PiP overlay (mirrors the webcam overlay pipeline, but the
+	// clip is a separate generated video timed from t=0 = narration start).
+	private avatarRootContainer: Container | null = null;
+	private avatarContainer: Container | null = null;
+	private avatarSprite: Sprite | null = null;
+	private avatarMaskGraphics: Graphics | null = null;
+	private avatarTextureSource: MutableVideoTextureSource | null = null;
+	private avatarForwardFrameSource: ForwardFrameSource | null = null;
+	private avatarDecodedFrame: VideoFrame | null = null;
+	private avatarFrameStagingCanvas: HTMLCanvasElement | null = null;
+	private avatarFrameStagingCtx: CanvasRenderingContext2D | null = null;
 
 	constructor(config: FrameRenderConfig) {
 		this.config = config;
@@ -570,6 +594,8 @@ export class FrameRenderer {
 		this.captionContainer = new Container();
 		this.webcamRootContainer = new Container();
 		this.webcamContainer = new Container();
+		this.avatarRootContainer = new Container();
+		this.avatarContainer = new Container();
 
 		this.app.stage.addChild(this.backgroundContainer);
 		this.app.stage.addChild(this.cameraContainer);
@@ -601,6 +627,10 @@ export class FrameRenderer {
 		this.overlayContainer.addChild(this.webcamRootContainer);
 		this.overlayContainer.addChild(this.annotationContainer);
 		this.overlayContainer.addChild(this.captionContainer);
+		// Avatar last → drawn on top (its spotlight grows to cover the whole stage).
+		this.avatarRootContainer.addChild(this.avatarContainer);
+		this.avatarRootContainer.visible = false;
+		this.overlayContainer.addChild(this.avatarRootContainer);
 
 		this.videoMaskGraphics = new Graphics();
 		this.videoContainer.addChild(this.videoMaskGraphics);
@@ -609,6 +639,10 @@ export class FrameRenderer {
 		this.webcamMaskGraphics = new Graphics();
 		this.webcamContainer.addChild(this.webcamMaskGraphics);
 		this.webcamContainer.mask = this.webcamMaskGraphics;
+
+		this.avatarMaskGraphics = new Graphics();
+		this.avatarContainer.addChild(this.avatarMaskGraphics);
+		this.avatarContainer.mask = this.avatarMaskGraphics;
 
 		if (cursorOverlayEnabled) {
 			this.cursorOverlay = new PixiCursorOverlay({
@@ -622,14 +656,14 @@ export class FrameRenderer {
 					massMultiplier: this.config.cursorSpringMassMultiplier,
 				},
 				motionBlur: this.config.cursorMotionBlur ?? 0,
-				clickEffect:
-					this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
+				clickEffect: this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
 				clickEffectColor:
 					this.config.cursorClickEffectColor ?? DEFAULT_CURSOR_CONFIG.clickEffectColor,
 				clickEffectScale:
 					this.config.cursorClickEffectScale ?? DEFAULT_CURSOR_CONFIG.clickEffectScale,
 				clickEffectOpacity:
-					this.config.cursorClickEffectOpacity ?? DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
+					this.config.cursorClickEffectOpacity ??
+					DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
 				clickEffectDurationMs:
 					this.config.cursorClickEffectDurationMs ??
 					DEFAULT_CURSOR_CONFIG.clickEffectDurationMs,
@@ -645,6 +679,7 @@ export class FrameRenderer {
 		await this.setupBackground();
 		await this.setupFrame();
 		await this.setupWebcamSource();
+		await this.setupAvatarSource();
 
 		this.annotationScaleFactor = this.calculateAnnotationScaleFactor();
 		this.annotationAssets = await preloadAnnotationAssets(this.config.annotationRegions ?? []);
@@ -2549,15 +2584,10 @@ export class FrameRenderer {
 			const usesDefaultCropRegion = isWebcamCropRegionDefault(this.config.webcam?.cropRegion);
 			const needsCacheBackedSource =
 				!usesDefaultCropRegion ||
-				(typeof HTMLVideoElement !== "undefined" &&
-					liveSource instanceof HTMLVideoElement);
+				(typeof HTMLVideoElement !== "undefined" && liveSource instanceof HTMLVideoElement);
 
 			if (needsCacheBackedSource) {
-				this.refreshWebcamFrameCache(
-					liveSource,
-					liveSourceWidth,
-					liveSourceHeight,
-				);
+				this.refreshWebcamFrameCache(liveSource, liveSourceWidth, liveSourceHeight);
 				const cachedSource = this.getCachedWebcamRenderSource();
 				if (cachedSource) {
 					this.setWebcamRenderMode("live");
@@ -2943,6 +2973,227 @@ export class FrameRenderer {
 		}
 	}
 
+	// --- AI avatar PiP overlay (mirrors the webcam pipeline) ----------------
+
+	private closeAvatarDecodedFrame(): void {
+		if (!this.avatarDecodedFrame) {
+			return;
+		}
+		this.avatarDecodedFrame.close();
+		this.avatarDecodedFrame = null;
+	}
+
+	private async setupAvatarSource(): Promise<void> {
+		const avatarUrl = this.config.avatarUrl;
+		this.avatarForwardFrameSource?.cancel();
+		void this.avatarForwardFrameSource?.destroy();
+		this.avatarForwardFrameSource = null;
+		this.closeAvatarDecodedFrame();
+
+		if (!this.config.avatar?.enabled || !avatarUrl) {
+			if (this.avatarRootContainer) {
+				this.avatarRootContainer.visible = false;
+			}
+			return;
+		}
+
+		try {
+			const frameSource = new ForwardFrameSource();
+			await frameSource.initialize(avatarUrl);
+			this.avatarForwardFrameSource = frameSource;
+		} catch (error) {
+			console.warn(
+				"[FrameRenderer] Avatar clip decoder unavailable during export; avatar overlay will be hidden:",
+				error,
+			);
+			this.avatarForwardFrameSource = null;
+		}
+	}
+
+	private async syncAvatarFrame(targetTimeSeconds: number): Promise<void> {
+		if (!this.avatarForwardFrameSource) {
+			return;
+		}
+		const clampedTime = clampMediaTimeToDuration(Math.max(0, targetTimeSeconds), null);
+		try {
+			const decodedFrame = await this.avatarForwardFrameSource.getFrameAtTime(clampedTime);
+			this.closeAvatarDecodedFrame();
+			this.avatarDecodedFrame = decodedFrame;
+		} catch (error) {
+			console.warn(
+				"[FrameRenderer] Avatar clip decode failed during export; hiding avatar:",
+				error,
+			);
+			this.avatarForwardFrameSource.cancel();
+			void this.avatarForwardFrameSource.destroy();
+			this.avatarForwardFrameSource = null;
+			this.closeAvatarDecodedFrame();
+		}
+	}
+
+	private ensureAvatarFrameStagingCanvas(
+		width: number,
+		height: number,
+	): { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D } | null {
+		const targetWidth = Math.max(1, Math.ceil(width));
+		const targetHeight = Math.max(1, Math.ceil(height));
+		if (
+			this.avatarFrameStagingCanvas &&
+			this.avatarFrameStagingCanvas.width === targetWidth &&
+			this.avatarFrameStagingCanvas.height === targetHeight &&
+			this.avatarFrameStagingCtx
+		) {
+			return { canvas: this.avatarFrameStagingCanvas, context: this.avatarFrameStagingCtx };
+		}
+		const canvas = document.createElement("canvas");
+		canvas.width = targetWidth;
+		canvas.height = targetHeight;
+		const context = configureHighQuality2DContext(
+			canvas.getContext("2d", { willReadFrequently: true }),
+		);
+		if (!context) {
+			return null;
+		}
+		this.avatarFrameStagingCanvas = canvas;
+		this.avatarFrameStagingCtx = context;
+		return { canvas, context };
+	}
+
+	private ensureAvatarSprite(
+		source: CanvasImageSource | VideoFrame,
+		sourceWidth: number,
+		sourceHeight: number,
+	): void {
+		if (!this.avatarContainer) {
+			return;
+		}
+
+		// Stage the decoded VideoFrame onto a 2D canvas so the texture upload is stable
+		// across backends (same reason the webcam overlay canvas-stages its frames).
+		let resolvedSource: CanvasImageSource | VideoFrame = source;
+		if (typeof VideoFrame !== "undefined" && source instanceof VideoFrame) {
+			const width = Math.max(1, source.displayWidth || sourceWidth);
+			const height = Math.max(1, source.displayHeight || sourceHeight);
+			const staging = this.ensureAvatarFrameStagingCanvas(width, height);
+			if (staging) {
+				staging.context.clearRect(0, 0, staging.canvas.width, staging.canvas.height);
+				staging.context.drawImage(
+					source,
+					0,
+					0,
+					staging.canvas.width,
+					staging.canvas.height,
+				);
+				resolvedSource = staging.canvas;
+			}
+		}
+
+		if (!this.avatarSprite) {
+			const texture = this.createTextureFromSource(resolvedSource);
+			this.avatarSprite = new Sprite(texture);
+			this.avatarTextureSource = texture.source as unknown as MutableVideoTextureSource;
+			this.avatarContainer.addChildAt(this.avatarSprite, 0);
+		} else if (this.avatarTextureSource) {
+			this.avatarTextureSource.resource = resolvedSource;
+			this.avatarTextureSource.update();
+		}
+	}
+
+	private applyAvatarCoverLayout(
+		layout: AvatarBubbleLayout,
+		sourceWidth: number,
+		sourceHeight: number,
+		framingFracX: number,
+		framingFracY: number,
+	): void {
+		if (!this.avatarSprite) {
+			return;
+		}
+		const safeSourceWidth = Math.max(1, sourceWidth);
+		const safeSourceHeight = Math.max(1, sourceHeight);
+		const coverScale = Math.max(
+			layout.width / safeSourceWidth,
+			layout.height / safeSourceHeight,
+		);
+		const overflowX = safeSourceWidth * coverScale - layout.width;
+		const overflowY = safeSourceHeight * coverScale - layout.height;
+		this.avatarSprite.anchor.set(0.5);
+		this.avatarSprite.scale.set(coverScale, coverScale);
+		// object-position: framingFrac 0 → reveal top/left, 1 → reveal bottom/right.
+		this.avatarSprite.position.set(
+			layout.width / 2 + (0.5 - framingFracX) * overflowX,
+			layout.height / 2 + (0.5 - framingFracY) * overflowY,
+		);
+	}
+
+	private updateAvatarOverlay(referenceTimeSeconds = this.currentVideoTime): void {
+		const avatar = this.config.avatar;
+		if (
+			!avatar?.enabled ||
+			!this.avatarRootContainer ||
+			!this.avatarMaskGraphics ||
+			!this.avatarForwardFrameSource
+		) {
+			if (this.avatarRootContainer) {
+				this.avatarRootContainer.visible = false;
+			}
+			return;
+		}
+
+		const decoded = this.avatarDecodedFrame;
+		if (!decoded) {
+			this.avatarRootContainer.visible = false;
+			return;
+		}
+		const sourceWidth = Math.max(1, decoded.displayWidth);
+		const sourceHeight = Math.max(1, decoded.displayHeight);
+
+		const base = getAvatarBubbleLayout({
+			containerWidth: this.config.width,
+			containerHeight: this.config.height,
+			settings: avatar,
+		});
+		if (!base) {
+			this.avatarRootContainer.visible = false;
+			return;
+		}
+
+		const timeMs = referenceTimeSeconds * 1000;
+		const spotlight = getAvatarSpotlightProgress(this.config.avatarRegions, timeMs);
+		const full = getAvatarFullFrameLayout(this.config.width, this.config.height);
+		const layout = spotlight > 0 ? lerpAvatarLayout(base, full, spotlight) : base;
+
+		this.ensureAvatarSprite(decoded, sourceWidth, sourceHeight);
+		if (!this.avatarSprite) {
+			this.avatarRootContainer.visible = false;
+			return;
+		}
+
+		this.avatarRootContainer.visible = true;
+		this.avatarRootContainer.position.set(layout.x, layout.y);
+
+		const framing = getAvatarObjectPosition(avatar)
+			.split(" ")
+			.map((part) => Number.parseFloat(part) / 100);
+		this.applyAvatarCoverLayout(
+			layout,
+			sourceWidth,
+			sourceHeight,
+			Number.isFinite(framing[0]) ? framing[0] : 0.5,
+			Number.isFinite(framing[1]) ? framing[1] : 0.22,
+		);
+
+		this.avatarMaskGraphics.clear();
+		drawSquircleOnGraphics(this.avatarMaskGraphics, {
+			x: 0,
+			y: 0,
+			width: layout.width,
+			height: layout.height,
+			radius: layout.borderRadius,
+		});
+		this.avatarMaskGraphics.fill({ color: 0xffffff });
+	}
+
 	private async renderSceneSample(
 		timestamp: number,
 		cursorTimestamp: number,
@@ -2968,6 +3219,10 @@ export class FrameRenderer {
 
 		if (this.backgroundForwardFrameSource || this.backgroundVideoElement) {
 			await this.syncBackgroundFrame(Math.max(0, backgroundTimelineTimestamp / 1_000_000));
+		}
+
+		if (this.avatarForwardFrameSource) {
+			await this.syncAvatarFrame(Math.max(0, this.currentVideoTime));
 		}
 
 		const timeMs = this.currentVideoTime * 1000;
@@ -3012,6 +3267,7 @@ export class FrameRenderer {
 			this.updateCaptionLayer(timeMs);
 		}
 		this.updateWebcamOverlay(webcamRenderTimeSeconds);
+		this.updateAvatarOverlay(webcamRenderTimeSeconds);
 
 		const annotationContainerVisible = this.annotationContainer?.visible ?? true;
 		const captionContainerVisible = this.captionContainer?.visible ?? true;
@@ -3219,6 +3475,10 @@ export class FrameRenderer {
 			await this.syncBackgroundFrame(Math.max(0, backgroundTimelineTimestamp / 1_000_000));
 		}
 
+		if (this.avatarForwardFrameSource) {
+			await this.syncAvatarFrame(Math.max(0, this.currentVideoTime));
+		}
+
 		const timeMs = this.currentVideoTime * 1000;
 		const cursorTimeMs = cursorTimestamp / 1000;
 
@@ -3259,6 +3519,7 @@ export class FrameRenderer {
 		this.updateAnnotationLayer(timeMs);
 		this.updateCaptionLayer(timeMs);
 		this.updateWebcamOverlay();
+		this.updateAvatarOverlay();
 
 		if (this.hasActiveBlurAnnotations(timeMs)) {
 			const annotationContainerVisible = this.annotationContainer?.visible ?? true;
@@ -3996,6 +4257,18 @@ export class FrameRenderer {
 		this.cleanupWebcamSource = null;
 		this.webcamFrameCacheCanvas = null;
 		this.webcamFrameCacheCtx = null;
+
+		this.avatarForwardFrameSource?.cancel();
+		void this.avatarForwardFrameSource?.destroy();
+		this.avatarForwardFrameSource = null;
+		this.closeAvatarDecodedFrame();
+		this.avatarSprite = null;
+		this.avatarTextureSource = null;
+		this.avatarMaskGraphics = null;
+		this.avatarContainer = null;
+		this.avatarRootContainer = null;
+		this.avatarFrameStagingCanvas = null;
+		this.avatarFrameStagingCtx = null;
 		this.sceneVideoFrameStagingCanvas = null;
 		this.sceneVideoFrameStagingCtx = null;
 		this.webcamVideoFrameStagingCanvas = null;
