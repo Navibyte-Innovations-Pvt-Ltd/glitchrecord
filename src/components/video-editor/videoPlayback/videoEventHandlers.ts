@@ -187,6 +187,14 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		const playbackEndSec = getPlaybackEndSec();
 		if (Number.isFinite(playbackEndSec) && presentedTime >= playbackEndSec - 0.001) {
 			if (!video.paused) {
+				// Park the element EXACTLY on the content end before pausing. Otherwise the
+				// pause event fires handlePause, which re-emits the element's currentTime —
+				// and that lags the presented frame, flicking the marker left for a moment.
+				try {
+					video.currentTime = playbackEndSec;
+				} catch {
+					/* element not seekable yet — emit still clamps below */
+				}
 				video.pause();
 			}
 			emitTime(playbackEndSec);
@@ -227,7 +235,13 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		isPlayingRef.current = false;
 		onPlayStateChange(false);
 		cancelScheduledUpdate();
-		emitTime(video.currentTime);
+		// Never report a time past the content end (defends the marker against a pause
+		// that lands in the trailing source).
+		const playbackEndSec = getPlaybackEndSec();
+		const pausedTime = Number.isFinite(playbackEndSec)
+			? Math.min(video.currentTime, playbackEndSec)
+			: video.currentTime;
+		emitTime(pausedTime);
 	};
 
 	const handleSeeked = () => {
