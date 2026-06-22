@@ -135,6 +135,13 @@ const PhAvatar = (props: { className?: string; weight?: "fill" | "regular" }) =>
 	<User weight={props.weight ?? "regular"} className={props.className} />
 );
 
+// Stable empty audio-regions reference. MUST be module-level: when the avatar plays
+// its own voice we silence the timeline narration in preview by passing an empty list
+// to the audio hook — but an inline `[]` is a fresh identity every render, which busts
+// the hook's `resolvedPlan` memo each render and re-runs its audio-element effects in a
+// loop → the editor freezes. A shared constant keeps the identity stable.
+const EMPTY_AUDIO_REGIONS: AudioRegion[] = [];
+
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { extensionHost } from "@/lib/extensions";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
@@ -3639,7 +3646,7 @@ export default function VideoEditor() {
 		currentSourcePath,
 		selectedClipId,
 		clipRegions,
-		audioRegions: avatarAudioActive ? [] : audioRegions,
+		audioRegions: avatarAudioActive ? EMPTY_AUDIO_REGIONS : audioRegions,
 		effectiveSpeedRegions,
 		sourceAudioTrackSettingsByClip,
 		setSourceAudioTrackSettingsByClip,
