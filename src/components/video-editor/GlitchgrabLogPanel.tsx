@@ -254,7 +254,11 @@ interface GlitchgrabLogPanelProps {
 		positionPreset?: AvatarPositionPreset;
 		size?: number;
 		framingY?: number;
+		muted?: boolean;
 	}) => void;
+	/** Current avatar-clip mute state (single source of truth — the overlay). The
+	 * same value the preview PiP button toggles, so panel + preview never desync. */
+	avatarMuted?: boolean;
 	/** Spotlight regions (avatar goes full-frame) + add/remove at the playhead. */
 	avatarRegions?: Array<{ id: string; startMs: number; endMs: number }>;
 	onAddAvatarSpotlight?: (startMs: number) => void;
@@ -292,6 +296,7 @@ export function GlitchgrabLogPanel({
 	onAddAvatarSpotlight,
 	onRemoveAvatarSpotlight,
 	initialAvatarClip,
+	avatarMuted = true,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -1949,6 +1954,36 @@ export function GlitchgrabLogPanel({
 								</button>
 							))}
 						</div>
+					</div>
+
+					{/* Audio — play the avatar clip's own synced voice to check lip-sync */}
+					<div className="flex flex-col gap-1">
+						<span className="text-[10px] uppercase tracking-wide text-foreground/40">
+							Audio
+						</span>
+						<button
+							type="button"
+							onClick={() => onAvatarSettings?.({ muted: !avatarMuted })}
+							className="flex items-center justify-between gap-2 rounded-lg bg-foreground/[0.04] px-2.5 py-1.5 text-[11px] text-foreground/80 transition-colors hover:bg-foreground/[0.07]"
+						>
+							<span className="flex flex-col items-start text-left">
+								<span className="font-medium">
+									{avatarMuted ? "Avatar muted" : "Avatar voice on"}
+								</span>
+								<span className="text-[10px] text-foreground/45">
+									{avatarMuted
+										? "Narration track carries the voice"
+										: "Plays the avatar's own synced voice"}
+								</span>
+							</span>
+							<span
+								className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${avatarMuted ? "bg-foreground/15" : "bg-blue-500"}`}
+							>
+								<span
+									className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${avatarMuted ? "left-0.5" : "left-3.5"}`}
+								/>
+							</span>
+						</button>
 					</div>
 
 					{/* Position — 3×3 preset grid */}
