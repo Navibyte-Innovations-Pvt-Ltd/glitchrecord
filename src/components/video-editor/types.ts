@@ -164,6 +164,13 @@ export interface AvatarOverlaySettings {
 	framingX: number;
 	framingY: number;
 	margin: number;
+	/**
+	 * Avatar clip audio muted? Default true — the clip's baked-in voice stays silent
+	 * and the timeline narration track carries the audio (lips rate-nudged to match).
+	 * When false, the avatar plays its OWN synced voice (no rate-nudge) and the
+	 * narration track is auto-muted in preview to avoid a double-voice echo.
+	 */
+	muted: boolean;
 }
 
 export const DEFAULT_AVATAR_OVERLAY: AvatarOverlaySettings = {
@@ -178,6 +185,7 @@ export const DEFAULT_AVATAR_OVERLAY: AvatarOverlaySettings = {
 	framingX: 50,
 	framingY: 22,
 	margin: 24,
+	muted: true,
 };
 
 // A "spotlight" window where the avatar animates from its corner PiP to full-frame
