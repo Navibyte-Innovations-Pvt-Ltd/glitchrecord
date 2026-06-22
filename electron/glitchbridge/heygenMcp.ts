@@ -194,6 +194,113 @@ export async function isHeyGenMcpConnected(): Promise<boolean> {
 	return !!persisted.tokens?.access_token;
 }
 
+function parseToolJson<T>(res: unknown): T {
+	const content = (res as { content?: unknown }).content as
+		| Array<{ type?: string; text?: string }>
+		| undefined;
+	const text = Array.isArray(content) && content[0]?.type === "text" ? content[0].text : "{}";
+	return JSON.parse(text ?? "{}") as T;
+}
+
+function mimeForAudio(p: string): string {
+	const lower = p.toLowerCase();
+	if (lower.endsWith(".mp3")) return "audio/mpeg";
+	if (lower.endsWith(".wav")) return "audio/x-wav";
+	if (lower.endsWith(".m4a")) return "audio/mp4";
+	return "application/octet-stream";
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Generate an avatar clip through the user's HeyGen subscription (MCP). Mirrors the
+// REST generateAvatar but bills subscription credits. Library look only (avatarId).
+export async function generateAvatarViaMcp(
+	opts: { audioPath: string; avatarId: string; transparent?: boolean },
+	outDir: string,
+	onProgress: (stage: string) => void = () => undefined,
+): Promise<{ ok: boolean; path?: string; format?: "webm" | "mp4"; error?: string }> {
+	try {
+		if (!fssync.existsSync(opts.audioPath))
+			return { ok: false, error: "Narration audio not found — generate narration first" };
+		await fs.mkdir(outDir, { recursive: true });
+		const client = await connectHeyGenMcp();
+
+		// 1. Upload the narration audio (presigned S3).
+		onProgress("Uploading narration…");
+		const bytes = await fs.readFile(opts.audioPath);
+		const filename = path.basename(opts.audioPath);
+		const contentType = mimeForAudio(opts.audioPath);
+		const up = parseToolJson<{
+			asset_id?: string;
+			assetId?: string;
+			upload_url?: string;
+			uploadUrl?: string;
+		}>(
+			await client.callTool({
+				name: "create_asset_upload",
+				arguments: { filename, contentType, sizeBytes: bytes.length },
+			}),
+		);
+		const assetId = up.asset_id ?? up.assetId;
+		const uploadUrl = up.upload_url ?? up.uploadUrl;
+		if (!assetId || !uploadUrl) return { ok: false, error: "Asset upload init failed" };
+		const put = await fetch(uploadUrl, {
+			method: "PUT",
+			headers: { "Content-Type": contentType },
+			body: new Uint8Array(bytes),
+		});
+		if (!put.ok) return { ok: false, error: `Audio PUT ${put.status}` };
+		await client.callTool({ name: "complete_asset_upload", arguments: { assetId } });
+
+		// 2. Create the avatar video (audio-driven, Avatar IV default).
+		onProgress("Starting avatar…");
+		const vid = parseToolJson<{ video_id?: string; videoId?: string }>(
+			await client.callTool({
+				name: "create_video_from_avatar",
+				arguments: {
+					avatarId: opts.avatarId,
+					audioAssetId: assetId,
+					aspectRatio: "9:16",
+					outputFormat: opts.transparent ? "webm" : "mp4",
+				},
+			}),
+		);
+		const videoId = vid.video_id ?? vid.videoId;
+		if (!videoId) return { ok: false, error: "Video creation returned no id" };
+
+		// 3. Poll until ready, then download.
+		const deadline = Date.now() + 10 * 60 * 1000;
+		let waited = 0;
+		while (Date.now() < deadline) {
+			await sleep(5000);
+			waited += 5;
+			const v = parseToolJson<{
+				status?: string;
+				video_url?: string;
+				videoUrl?: string;
+				error?: unknown;
+			}>(await client.callTool({ name: "get_video", arguments: { videoId } }));
+			const url = v.video_url ?? v.videoUrl;
+			if ((v.status === "completed" || v.status === "success") && url) {
+				onProgress("Downloading…");
+				const format: "webm" | "mp4" = opts.transparent ? "webm" : "mp4";
+				const out = path.join(outDir, `avatar-${videoId}.${format}`);
+				const dl = await fetch(url);
+				if (!dl.ok) return { ok: false, error: `Download ${dl.status}` };
+				await fs.writeFile(out, Buffer.from(await dl.arrayBuffer()));
+				return { ok: true, path: out, format };
+			}
+			if (v.status === "failed" || v.status === "error") {
+				return { ok: false, error: `HeyGen reported ${v.status}` };
+			}
+			onProgress(`Generating… ${waited}s`);
+		}
+		return { ok: false, error: "Timed out waiting for HeyGen (10 min)" };
+	} catch (e) {
+		return { ok: false, error: e instanceof Error ? e.message : String(e) };
+	}
+}
+
 // Proof-of-connection: the authenticated user's plan + remaining credits.
 export async function getHeyGenMcpUser(): Promise<{
 	ok: boolean;
