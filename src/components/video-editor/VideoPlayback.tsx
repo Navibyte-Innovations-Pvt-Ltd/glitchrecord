@@ -380,6 +380,9 @@ interface VideoPlaybackProps {
 	onAvatarMuteToggle?: () => void;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
+	/** SOURCE time (ms) where the edited timeline ends — playback stops here instead of
+	 * running into the trailing un-clipped recording. */
+	playbackEndSourceMs?: number | null;
 	aspectRatio: AspectRatio;
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
@@ -470,6 +473,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onAvatarMuteToggle,
 			trimRegions = [],
 			speedRegions = [],
+			playbackEndSourceMs = null,
 			aspectRatio,
 			annotationRegions = [],
 			autoCaptions = [],
@@ -596,6 +600,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		} | null>(null);
 		const layoutVideoContentRef = useRef<(() => void) | null>(null);
 		const trimRegionsRef = useRef<TrimRegion[]>([]);
+		const playbackEndSourceMsRef = useRef<number | null>(playbackEndSourceMs);
+		playbackEndSourceMsRef.current = playbackEndSourceMs;
 		const speedRegionsRef = useRef<SpeedRegion[]>([]);
 		const lastWebcamSyncTimeRef = useRef<number | null>(null);
 		const lastBackgroundSyncTimeRef = useRef<number | null>(null);
@@ -2378,6 +2384,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					onTimeUpdate,
 					trimRegionsRef,
 					speedRegionsRef,
+					playbackEndSourceMsRef,
 				});
 
 			video.addEventListener("play", handlePlay);
