@@ -6,15 +6,20 @@ import { app } from "electron";
 import { approvedLocalReadPaths } from "./ipc/state";
 import { getMediaContentType } from "./mediaTypes";
 
-// Generated avatar clips live in a fixed app dir. The session approved-path set is
-// reset per project load (recordings/webcam), which would 403 the avatar clip — so
-// we permanently allow our own avatars dir.
-let cachedAvatarsDir: string | null = null;
-function avatarsDir(): string {
-	if (!cachedAvatarsDir) {
-		cachedAvatarsDir = path.resolve(app.getPath("userData"), "avatars");
+// Our own generated media (avatar clips + narration audio) lives in fixed app
+// dirs. The session approved-path set is RESET on project load (recordings/webcam),
+// which would 403 these — and a 403 on the narration audio falls back to file://,
+// which the renderer can't play → silent video. So we permanently allow them.
+let cachedAppMediaDirs: string[] | null = null;
+function appMediaDirs(): string[] {
+	if (!cachedAppMediaDirs) {
+		const userData = app.getPath("userData");
+		cachedAppMediaDirs = [
+			path.resolve(userData, "avatars"),
+			path.resolve(userData, "narrations"),
+		];
 	}
-	return cachedAvatarsDir;
+	return cachedAppMediaDirs;
 }
 
 let mediaServerBaseUrl: string | null = null;
@@ -72,10 +77,9 @@ async function resolveRealPath(filePath: string): Promise<string | null> {
 
 export function isAllowedMediaPath(realPath: string): boolean {
 	if (approvedLocalReadPaths.has(realPath)) return true;
-	// Always serve our own generated avatar clips.
-	const dir = avatarsDir();
+	// Always serve our own generated avatar clips + narration audio.
 	const resolved = path.resolve(realPath);
-	return resolved === dir || resolved.startsWith(dir + path.sep);
+	return appMediaDirs().some((dir) => resolved === dir || resolved.startsWith(dir + path.sep));
 }
 
 async function handleMediaRequest(
