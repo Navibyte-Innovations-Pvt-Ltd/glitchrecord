@@ -40,6 +40,7 @@ import {
 import {
 	connectHeyGenMcp,
 	disconnectHeyGenMcp,
+	generateAvatarViaMcp,
 	getHeyGenMcpUser,
 	isHeyGenMcpConnected,
 } from "./glitchbridge/heygenMcp";
@@ -1422,28 +1423,43 @@ app.whenReady().then(async () => {
 				audioPath: string;
 				tier: AvatarTier;
 				transparent?: boolean;
+				useMcp?: boolean;
 			},
 		) => {
 			const sendProgress = (stage: string) => {
 				if (!_e.sender.isDestroyed()) _e.sender.send("avatar-progress", stage);
 			};
 			const outDir = path.join(app.getPath("userData"), "avatars");
+			// Route to the connected HeyGen account (MCP → subscription credits) when
+			// requested AND we have a library look; otherwise the REST API key path.
+			const lookId = opts.talkingPhotoId ?? opts.avatarId;
+			const useMcp = opts.useMcp && !!lookId;
 			appendDebugLog(
 				"rec",
-				`avatar: generate ${opts.talkingPhotoId ? `look=${opts.talkingPhotoId}` : opts.avatarId ? `avatar=${opts.avatarId}` : "photo"} tier=${opts.tier} transparent=${!!opts.transparent}`,
+				`avatar: generate via=${useMcp ? "mcp/subscription" : "rest/apikey"} ${lookId ? `look=${lookId}` : "photo"} transparent=${!!opts.transparent}`,
 			);
-			const result = await generateAvatar(
-				{
-					photoPath: opts.photoPath,
-					avatarId: opts.avatarId,
-					talkingPhotoId: opts.talkingPhotoId,
-					audioPath: opts.audioPath,
-					tier: opts.tier,
-					transparent: opts.transparent,
-				},
-				outDir,
-				sendProgress,
-			);
+			const result = useMcp
+				? await generateAvatarViaMcp(
+						{
+							audioPath: opts.audioPath,
+							avatarId: lookId as string,
+							transparent: opts.transparent,
+						},
+						outDir,
+						sendProgress,
+					)
+				: await generateAvatar(
+						{
+							photoPath: opts.photoPath,
+							avatarId: opts.avatarId,
+							talkingPhotoId: opts.talkingPhotoId,
+							audioPath: opts.audioPath,
+							tier: opts.tier,
+							transparent: opts.transparent,
+						},
+						outDir,
+						sendProgress,
+					);
 			appendDebugLog(
 				"rec",
 				`avatar: ${result.ok ? "ok " + result.path : "FAIL " + result.error}`,
