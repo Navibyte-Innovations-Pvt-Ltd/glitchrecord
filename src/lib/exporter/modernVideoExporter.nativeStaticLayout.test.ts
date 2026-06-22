@@ -354,6 +354,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			annotationRegions: [{ id: "annotation-1", startMs: 0, endMs: 1_000 }],
 			autoCaptions: [{ id: "caption-1", text: "hello", startMs: 0, endMs: 1_000 }],
 			webcam: { enabled: true },
+			avatar: { enabled: true, sourcePath: "/tmp/avatars/avatar-x.mp4" },
 			frame: "macbook",
 			cropRegion: { x: 0.1, y: 0, width: 0.9, height: 1 },
 		});
@@ -373,8 +374,30 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			"unsupported-annotation-overlay",
 			"unsupported-caption-overlay",
 			"unsupported-webcam-source",
+			"unsupported-avatar-overlay",
 			"unsupported-frame-overlay",
 		]);
+	});
+
+	it("skips native static-layout when an AI avatar overlay is enabled", () => {
+		// The avatar PiP is a moving overlay (it grows to full-frame during spotlight
+		// regions) with no native baking, so it MUST route through the Pixi renderer.
+		// Without this disqualifier the static native compositor freezes/drops it.
+		const exporter = createExporter({
+			avatar: { enabled: true, sourcePath: "/tmp/avatars/avatar-x.mp4" },
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReasons({ audioMode: "none" }, videoInfo, 60),
+		).toContain("unsupported-avatar-overlay");
+	});
+
+	it("does not flag the avatar overlay when it is disabled", () => {
+		const exporter = createExporter({ avatar: { enabled: false } });
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReasons({ audioMode: "none" }, videoInfo, 60),
+		).not.toContain("unsupported-avatar-overlay");
 	});
 
 	it("reports invalid crop geometry instead of passing native export bad coordinates", () => {
