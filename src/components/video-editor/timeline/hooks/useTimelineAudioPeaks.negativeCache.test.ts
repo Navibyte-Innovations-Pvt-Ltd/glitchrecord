@@ -33,6 +33,30 @@ describe("loadWaveformResource negative cache", () => {
 		expect(generate).not.toHaveBeenCalled();
 	});
 
+	it("dedupes CONCURRENT loads of the same resource — resolves only ONCE (the real flood)", async () => {
+		// The actual console flood: StrictMode double-invoke + mic/system hooks fire the
+		// SAME resource at once, before any has failed. Without in-flight dedup each one
+		// runs getLocalMediaUrl + fetch → 404. They must share a single resolve.
+		const racing = "/tmp/racing-D.system.wav";
+		let resolveCount = 0;
+		const resolve = vi.fn().mockImplementation(async () => {
+			resolveCount++;
+			// Simulate the async IPC so both callers overlap before the first rejects.
+			await new Promise((r) => setTimeout(r, 5));
+			throw new Error("denied");
+		});
+		const generate = vi.fn();
+
+		// Fire BOTH at the same tick (no await between) — the concurrent case.
+		const a = loadWaveformResource(racing, 100, { resolve, generate });
+		const b = loadWaveformResource(racing, 100, { resolve, generate });
+		await expect(a).rejects.toThrow();
+		await expect(b).rejects.toThrow();
+
+		expect(resolveCount).toBe(1); // ONE resolve for both concurrent callers
+		expect(generate).not.toHaveBeenCalled();
+	});
+
 	it("resolves and generates a fresh (untried) resource normally", async () => {
 		const ok = "/tmp/fresh-B.system.wav";
 		const peaks = { peaks: [0.1, 0.2], maxPeak: 0.2 };
