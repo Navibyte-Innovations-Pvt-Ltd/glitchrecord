@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_WEBCAM_OVERLAY } from "../../components/video-editor/types";
+import {
+	DEFAULT_AVATAR_OVERLAY,
+	DEFAULT_WEBCAM_OVERLAY,
+} from "../../components/video-editor/types";
 
 const {
 	cancelForwardFrameSourceMock,
@@ -771,5 +774,121 @@ describe("ModernFrameRenderer temporal webcam sync", () => {
 		expect(
 			new Set(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[0])).size,
 		).toBeGreaterThan(1);
+	});
+});
+
+describe("ModernFrameRenderer avatar overlay export path", () => {
+	// Mirrors the webcam overlay unit tests so the NEW avatar render code actually
+	// runs in lane 1 (setup → sync → geometry), not just type-checks. The earlier
+	// avatar bugs (403, file://, frozen lips, render loop) all passed tsc and only
+	// surfaced at runtime — so exercise the real methods here.
+	function makeAvatarMaskMock() {
+		return {
+			clear: vi.fn(),
+			moveTo: vi.fn(),
+			lineTo: vi.fn(),
+			closePath: vi.fn(),
+			quadraticCurveTo: vi.fn(),
+			bezierCurveTo: vi.fn(),
+			arcTo: vi.fn(),
+			fill: vi.fn(),
+		};
+	}
+
+	function wireAvatarOverlay(renderer: any) {
+		renderer.avatarForwardFrameSource = {};
+		renderer.avatarDecodedFrame = { displayWidth: 640, displayHeight: 480 };
+		renderer.avatarRootContainer = { visible: false, position: { set: vi.fn() } };
+		renderer.avatarContainer = { addChildAt: vi.fn() };
+		renderer.avatarMaskGraphics = makeAvatarMaskMock();
+	}
+
+	it("initializes the avatar decoder when enabled with a clip url", async () => {
+		const renderer = createRenderer() as any;
+		renderer.config.avatar = { ...DEFAULT_AVATAR_OVERLAY, enabled: true };
+		renderer.config.avatarUrl = "http://127.0.0.1:7654/avatars/avatar-x.mp4";
+
+		await renderer.setupAvatarSource();
+
+		expect(initializeForwardFrameSourceMock).toHaveBeenCalledWith(
+			"http://127.0.0.1:7654/avatars/avatar-x.mp4",
+		);
+		expect(renderer.avatarForwardFrameSource).toBeTruthy();
+	});
+
+	it("hides the overlay and creates no decoder when the avatar is disabled", async () => {
+		const renderer = createRenderer() as any;
+		renderer.config.avatar = { ...DEFAULT_AVATAR_OVERLAY, enabled: false };
+		renderer.config.avatarUrl = null;
+		renderer.avatarRootContainer = { visible: true, position: { set: vi.fn() } };
+
+		await renderer.setupAvatarSource();
+
+		expect(renderer.avatarForwardFrameSource).toBeNull();
+		expect(renderer.avatarRootContainer.visible).toBe(false);
+	});
+
+	it("stores the decoded avatar frame on sync", async () => {
+		const renderer = createRenderer() as any;
+		renderer.config.avatar = { ...DEFAULT_AVATAR_OVERLAY, enabled: true };
+		renderer.config.avatarUrl = "http://127.0.0.1:7654/avatars/avatar-x.mp4";
+		await renderer.setupAvatarSource();
+
+		const fakeFrame = { displayWidth: 640, displayHeight: 480, close: vi.fn() };
+		getForwardFrameAtTimeMock.mockResolvedValueOnce(fakeFrame as unknown as VideoFrame);
+
+		await renderer.syncAvatarFrame(2.5);
+
+		expect(renderer.avatarDecodedFrame).toBe(fakeFrame);
+	});
+
+	it("renders the avatar as a corner PiP when no spotlight is active", () => {
+		const renderer = createRenderer() as any;
+		renderer.config.avatar = { ...DEFAULT_AVATAR_OVERLAY, enabled: true };
+		renderer.config.avatarRegions = [];
+		renderer.currentVideoTime = 1;
+		wireAvatarOverlay(renderer);
+
+		renderer.updateAvatarOverlay();
+
+		expect(renderer.avatarRootContainer.visible).toBe(true);
+		expect(renderer.avatarSprite).toBeTruthy();
+		// Corner PiP → positioned away from the top-left origin.
+		const [posX, posY] = renderer.avatarRootContainer.position.set.mock.calls.at(-1);
+		expect(posX).toBeGreaterThan(0);
+		expect(posY).toBeGreaterThan(0);
+		// The face-framing cover layout was applied to the sprite.
+		expect(renderer.avatarSprite.scale.set).toHaveBeenCalled();
+		expect(renderer.avatarSprite.position.set).toHaveBeenCalled();
+		expect(renderer.avatarMaskGraphics.fill).toHaveBeenCalled();
+	});
+
+	it("grows the avatar to full-frame at the center of a spotlight region", () => {
+		const renderer = createRenderer() as any;
+		renderer.config.avatar = { ...DEFAULT_AVATAR_OVERLAY, enabled: true };
+		renderer.config.avatarRegions = [{ id: "spot-1", startMs: 0, endMs: 10_000 }];
+		renderer.currentVideoTime = 5; // 5000ms → fully inside the hold → progress 1
+		wireAvatarOverlay(renderer);
+
+		renderer.updateAvatarOverlay();
+
+		expect(renderer.avatarRootContainer.visible).toBe(true);
+		// Full-frame layout sits at the origin (0, 0).
+		const [posX, posY] = renderer.avatarRootContainer.position.set.mock.calls.at(-1);
+		expect(posX).toBe(0);
+		expect(posY).toBe(0);
+	});
+
+	it("stays hidden when enabled but no frame has decoded yet", () => {
+		const renderer = createRenderer() as any;
+		renderer.config.avatar = { ...DEFAULT_AVATAR_OVERLAY, enabled: true };
+		renderer.avatarForwardFrameSource = {};
+		renderer.avatarDecodedFrame = null;
+		renderer.avatarRootContainer = { visible: true, position: { set: vi.fn() } };
+		renderer.avatarMaskGraphics = makeAvatarMaskMock();
+
+		renderer.updateAvatarOverlay();
+
+		expect(renderer.avatarRootContainer.visible).toBe(false);
 	});
 });
