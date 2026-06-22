@@ -4,6 +4,7 @@ import { deriveNextId } from "./projectPersistence";
 import {
 	extendAutoFullTrackClip,
 	findClipAtTimelineTime,
+	getClipSourceSpans,
 	getTimelineDurationMs,
 	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
@@ -138,6 +139,46 @@ describe("clip timeline mapping", () => {
 	it("snaps removed source gaps to the nearest kept boundary", () => {
 		expect(mapSourceTimeToTimelineTime(4_200, clips)).toBe(4_000);
 		expect(mapSourceTimeToTimelineTime(5_900, clips)).toBe(6_000);
+	});
+
+	it("keeps the playhead monotonic across OVERLAPPING clips while playing to the end", () => {
+		// Real project repro: clips overlap at the end (a slow clip contains a tiny clip
+		// and a later clip starts inside it). Walking source time forward (= playing the
+		// video), the timeline marker must only ever move RIGHT. Before the overlap clamp,
+		// the cursor jumped backward at the overlap and the marker flicked left.
+		const overlapping = [
+			{ id: "a", startMs: 0, endMs: 1_000, speed: 1 },
+			{ id: "slow", startMs: 1_000, endMs: 3_000, speed: 0.1 }, // displays 2s, 0.2s source
+			{ id: "inside", startMs: 1_200, endMs: 1_250, speed: 1 }, // overlaps inside "slow"
+			{ id: "tail", startMs: 2_800, endMs: 3_100, speed: 1 }, // overlaps inside "slow"
+		];
+		const spans = getClipSourceSpans(overlapping);
+		const maxSource = spans[spans.length - 1].sourceEndMs;
+
+		let previousTimeline = -1;
+		let leftJumps = 0;
+		for (let source = 0; source <= maxSource; source += 10) {
+			const timeline = mapSourceTimeToTimelineTime(source, overlapping);
+			if (timeline < previousTimeline - 1) {
+				leftJumps++;
+			}
+			previousTimeline = Math.max(previousTimeline, timeline);
+		}
+		expect(leftJumps).toBe(0);
+	});
+
+	it("produces monotonic, non-overlapping source spans from overlapping clips", () => {
+		const overlapping = [
+			{ id: "a", startMs: 0, endMs: 1_000, speed: 1 },
+			{ id: "slow", startMs: 1_000, endMs: 3_000, speed: 0.1 },
+			{ id: "inside", startMs: 1_200, endMs: 1_250, speed: 1 },
+		];
+		const spans = getClipSourceSpans(overlapping);
+		for (let i = 1; i < spans.length; i++) {
+			// Effective timeline + source bounds never move backward.
+			expect(spans[i].timelineStartMs).toBeGreaterThanOrEqual(spans[i - 1].timelineEndMs);
+			expect(spans[i].sourceStartMs).toBeGreaterThanOrEqual(spans[i - 1].sourceEndMs);
+		}
 	});
 
 	it("clamps source past a SLOW last clip to its TIMELINE end (no end-of-play flicker)", () => {
