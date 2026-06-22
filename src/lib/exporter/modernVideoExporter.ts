@@ -2,6 +2,8 @@ import type {
 	AnnotationRegion,
 	AudioRegion,
 	AutoCaptionSettings,
+	AvatarOverlaySettings,
+	AvatarRegion,
 	CaptionCue,
 	ClipRegion,
 	CropRegion,
@@ -122,6 +124,9 @@ interface VideoExporterConfig extends ExportConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	avatar?: AvatarOverlaySettings;
+	avatarUrl?: string | null;
+	avatarRegions?: AvatarRegion[];
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
@@ -615,6 +620,9 @@ export class ModernVideoExporter {
 					cropRegion: this.config.cropRegion,
 					webcam: this.config.webcam,
 					webcamUrl: this.config.webcamUrl,
+					avatar: this.config.avatar,
+					avatarUrl: this.config.avatarUrl,
+					avatarRegions: this.config.avatarRegions,
 					videoWidth: videoInfo.width,
 					videoHeight: videoInfo.height,
 					annotationRegions: this.config.annotationRegions,
@@ -1565,6 +1573,13 @@ export class ModernVideoExporter {
 
 		if (this.config.webcam?.enabled && !this.getNativeWebcamSourcePath()) {
 			reasons.push("unsupported-webcam-source");
+		}
+
+		// The avatar PiP is a moving overlay (it grows to full-frame during spotlight
+		// regions) and has no native static-compositor baking, so any avatar-enabled
+		// project must route through the Pixi renderer rather than the static path.
+		if (this.config.avatar?.enabled) {
+			reasons.push("unsupported-avatar-overlay");
 		}
 
 		if (this.config.frame) {
