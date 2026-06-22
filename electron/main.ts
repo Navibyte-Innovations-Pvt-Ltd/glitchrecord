@@ -38,6 +38,12 @@ import {
 	listGroupLooks,
 } from "./glitchbridge/heygen";
 import {
+	connectHeyGenMcp,
+	disconnectHeyGenMcp,
+	getHeyGenMcpUser,
+	isHeyGenMcpConnected,
+} from "./glitchbridge/heygenMcp";
+import {
 	appendDebugLog,
 	broadcastRecordingStart,
 	broadcastRecordingStop,
@@ -1339,6 +1345,29 @@ app.whenReady().then(async () => {
 	);
 	// Whether the platform HeyGen key is configured (so the panel can prompt).
 	ipcMain.handle("avatar:key-status", () => ({ hasKey: hasHeyGenKey() }));
+
+	// ── "Connect HeyGen account" provider (OAuth → MCP → subscription credits) ──
+	ipcMain.handle("heygen-mcp:status", async () => ({ connected: await isHeyGenMcpConnected() }));
+	ipcMain.handle("heygen-mcp:connect", async () => {
+		try {
+			await connectHeyGenMcp(); // opens browser consent on first run
+			const user = await getHeyGenMcpUser();
+			appendDebugLog(
+				"rec",
+				`heygen-mcp: connected ${user.email ?? "?"} plan=${user.plan ?? "?"}`,
+			);
+			return user;
+		} catch (e) {
+			const error = e instanceof Error ? e.message : String(e);
+			appendDebugLog("rec", `heygen-mcp: connect FAIL ${error}`);
+			return { ok: false, error };
+		}
+	});
+	ipcMain.handle("heygen-mcp:user", () => getHeyGenMcpUser());
+	ipcMain.handle("heygen-mcp:disconnect", async () => {
+		await disconnectHeyGenMcp();
+		return { ok: true };
+	});
 
 	// Recover the most recently generated avatar clip from disk (when its in-app
 	// reference was lost — e.g. before clip persistence existed).
