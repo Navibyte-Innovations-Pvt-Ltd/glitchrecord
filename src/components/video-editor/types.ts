@@ -289,6 +289,11 @@ export function getClipSourceEndMs(clip: ClipRegion): number {
 
 export interface ClipSourceSpan {
 	clip: ClipRegion;
+	/** Effective timeline range after clamping overlaps. Clips can overlap on the
+	 * timeline (speed-carving may leave a clip starting before the previous ends); these
+	 * are the de-overlapped bounds the mapping uses so the playhead never jumps back. */
+	timelineStartMs: number;
+	timelineEndMs: number;
 	/** Where this clip's footage begins in the ORIGINAL recording (ms). */
 	sourceStartMs: number;
 	/** Where this clip's footage ends in the ORIGINAL recording (ms). */
@@ -309,16 +314,25 @@ export function getClipSourceSpans(clips: ClipRegion[]): ClipSourceSpan[] {
 	let timelineCursor = 0;
 	let sourceCursor = 0;
 	return sorted.map((clip) => {
-		// A timeline gap before this clip is a cut → that source is removed.
-		if (clip.startMs > timelineCursor) {
-			sourceCursor += clip.startMs - timelineCursor;
+		// Overlap-safe: a clip may start before the previous one ends (carving artifact).
+		// Clamp its visible range to start at the cursor and never move backward, else the
+		// source spans become non-monotonic and the source↔timeline mapping flickers the
+		// playhead back-and-forth at the overlap (the end-of-play marker jump).
+		const timelineStartMs = Math.max(clip.startMs, timelineCursor);
+		const timelineEndMs = Math.max(timelineStartMs, clip.endMs);
+		// A timeline gap before this clip's effective start is a cut → that source is removed.
+		if (timelineStartMs > timelineCursor) {
+			sourceCursor += timelineStartMs - timelineCursor;
 		}
 		const sourceStartMs = sourceCursor;
-		const sourceDurationMs = Math.max(0, clip.endMs - clip.startMs) * getSafeClipSpeed(clip);
+		const sourceDurationMs =
+			Math.max(0, timelineEndMs - timelineStartMs) * getSafeClipSpeed(clip);
 		sourceCursor = sourceStartMs + sourceDurationMs;
-		timelineCursor = clip.endMs;
+		timelineCursor = timelineEndMs;
 		return {
 			clip,
+			timelineStartMs: Math.round(timelineStartMs),
+			timelineEndMs: Math.round(timelineEndMs),
 			sourceStartMs: Math.round(sourceStartMs),
 			sourceEndMs: Math.round(sourceCursor),
 		};
@@ -363,16 +377,16 @@ function clampToNearestClipBoundary(
 	let nearest = Math.round(timeMs);
 	let nearestDistance = Number.POSITIVE_INFINITY;
 
-	for (const { clip, sourceStartMs, sourceEndMs } of spans) {
+	for (const { timelineStartMs, timelineEndMs, sourceStartMs, sourceEndMs } of spans) {
 		const boundaryPairs: Array<[number, number]> =
 			inputKind === "timeline"
 				? [
-						[clip.startMs, sourceStartMs],
-						[clip.endMs, sourceEndMs],
+						[timelineStartMs, sourceStartMs],
+						[timelineEndMs, sourceEndMs],
 					]
 				: [
-						[sourceStartMs, clip.startMs],
-						[sourceEndMs, clip.endMs],
+						[sourceStartMs, timelineStartMs],
+						[sourceEndMs, timelineEndMs],
 					];
 
 		for (const [inputBoundary, outputBoundary] of boundaryPairs) {
@@ -391,12 +405,14 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 	const roundedTimeMs = Math.round(timeMs);
 	const spans = getClipSourceSpans(clips);
 
-	for (const { clip, sourceStartMs } of spans) {
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > clip.endMs) {
+	for (const { clip, timelineStartMs, timelineEndMs, sourceStartMs } of spans) {
+		if (roundedTimeMs < timelineStartMs || roundedTimeMs > timelineEndMs) {
 			continue;
 		}
 
-		return Math.round(sourceStartMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip));
+		return Math.round(
+			sourceStartMs + (roundedTimeMs - timelineStartMs) * getSafeClipSpeed(clip),
+		);
 	}
 
 	if (spans.length === 0) {
@@ -410,12 +426,14 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 	const roundedTimeMs = Math.round(timeMs);
 	const spans = getClipSourceSpans(clips);
 
-	for (const { clip, sourceStartMs, sourceEndMs } of spans) {
+	for (const { clip, timelineStartMs, sourceStartMs, sourceEndMs } of spans) {
 		if (roundedTimeMs < sourceStartMs || roundedTimeMs > sourceEndMs) {
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - sourceStartMs) / getSafeClipSpeed(clip));
+		return Math.round(
+			timelineStartMs + (roundedTimeMs - sourceStartMs) / getSafeClipSpeed(clip),
+		);
 	}
 
 	if (spans.length === 0) {
