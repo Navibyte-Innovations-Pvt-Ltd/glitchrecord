@@ -486,6 +486,7 @@ export function GlitchgrabLogPanel({
 						photoPath?: string;
 						avatarId?: string;
 						talkingPhotoId?: string;
+						useMcp?: boolean;
 						audioPath: string;
 						tier: "photo" | "iv";
 						transparent?: boolean;
@@ -776,6 +777,8 @@ export function GlitchgrabLogPanel({
 			const res = await api.generateAvatar({
 				photoPath: usingLibrary ? undefined : (avatarPhotoPath ?? undefined),
 				talkingPhotoId: usingLibrary ? (selectedLookId ?? undefined) : undefined,
+				// Connected HeyGen account + library look → MCP (subscription credits).
+				useMcp: usingLibrary && !!heygenAccount?.connected,
 				audioPath: narrationPath,
 				tier: avatarTier,
 				transparent: avatarShape === "circle",
@@ -801,6 +804,7 @@ export function GlitchgrabLogPanel({
 		avatarTier,
 		avatarShape,
 		onAvatarReady,
+		heygenAccount?.connected,
 	]);
 
 	// AI script arrives from the bridge after a recording stops → stash it and
