@@ -14,6 +14,13 @@ const EMPTY_FALLBACK_RESOURCES: string[] = [];
 // candidate filenames on every attempt, flooding the console and stalling load.
 const failedWaveformResources = new Set<string>();
 
+// In-flight loads keyed by resource+peakCount. The negative cache alone only stops
+// SEQUENTIAL repeats — but the flood is CONCURRENT: React StrictMode double-invokes the
+// effect and the mic/system hooks (plus per-item callers) all fire at once, each passing
+// the empty negative cache before any has failed. Sharing one promise per resource means
+// getLocalMediaUrl/fetch runs exactly once even under that concurrency.
+const inflightWaveformLoads = new Map<string, Promise<AudioPeaksData>>();
+
 interface WaveformLoadDeps {
 	resolve: (resource: string) => Promise<string>;
 	generate: (url: string, peakCount: number) => Promise<AudioPeaksData>;
@@ -35,13 +42,29 @@ export async function loadWaveformResource(
 	if (failedWaveformResources.has(resource)) {
 		throw new Error("waveform resource previously failed");
 	}
-	try {
-		const resolvedUrl = await deps.resolve(resource);
-		return await deps.generate(resolvedUrl, peakCount);
-	} catch (error) {
-		failedWaveformResources.add(resource);
-		throw error;
+
+	const key = `${resource}::${peakCount}`;
+	const existing = inflightWaveformLoads.get(key);
+	if (existing) {
+		// A concurrent caller already started this exact load — reuse it so we resolve
+		// (IPC) and fetch only once.
+		return existing;
 	}
+
+	const promise = (async () => {
+		try {
+			const resolvedUrl = await deps.resolve(resource);
+			return await deps.generate(resolvedUrl, peakCount);
+		} catch (error) {
+			failedWaveformResources.add(resource);
+			throw error;
+		} finally {
+			inflightWaveformLoads.delete(key);
+		}
+	})();
+
+	inflightWaveformLoads.set(key, promise);
+	return promise;
 }
 
 function buildSidecarAudioCandidates(sourcePath: string): string[] {
