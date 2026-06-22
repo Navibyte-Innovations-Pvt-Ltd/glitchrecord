@@ -25,6 +25,12 @@ interface VideoEventHandlersParams {
 	onTimeUpdate: (time: number) => void;
 	trimRegionsRef: React.MutableRefObject<TrimRegion[]>;
 	speedRegionsRef: React.MutableRefObject<SpeedRegion[]>;
+	// SOURCE time (ms) where the edited timeline ends — i.e. the last clip's source-end.
+	// Playback stops here instead of running into the trailing un-clipped recording. null
+	// = no clamp (stop at the natural video end). Without this, a project whose clips end
+	// before the recording does keeps playing invisible trailing source past the marker,
+	// which both causes the end-of-play flicker and leaves the timeline unresponsive.
+	playbackEndSourceMsRef?: React.MutableRefObject<number | null>;
 }
 
 export function createVideoEventHandlers(params: VideoEventHandlersParams) {
@@ -39,7 +45,17 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		onTimeUpdate,
 		trimRegionsRef,
 		speedRegionsRef,
+		playbackEndSourceMsRef,
 	} = params;
+
+	// The source second at which playback must stop: the timeline content end, clamped
+	// to the real media duration.
+	const getPlaybackEndSec = (): number => {
+		const endMs = playbackEndSourceMsRef?.current;
+		const endSec =
+			endMs != null && Number.isFinite(endMs) ? endMs / 1000 : Number.POSITIVE_INFINITY;
+		return Math.min(video.duration, endSec);
+	};
 	const presentedFrameVideo = video as PresentedFrameVideoElement;
 	let videoFrameRequestId: number | null = null;
 	// Watchdog state: timestamp of the last presented frame + how long the loop may
@@ -75,12 +91,13 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 
 	const skipPastTrimRegion = (trimRegion: TrimRegion) => {
 		const skipToTime = trimRegion.endMs / 1000;
-		const clampedSkipToTime = Math.min(skipToTime, video.duration);
+		const playbackEndSec = getPlaybackEndSec();
+		const clampedSkipToTime = Math.min(skipToTime, playbackEndSec);
 
 		video.currentTime = clampedSkipToTime;
 		emitTime(clampedSkipToTime);
 
-		if (clampedSkipToTime >= video.duration) {
+		if (clampedSkipToTime >= playbackEndSec) {
 			video.pause();
 		}
 	};
@@ -163,6 +180,19 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		if (!video) return;
 
 		const presentedTime = getPresentedTime(metadata);
+
+		// Reached the end of the edited timeline → stop here instead of playing into the
+		// trailing un-clipped recording (which left the marker overshooting and the
+		// timeline unresponsive). Land exactly on the content end so the playhead sticks.
+		const playbackEndSec = getPlaybackEndSec();
+		if (Number.isFinite(playbackEndSec) && presentedTime >= playbackEndSec - 0.001) {
+			if (!video.paused) {
+				video.pause();
+			}
+			emitTime(playbackEndSec);
+			return;
+		}
+
 		const currentTimeMs = presentedTime * 1000;
 		const activeTrimRegion = findActiveTrimRegion(currentTimeMs);
 
