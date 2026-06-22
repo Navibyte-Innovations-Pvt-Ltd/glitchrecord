@@ -7,6 +7,43 @@ import type { AudioPeaksData } from "../core/timelineTypes";
 
 const EMPTY_FALLBACK_RESOURCES: string[] = [];
 
+// Negative cache of waveform resources that already failed to load (missing sidecar
+// audio files, denied paths). Module-level so it survives re-renders, React StrictMode
+// double-invokes, and the many per-item callers — without it, a recording with no
+// `.mic/.system` sidecars re-runs getLocalMediaUrl (IPC) → file:// → 404 for all six
+// candidate filenames on every attempt, flooding the console and stalling load.
+const failedWaveformResources = new Set<string>();
+
+interface WaveformLoadDeps {
+	resolve: (resource: string) => Promise<string>;
+	generate: (url: string, peakCount: number) => Promise<AudioPeaksData>;
+}
+
+const defaultWaveformLoadDeps: WaveformLoadDeps = {
+	resolve: resolveMediaResourceUrl,
+	generate: (url, peakCount) => waveformGenerator.generate(url, peakCount),
+};
+
+// Load one waveform resource, skipping anything already known to be missing. Exported
+// so the negative-cache behavior is unit-testable without rendering the hook (deps are
+// injectable). Records failures so a missing sidecar is never re-resolved/re-fetched.
+export async function loadWaveformResource(
+	resource: string,
+	peakCount: number,
+	deps: WaveformLoadDeps = defaultWaveformLoadDeps,
+): Promise<AudioPeaksData> {
+	if (failedWaveformResources.has(resource)) {
+		throw new Error("waveform resource previously failed");
+	}
+	try {
+		const resolvedUrl = await deps.resolve(resource);
+		return await deps.generate(resolvedUrl, peakCount);
+	} catch (error) {
+		failedWaveformResources.add(resource);
+		throw error;
+	}
+}
+
 function buildSidecarAudioCandidates(sourcePath: string): string[] {
 	const normalized = sourcePath.replace(/\\/g, "/");
 	const lastSlash = normalized.lastIndexOf("/");
@@ -73,10 +110,8 @@ export function useTimelineAudioPeaks(
 		let cancelled = false;
 
 		const run = async () => {
-			const tryGenerate = async (resource: string): Promise<AudioPeaksData> => {
-				const resolvedUrl = await resolveMediaResourceUrl(resource);
-				return waveformGenerator.generate(resolvedUrl, peakCount);
-			};
+			const tryGenerate = (resource: string): Promise<AudioPeaksData> =>
+				loadWaveformResource(resource, peakCount);
 
 			try {
 				const result = await tryGenerate(mediaResource);
