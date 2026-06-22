@@ -632,6 +632,12 @@ export default function VideoEditor() {
 			setAvatarOverlay((prev) => ({ ...prev, ...patch })),
 		[],
 	);
+	// Stable toggle (reads prev so it never goes stale) — shared by the panel toggle
+	// and the PiP overlay button so both stay on the SAME muted source of truth.
+	const handleAvatarMuteToggle = useCallback(
+		() => setAvatarOverlay((prev) => ({ ...prev, muted: !prev.muted })),
+		[],
+	);
 	const handleAvatarMove = useCallback(
 		(positionX: number, positionY: number) =>
 			setAvatarOverlay((prev) => ({
@@ -3623,11 +3629,17 @@ export default function VideoEditor() {
 				})),
 		[clipRegions],
 	);
+	// When the avatar plays its OWN baked-in voice (unmuted to check sync), silence
+	// the timeline narration in PREVIEW so the user doesn't hear a double-voice echo.
+	// Export is unaffected (the avatar clip's audio == the narration content anyway).
+	const avatarAudioActive =
+		avatarOverlay.enabled && avatarOverlay.muted === false && !!resolvedAvatarVideoUrl;
+
 	const audio = useVideoEditorAudio({
 		currentSourcePath,
 		selectedClipId,
 		clipRegions,
-		audioRegions,
+		audioRegions: avatarAudioActive ? [] : audioRegions,
 		effectiveSpeedRegions,
 		sourceAudioTrackSettingsByClip,
 		setSourceAudioTrackSettingsByClip,
@@ -5872,6 +5884,7 @@ export default function VideoEditor() {
 			onPreviewReadyChange={setIsPreviewReady}
 			onTimeUpdate={handlePlaybackTimeUpdate}
 			currentTime={currentTime}
+			timelineTime={timelinePlayheadTime}
 			onPlayStateChange={handlePlaybackPlayStateChange}
 			onError={setError}
 			wallpaper={wallpaper}
@@ -5903,6 +5916,7 @@ export default function VideoEditor() {
 			avatarRegions={avatarRegions}
 			onAvatarMove={handleAvatarMove}
 			onAvatarFraming={handleAvatarFraming}
+			onAvatarMuteToggle={handleAvatarMuteToggle}
 			trimRegions={trimRegions}
 			speedRegions={effectiveSpeedRegions}
 			annotationRegions={annotationRegions}
@@ -6598,6 +6612,7 @@ export default function VideoEditor() {
 								onAddAvatarSpotlight={handleAddAvatarSpotlight}
 								onRemoveAvatarSpotlight={handleRemoveAvatarSpotlight}
 								initialAvatarClip={avatarOverlay.sourcePath}
+								avatarMuted={avatarOverlay.muted}
 							/>
 						) : (
 							<SettingsPanel
