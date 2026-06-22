@@ -574,6 +574,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		photoPath?: string;
 		avatarId?: string;
 		talkingPhotoId?: string;
+		useMcp?: boolean;
 		audioPath: string;
 		tier: "photo" | "iv";
 		transparent?: boolean;
