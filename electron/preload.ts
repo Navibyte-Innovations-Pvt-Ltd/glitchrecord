@@ -587,6 +587,27 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	avatarKeyStatus: () => ipcRenderer.invoke("avatar:key-status") as Promise<{ hasKey: boolean }>,
 	latestAvatarClip: () =>
 		ipcRenderer.invoke("avatar:latest-clip") as Promise<{ path: string | null }>,
+	// "Connect HeyGen account" (OAuth → subscription credits)
+	heygenMcpStatus: () =>
+		ipcRenderer.invoke("heygen-mcp:status") as Promise<{ connected: boolean }>,
+	heygenMcpConnect: () =>
+		ipcRenderer.invoke("heygen-mcp:connect") as Promise<{
+			ok: boolean;
+			email?: string;
+			plan?: string;
+			creditsRemaining?: number;
+			error?: string;
+		}>,
+	heygenMcpUser: () =>
+		ipcRenderer.invoke("heygen-mcp:user") as Promise<{
+			ok: boolean;
+			email?: string;
+			plan?: string;
+			creditsRemaining?: number;
+			error?: string;
+		}>,
+	heygenMcpDisconnect: () =>
+		ipcRenderer.invoke("heygen-mcp:disconnect") as Promise<{ ok: boolean }>,
 	searchAvatarGroups: (query?: string) =>
 		ipcRenderer.invoke("avatar:search-groups", query) as Promise<{
 			ok: boolean;
