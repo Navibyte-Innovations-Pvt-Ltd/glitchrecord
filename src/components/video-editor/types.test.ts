@@ -169,12 +169,30 @@ describe("getTimelineDurationMs", () => {
 		).toBe(20_000);
 	});
 
-	it("keeps the source duration when speed edits make clips shorter", () => {
+	it("ends at the last clip — does NOT auto-append the leftover raw recording tail", () => {
+		// A 2× clip displays 5s (consuming all 10s of source). The timeline must end at
+		// the clip (5s), NOT extend to the full 10s recording — otherwise the playhead
+		// runs into an empty 'dead zone' past the content (the freeze/marker bug).
+		expect(
+			getTimelineDurationMs([{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }], 10_000),
+		).toBe(5_000);
+	});
+
+	it("ends at the last clip when a trailing cut leaves un-clipped source behind", () => {
+		// Clips end at 30s but the raw recording is 60s (the user cut the tail). The
+		// timeline must stop at 30s, not run to 60s.
 		expect(
 			getTimelineDurationMs(
-				[{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }],
-				10_000,
+				[
+					{ id: "clip-1", startMs: 0, endMs: 10_000, speed: 1 },
+					{ id: "clip-2", startMs: 10_000, endMs: 30_000, speed: 1 },
+				],
+				60_000,
 			),
-		).toBe(10_000);
+		).toBe(30_000);
+	});
+
+	it("falls back to the source duration when there are no clips", () => {
+		expect(getTimelineDurationMs([], 42_000)).toBe(42_000);
 	});
 });
