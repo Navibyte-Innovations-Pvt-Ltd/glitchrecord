@@ -3617,6 +3617,12 @@ export default function VideoEditor() {
 		() => mapSourceTimeToTimelineTime(currentTime * 1000) / 1000,
 		[currentTime, mapSourceTimeToTimelineTime],
 	);
+	// SOURCE time (ms) where the edited timeline ends — fed to the player so playback
+	// stops at the last clip instead of running into the trailing un-clipped recording.
+	const playbackEndSourceMs = useMemo(
+		() => mapTimelineTimeToSourceTime(getTimelineDurationMs(clipRegions, duration * 1000)),
+		[clipRegions, duration, mapTimelineTimeToSourceTime],
+	);
 	const timelineDuration = useMemo(
 		() => getTimelineDurationMs(clipRegions, duration * 1000) / 1000,
 		[clipRegions, duration],
@@ -5892,6 +5898,7 @@ export default function VideoEditor() {
 			onTimeUpdate={handlePlaybackTimeUpdate}
 			currentTime={currentTime}
 			timelineTime={timelinePlayheadTime}
+			playbackEndSourceMs={playbackEndSourceMs}
 			onPlayStateChange={handlePlaybackPlayStateChange}
 			onError={setError}
 			wallpaper={wallpaper}
