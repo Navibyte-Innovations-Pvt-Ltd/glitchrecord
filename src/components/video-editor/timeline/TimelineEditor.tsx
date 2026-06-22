@@ -191,7 +191,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		const timelineContainerRef = useRef<HTMLDivElement>(null);
 		const isTimelineFocusedRef = useRef(false);
-		const { setRange, clampedRange, handleTimelineWheel } = useTimelineRange({
+		const { setRange, clampedRange } = useTimelineRange({
 			totalMs,
 			timelineContainerRef,
 		});
@@ -475,7 +475,6 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						setSelectedKeyframeId(null);
 						setSelectAllBlocksActive(false);
 					}}
-					onWheel={handleTimelineWheel}
 				>
 					<TimelineWrapper
 						range={clampedRange}

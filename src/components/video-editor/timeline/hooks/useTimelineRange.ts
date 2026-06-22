@@ -1,5 +1,5 @@
 import type { Range } from "dnd-timeline";
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type WheelEvent } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
 
 interface UseTimelineRangeParams {
@@ -82,7 +82,7 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 	);
 
 	const handleTimelineWheel = useCallback(
-		(event: WheelEvent<HTMLDivElement>) => {
+		(event: WheelEvent) => {
 			if (((event.ctrlKey || event.metaKey) && !event.shiftKey) || totalMs <= 0) {
 				return;
 			}
@@ -117,10 +117,27 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 		[clampedRange.end, clampedRange.start, panTimelineRange, timelineContainerRef, totalMs],
 	);
 
+	// Attach the wheel handler as a NATIVE NON-PASSIVE listener. React's `onWheel`
+	// registers wheel events as passive, so `event.preventDefault()` inside the handler
+	// is a no-op AND logs a warning on EVERY wheel tick — a trackpad scroll floods the
+	// console hundreds of times and freezes the editor. A non-passive native listener
+	// lets preventDefault work silently. A ref keeps the listener stable so we don't
+	// re-bind on every pan (which changes the handler's identity).
+	const wheelHandlerRef = useRef(handleTimelineWheel);
+	wheelHandlerRef.current = handleTimelineWheel;
+	useEffect(() => {
+		const container = timelineContainerRef.current;
+		if (!container) {
+			return;
+		}
+		const onWheel = (event: WheelEvent) => wheelHandlerRef.current(event);
+		container.addEventListener("wheel", onWheel, { passive: false });
+		return () => container.removeEventListener("wheel", onWheel);
+	}, [timelineContainerRef]);
+
 	return {
 		range,
 		setRange,
 		clampedRange,
-		handleTimelineWheel,
 	};
 }
