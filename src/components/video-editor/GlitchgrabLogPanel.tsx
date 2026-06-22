@@ -405,6 +405,14 @@ export function GlitchgrabLogPanel({
 	const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 	const [avatarError, setAvatarError] = useState<string | null>(null);
 	const [avatarHasKey, setAvatarHasKey] = useState<boolean | null>(null);
+	// "Connect HeyGen account" (OAuth → subscription credits).
+	const [heygenAccount, setHeygenAccount] = useState<{
+		connected: boolean;
+		email?: string;
+		plan?: string;
+		creditsRemaining?: number;
+	} | null>(null);
+	const [heygenConnecting, setHeygenConnecting] = useState(false);
 	// TTS model/voice settings — restored from localStorage so the user picks once.
 	const [engine, setEngine] = useState(() => localStorage.getItem("gg.tts.engine") || "sarvam");
 	const [lang, setLang] = useState(() => localStorage.getItem("gg.tts.lang") || "hi");
@@ -489,6 +497,22 @@ export function GlitchgrabLogPanel({
 					}>;
 					avatarKeyStatus?: () => Promise<{ hasKey: boolean }>;
 					latestAvatarClip?: () => Promise<{ path: string | null }>;
+					heygenMcpStatus?: () => Promise<{ connected: boolean }>;
+					heygenMcpConnect?: () => Promise<{
+						ok: boolean;
+						email?: string;
+						plan?: string;
+						creditsRemaining?: number;
+						error?: string;
+					}>;
+					heygenMcpUser?: () => Promise<{
+						ok: boolean;
+						email?: string;
+						plan?: string;
+						creditsRemaining?: number;
+						error?: string;
+					}>;
+					heygenMcpDisconnect?: () => Promise<{ ok: boolean }>;
 					pickAvatarPhoto?: () => Promise<{ path: string | null }>;
 					onAvatarProgress?: (cb: (stage: string) => void) => () => void;
 					searchAvatarGroups?: (query?: string) => Promise<{
@@ -523,6 +547,50 @@ export function GlitchgrabLogPanel({
 			?.avatarKeyStatus?.()
 			.then((s) => setAvatarHasKey(!!s?.hasKey))
 			.catch(() => setAvatarHasKey(false));
+		electronAPI()
+			?.heygenMcpStatus?.()
+			.then((s) => {
+				if (!s?.connected) return;
+				setHeygenAccount({ connected: true });
+				// Already connected → fetch plan + credits to show.
+				electronAPI()
+					?.heygenMcpUser?.()
+					.then((u) => {
+						if (u?.ok)
+							setHeygenAccount({
+								connected: true,
+								email: u.email,
+								plan: u.plan,
+								creditsRemaining: u.creditsRemaining,
+							});
+					})
+					.catch(() => {});
+			})
+			.catch(() => {});
+	}, []);
+
+	const connectHeygenAccount = useCallback(async () => {
+		const api = electronAPI();
+		if (!api?.heygenMcpConnect) return;
+		setHeygenConnecting(true);
+		try {
+			const r = await api.heygenMcpConnect();
+			if (r?.ok) {
+				setHeygenAccount({
+					connected: true,
+					email: r.email,
+					plan: r.plan,
+					creditsRemaining: r.creditsRemaining,
+				});
+			}
+		} finally {
+			setHeygenConnecting(false);
+		}
+	}, []);
+
+	const disconnectHeygenAccount = useCallback(async () => {
+		await electronAPI()?.heygenMcpDisconnect?.();
+		setHeygenAccount(null);
 	}, []);
 	useEffect(() => {
 		const unsub = electronAPI()?.onAvatarProgress?.((stage) => setAvatarStage(stage));
@@ -1605,6 +1673,64 @@ export function GlitchgrabLogPanel({
 							generation.
 						</p>
 					)}
+
+					{/* Provider: connect HeyGen account (subscription credits) */}
+					<div className="flex flex-col gap-1 rounded-md border border-foreground/10 bg-foreground/[0.03] p-2">
+						{heygenAccount?.connected ? (
+							<>
+								<div className="flex items-center justify-between text-[11px]">
+									<span className="flex items-center gap-1.5 text-emerald-300">
+										<Check className="h-3.5 w-3.5" /> HeyGen connected
+									</span>
+									<button
+										type="button"
+										onClick={disconnectHeygenAccount}
+										className="text-[10px] text-foreground/40 transition-colors hover:text-red-400"
+									>
+										Disconnect
+									</button>
+								</div>
+								{(heygenAccount.email ||
+									heygenAccount.creditsRemaining != null) && (
+									<span className="text-[9px] text-foreground/40">
+										{heygenAccount.email}
+										{heygenAccount.plan ? ` · ${heygenAccount.plan}` : ""}
+										{heygenAccount.creditsRemaining != null
+											? ` · ${heygenAccount.creditsRemaining} credits`
+											: ""}
+									</span>
+								)}
+								<span className="text-[9px] text-foreground/35">
+									Generation uses your HeyGen subscription credits.
+								</span>
+							</>
+						) : (
+							<>
+								<button
+									type="button"
+									onClick={connectHeygenAccount}
+									disabled={heygenConnecting}
+									className="flex items-center justify-center gap-1.5 rounded-md border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:opacity-40"
+								>
+									{heygenConnecting ? (
+										<>
+											<ArrowClockwise className="h-3.5 w-3.5 animate-spin" />{" "}
+											Waiting for login…
+										</>
+									) : (
+										<>
+											<UserCircle className="h-3.5 w-3.5" /> Connect HeyGen
+											account
+										</>
+									)}
+								</button>
+								<span className="text-[9px] text-foreground/35">
+									Optional — use your HeyGen subscription credits (cheaper)
+									instead of the platform API key.
+								</span>
+							</>
+						)}
+					</div>
 
 					{/* Source: custom photo vs HeyGen library */}
 					<div className="flex gap-1 rounded-lg bg-foreground/[0.04] p-0.5">
