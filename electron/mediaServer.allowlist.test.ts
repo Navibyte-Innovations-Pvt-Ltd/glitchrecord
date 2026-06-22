@@ -14,8 +14,13 @@ describe("isAllowedMediaPath", () => {
 	beforeEach(() => approvedLocalReadPaths.clear());
 
 	it("allows a generated avatar clip even when NOT in the session approved set", () => {
-		// This is exactly the 403 case that broke playback.
+		// This is exactly the 403 case that broke avatar playback.
 		expect(isAllowedMediaPath("/tmp/userdata/avatars/avatar-abc.mp4")).toBe(true);
+	});
+
+	it("allows narration audio even when NOT in the session approved set", () => {
+		// Same 403 → file:// → SILENT-audio case for the narration track.
+		expect(isAllowedMediaPath("/tmp/userdata/narrations/narration-123.wav")).toBe(true);
 	});
 
 	it("denies an unrelated path that isn't approved", () => {
