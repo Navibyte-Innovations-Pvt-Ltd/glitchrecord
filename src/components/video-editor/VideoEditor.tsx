@@ -5180,6 +5180,11 @@ export default function VideoEditor() {
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
 							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+						avatar: avatarOverlay,
+						avatarUrl:
+							resolvedAvatarVideoUrl ??
+							(avatarOverlay.sourcePath ? toFileUrl(avatarOverlay.sourcePath) : null),
+						avatarRegions,
 						annotationRegions,
 						autoCaptions,
 						autoCaptionSettings,
