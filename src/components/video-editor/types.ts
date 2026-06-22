@@ -353,25 +353,38 @@ function getSafeClipSpeed(clip: ClipRegion) {
 function clampToNearestClipBoundary(
 	timeMs: number,
 	spans: ClipSourceSpan[],
-	kind: "timeline" | "source",
+	inputKind: "timeline" | "source",
 ) {
-	let nearestTimeMs = Math.round(timeMs);
+	// `inputKind` is the domain of `timeMs`. We return the nearest boundary in the OTHER
+	// domain — so an out-of-range time maps to a consistent point. Critically, source
+	// time past the last clip must return that clip's TIMELINE end, not its source value:
+	// for a slow clip the source value is far smaller, which made the end-of-play marker
+	// jump left for a frame before snapping right.
+	let nearest = Math.round(timeMs);
 	let nearestDistance = Number.POSITIVE_INFINITY;
 
 	for (const { clip, sourceStartMs, sourceEndMs } of spans) {
-		const boundaries =
-			kind === "timeline" ? [clip.startMs, clip.endMs] : [sourceStartMs, sourceEndMs];
+		const boundaryPairs: Array<[number, number]> =
+			inputKind === "timeline"
+				? [
+						[clip.startMs, sourceStartMs],
+						[clip.endMs, sourceEndMs],
+					]
+				: [
+						[sourceStartMs, clip.startMs],
+						[sourceEndMs, clip.endMs],
+					];
 
-		for (const boundary of boundaries) {
-			const distance = Math.abs(timeMs - boundary);
+		for (const [inputBoundary, outputBoundary] of boundaryPairs) {
+			const distance = Math.abs(timeMs - inputBoundary);
 			if (distance < nearestDistance) {
 				nearestDistance = distance;
-				nearestTimeMs = Math.round(boundary);
+				nearest = Math.round(outputBoundary);
 			}
 		}
 	}
 
-	return nearestTimeMs;
+	return nearest;
 }
 
 export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[]): number {
