@@ -335,6 +335,13 @@ interface VideoPlaybackProps {
 	onPreviewReadyChange?: (ready: boolean) => void;
 	onTimeUpdate: (time: number) => void;
 	currentTime: number;
+	/**
+	 * Timeline (wall-clock) playhead in seconds — `currentTime` mapped through speed/
+	 * clip edits. The avatar PiP clip is a linear narration anchored to the TIMELINE,
+	 * so it must sync to this, not the speed-warped source `currentTime` (otherwise the
+	 * clip re-seeks every speed region and the audio stutters). Falls back to currentTime.
+	 */
+	timelineTime?: number;
 	onPlayStateChange: (playing: boolean) => void;
 	onError: (error: string) => void;
 	wallpaper?: string;
@@ -369,6 +376,8 @@ interface VideoPlaybackProps {
 	onAvatarMove?: (positionX: number, positionY: number) => void;
 	/** Shift+drag to pan the photo inside the box — reports framing X/Y (0–100%). */
 	onAvatarFraming?: (framingX: number, framingY: number) => void;
+	/** Toggle the avatar clip's own audio (mute/unmute) from the PiP overlay button. */
+	onAvatarMuteToggle?: () => void;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
 	aspectRatio: AspectRatio;
@@ -426,6 +435,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onPreviewReadyChange,
 			onTimeUpdate,
 			currentTime,
+			timelineTime,
 			onPlayStateChange,
 			onError,
 			wallpaper,
@@ -457,6 +467,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			avatarRegions,
 			onAvatarMove,
 			onAvatarFraming,
+			onAvatarMuteToggle,
 			trimRegions = [],
 			speedRegions = [],
 			aspectRatio,
@@ -914,6 +925,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		avatarRegionsRef.current = avatarRegions;
 		const avatarVideoPathRef = useRef(avatarVideoPath);
 		avatarVideoPathRef.current = avatarVideoPath;
+		// TIMELINE (wall-clock) playhead in ms — the avatar clip + spotlight regions are
+		// anchored to the timeline, so sync against this, NOT the speed-warped source
+		// `currentTime` (which made the clip re-seek every speed region → audio stutter).
+		const avatarTimelineMsRef = useRef(0);
+		avatarTimelineMsRef.current = (timelineTime ?? currentTime) * 1000;
 		const applyAvatarBubbleLayout = useCallback(() => {
 			const bubble = avatarBubbleRef.current;
 			const overlay = overlayRef.current;
@@ -938,10 +954,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bubble.style.display = "none";
 				return;
 			}
-			// Spotlight: blend toward full-frame during an avatar region.
+			// Spotlight: blend toward full-frame during an avatar region (timeline time).
 			const progress = getAvatarSpotlightProgress(
 				avatarRegionsRef.current,
-				currentTimeRef.current,
+				avatarTimelineMsRef.current,
 			);
 			const layout =
 				progress > 0
@@ -1061,8 +1077,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const tick = () => {
 				const v = avatarVideoRef.current;
 				if (!v) return;
-				const target = Math.max(0, currentTimeRef.current / 1000);
+				// Sync to TIMELINE seconds (the clip is timeline-anchored), not source time.
+				const target = Math.max(0, avatarTimelineMsRef.current / 1000);
 				if (!Number.isFinite(target)) return;
+				// When the avatar plays its OWN audio (unmuted), it is the sync TRUTH —
+				// rate-nudging would pitch-distort that voice, so we keep it at 1× and
+				// only hard-seek on a real scrub. When muted (default), the narration is
+				// the truth and we nudge the silent clip to track it.
+				const avatarOwnsAudio = avatarOverlayRef.current?.muted === false;
 				if (isPlayingRef.current) {
 					if (v.paused) {
 						seek(v, target);
@@ -1081,6 +1103,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							v.playbackRate = 1;
 							lastReseek = now;
 						}
+					} else if (avatarOwnsAudio) {
+						v.playbackRate = 1; // own audio → never nudge (no pitch artifacts)
 					} else if (drift > 0.06) {
 						v.playbackRate = 1.1; // behind → speed up to catch the narration
 					} else if (drift < -0.06) {
@@ -1099,6 +1123,16 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const id = window.setInterval(tick, 250);
 			return () => window.clearInterval(id);
 		}, [avatarEnabled, avatarVideoPath]);
+
+		// Force the avatar <video> mute property when the toggle changes — React's
+		// `muted` attribute is unreliable, so set the DOM property directly.
+		const avatarMuted = avatarOverlay?.muted !== false;
+		useEffect(() => {
+			const v = avatarVideoRef.current;
+			if (!v) return;
+			v.muted = avatarMuted;
+			v.volume = avatarMuted ? 0 : 1;
+		}, [avatarMuted]);
 
 		const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
 			return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
@@ -3205,23 +3239,26 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											src={avatarVideoPath}
 											className="pointer-events-none absolute inset-0 block h-full w-full object-cover"
 											style={{ objectPosition: avatarObjectPosition }}
-											muted
+											muted={avatarOverlay?.muted !== false}
 											playsInline
 											preload="auto"
 											aria-hidden="true"
 											onLoadedData={(e) => {
 												const v = e.currentTarget as HTMLVideoElement;
-												// React's `muted` attribute is unreliable — force the property so
-												// the clip's baked-in narration audio never leaks (the timeline
-												// narration track is the only audio). NO autoplay: the clip plays
-												// only when the editor is playing (driven by the sync loop). We
-												// just seek once to paint a first frame so the box isn't empty.
-												v.muted = true;
-												v.volume = 0;
+												// React's `muted` attribute is unreliable — force the property.
+												// Default: muted so the clip's baked-in voice never leaks (the
+												// timeline narration track is the only audio). When the user
+												// unmutes (to check sync), the clip plays its OWN synced voice.
+												// NO autoplay: the clip plays only when the editor is playing
+												// (driven by the sync loop). We seek once to paint a first frame.
+												const unmuted =
+													avatarOverlayRef.current?.muted === false;
+												v.muted = !unmuted;
+												v.volume = unmuted ? 1 : 0;
 												try {
 													v.currentTime = Math.max(
 														0.05,
-														currentTimeRef.current / 1000,
+														avatarTimelineMsRef.current / 1000,
 													);
 												} catch {
 													/* metadata not ready — the sync loop will retry */
@@ -3235,6 +3272,64 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 												);
 											}}
 										/>
+										{/* Mute/unmute the avatar's own voice right on the PiP — same
+											single source of truth as the panel toggle (overlay.muted). */}
+										{onAvatarMuteToggle ? (
+											<button
+												type="button"
+												aria-label={
+													avatarOverlay?.muted === false
+														? "Mute avatar voice"
+														: "Unmute avatar voice"
+												}
+												title={
+													avatarOverlay?.muted === false
+														? "Avatar voice on — click to mute"
+														: "Avatar muted — click to hear its voice"
+												}
+												onPointerDown={(e) => e.stopPropagation()}
+												onClick={(e) => {
+													e.stopPropagation();
+													onAvatarMuteToggle();
+												}}
+												className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/75"
+												style={{ pointerEvents: "auto", cursor: "pointer" }}
+											>
+												{avatarOverlay?.muted === false ? (
+													<svg
+														width="13"
+														height="13"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														strokeWidth="2"
+														strokeLinecap="round"
+														strokeLinejoin="round"
+														aria-hidden="true"
+													>
+														<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+														<path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+														<path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+													</svg>
+												) : (
+													<svg
+														width="13"
+														height="13"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														strokeWidth="2"
+														strokeLinecap="round"
+														strokeLinejoin="round"
+														aria-hidden="true"
+													>
+														<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+														<line x1="23" y1="9" x2="17" y2="15" />
+														<line x1="17" y1="9" x2="23" y2="15" />
+													</svg>
+												)}
+											</button>
+										) : null}
 									</>
 								) : null}
 							</div>
