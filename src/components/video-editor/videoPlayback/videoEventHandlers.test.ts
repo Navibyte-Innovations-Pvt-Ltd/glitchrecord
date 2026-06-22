@@ -222,6 +222,51 @@ describe("createVideoEventHandlers", () => {
 		expect(onTimeUpdate).toHaveBeenLastCalledWith(6);
 	});
 
+	it("parks currentTime on the content end so the pause event doesn't flick the marker left", () => {
+		// The reported bug: at the end the marker flicks LEFT for a moment then settles.
+		// Cause: updateTime emits the content end (6), then the pause event fires and
+		// handlePause re-emits the element's currentTime — which lagged the presented
+		// frame (5.9) → a left jump. The stop must park currentTime on the end so BOTH
+		// emits agree on 6.
+		let presentedFrameCallback: PresentedFrameCallback | null = null;
+		const video = createMockVideo({
+			currentTime: 5.9, // element lags the presented frame
+			duration: 10,
+			requestVideoFrameCallback: vi.fn((callback) => {
+				presentedFrameCallback = callback;
+				return 41;
+			}),
+			cancelVideoFrameCallback: vi.fn(),
+			// pause() in the real element fires the "pause" event → handlePause. Simulate.
+			pause: vi.fn(function (this: MockVideo) {
+				this.paused = true;
+			}),
+		});
+		const onTimeUpdate = vi.fn();
+		const handlers = createVideoEventHandlers({
+			video,
+			isSeekingRef: createMutableRef(false),
+			isPlayingRef: createMutableRef(false),
+			allowPlaybackRef: createMutableRef(true),
+			currentTimeRef: createMutableRef(0),
+			timeUpdateAnimationRef: createMutableRef<number | null>(null),
+			onPlayStateChange: vi.fn(),
+			onTimeUpdate,
+			trimRegionsRef: createMutableRef([]),
+			speedRegionsRef: createMutableRef([]),
+			playbackEndSourceMsRef: createMutableRef<number | null>(6_000),
+		});
+
+		handlers.handlePlay();
+		presentedFrameCallback?.(0, { mediaTime: 6.2 }); // presented frame past the end
+		// The element's pause event handler runs next in the real flow.
+		handlers.handlePause();
+
+		// Final emitted time must be the content end (6) — never the lagging 5.9.
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(6);
+		expect(onTimeUpdate.mock.calls.every(([t]) => t <= 6)).toBe(true);
+	});
+
 	it("keeps playing normally before the content end (no premature stop)", () => {
 		let presentedFrameCallback: PresentedFrameCallback | null = null;
 		const video = createMockVideo({
