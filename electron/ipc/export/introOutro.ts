@@ -1,19 +1,22 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { app } from "electron";
 import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
 
 /**
- * Intro/outro logo cards bolted onto an exported video via FFmpeg concat.
+ * Intro/outro cards bolted onto an exported video via FFmpeg concat. The main
+ * export is NEVER re-encoded: we build short clips matching its exact video
+ * params (codec/profile/pixfmt/fps/timescale) and stitch with `concat -c copy`.
  *
- * The main export is NEVER re-encoded: we generate short intro/outro clips that
- * match the export's exact video params (codec/profile/pixfmt/fps/timescale) and
- * stitch them with `concat -c copy`. Audio collapses to a single bit — if the
- * main has an audio stream, intro/outro carry a silent AAC track with matching
- * params; if not, they carry no audio stream (concat-copy requires equal stream
- * counts). See the validated spike in the feature design notes.
+ * Card visuals are rendered in the RENDERER (canvas `drawCard`, the same code the
+ * preview uses) and handed here as a PNG frame sequence (per side, in a temp dir),
+ * so export matches preview pixel-for-pixel. Video-mode sides transcode the user's
+ * clip to match params. Audio (built-in sting or uploaded) is muxed per side, but
+ * only when the main export has an audio stream (concat-copy needs equal stream
+ * counts).
  */
 
 export type IntroOutroMode = "card" | "video";
@@ -41,11 +44,6 @@ export interface CardAudio {
 	dataUrl: string;
 	volume: number;
 }
-
-// Mirrors src/components/video-editor/introOutroTypes.ts (the renderer config
-// crosses to here over `finalize-exported-video`). The export currently uses a
-// subset (preset/position/duration/size/background.color1 + logo); text,
-// gradient, audio and video modes are wired in later phases.
 export interface IntroOutroSideConfig {
 	enabled: boolean;
 	mode: IntroOutroMode;
@@ -60,11 +58,16 @@ export interface IntroOutroSideConfig {
 	videoPath: string;
 	audio: CardAudio;
 }
-
 export interface IntroOutroConfig {
 	logoDataUrl: string;
 	intro: IntroOutroSideConfig;
 	outro: IntroOutroSideConfig;
+}
+
+/** PNG frame directories rendered by the renderer, per side. */
+export interface IntroOutroFrameDirs {
+	intro?: string | null;
+	outro?: string | null;
 }
 
 interface ProbedVideoParams {
@@ -81,27 +84,25 @@ interface ProbedVideoParams {
 }
 
 const MIN_DURATION_MS = 500;
-const MAX_DURATION_MS = 5000;
-const FFMPEG_TIMEOUT_MS = 60_000;
+const MAX_DURATION_MS = 8000;
+const FFMPEG_TIMEOUT_MS = 120_000;
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
 }
 
-function isSideActive(side: IntroOutroSideConfig | undefined): side is IntroOutroSideConfig {
-	return Boolean(side?.enabled);
+function sideHasContent(side: IntroOutroSideConfig, logoDataUrl: string): boolean {
+	if (!side.enabled) return false;
+	if (side.mode === "video") return Boolean(side.videoPath);
+	return Boolean(logoDataUrl) || Boolean(side.text.brandName) || Boolean(side.text.tagline);
 }
 
-/** True when at least one side is enabled and a logo is present. */
 export function introOutroIsActive(config: IntroOutroConfig | null | undefined): boolean {
-	if (
-		!config ||
-		typeof config.logoDataUrl !== "string" ||
-		!config.logoDataUrl.startsWith("data:")
-	) {
-		return false;
-	}
-	return isSideActive(config.intro) || isSideActive(config.outro);
+	if (!config) return false;
+	return (
+		sideHasContent(config.intro, config.logoDataUrl) ||
+		sideHasContent(config.outro, config.logoDataUrl)
+	);
 }
 
 function runFfmpeg(ffmpegPath: string, args: string[]): Promise<{ ok: boolean; stderr: string }> {
@@ -147,11 +148,8 @@ function runFfprobe(ffprobePath: string, args: string[]): Promise<string> {
 		});
 		child.once("error", reject);
 		child.once("close", (code) => {
-			if (code === 0) {
-				resolve(stdout);
-			} else {
-				reject(new Error(`ffprobe exited ${code}: ${stderr}`));
-			}
+			if (code === 0) resolve(stdout);
+			else reject(new Error(`ffprobe exited ${code}: ${stderr}`));
 		});
 	});
 }
@@ -161,14 +159,11 @@ function parseRationalFps(value: string | undefined): number {
 	const [num, den] = value.split("/");
 	const n = Number(num);
 	const d = Number(den);
-	if (Number.isFinite(n) && Number.isFinite(d) && d > 0) {
-		return n / d;
-	}
+	if (Number.isFinite(n) && Number.isFinite(d) && d > 0) return n / d;
 	return Number.isFinite(n) && n > 0 ? n : 30;
 }
 
 function parseTimebaseToTimescale(value: string | undefined): number {
-	// time_base like "1/15360" → timescale 15360.
 	if (!value) return 0;
 	const [, den] = value.split("/");
 	const d = Number(den);
@@ -186,24 +181,18 @@ async function probeVideoParams(videoPath: string): Promise<ProbedVideoParams> {
 		"json",
 		videoPath,
 	]);
-	const parsed = JSON.parse(raw) as {
-		streams?: Array<Record<string, unknown>>;
-	};
+	const parsed = JSON.parse(raw) as { streams?: Array<Record<string, unknown>> };
 	const streams = parsed.streams ?? [];
 	const video = streams.find((s) => s.codec_type === "video");
 	const audio = streams.find((s) => s.codec_type === "audio");
-	if (!video) {
-		throw new Error("No video stream found in export");
-	}
+	if (!video) throw new Error("No video stream found in export");
 
 	const profileRaw = typeof video.profile === "string" ? video.profile.toLowerCase() : "high";
 	const levelRaw = video.level;
 	let level = "";
 	if (typeof levelRaw === "number" && levelRaw > 0) {
-		// ffprobe reports H.264 level as an integer (32 → 3.2).
 		level = levelRaw >= 10 ? (levelRaw / 10).toFixed(1) : String(levelRaw);
 	}
-
 	return {
 		width: Number(video.width) || 0,
 		height: Number(video.height) || 0,
@@ -222,133 +211,157 @@ async function probeVideoParams(videoPath: string): Promise<ProbedVideoParams> {
 	};
 }
 
-function sanitizeHexColor(value: string | undefined): string {
-	if (typeof value === "string" && /^#?[0-9a-fA-F]{6}$/.test(value.trim())) {
-		const hex = value.trim().replace(/^#/, "");
-		return `0x${hex}`;
-	}
-	return "0x0B1020";
+/** Common x264 args so each generated clip matches the main export exactly. */
+function videoMatchArgs(params: ProbedVideoParams): string[] {
+	const args = ["-c:v", "libx264", "-profile:v", params.profile, "-pix_fmt", params.pixFmt];
+	if (params.level) args.push("-level", params.level);
+	args.push("-r", String(params.fps));
+	if (params.videoTimescale > 0)
+		args.push("-video_track_timescale", String(params.videoTimescale));
+	return args;
 }
 
-/** Even logo height in pixels for the given size fraction. */
-function logoHeightPx(params: ProbedVideoParams, size: number): number {
-	const fraction = clamp(size, 0.1, 0.8);
-	const h = Math.round(params.height * fraction);
-	return Math.max(2, h % 2 === 0 ? h : h + 1);
-}
-
-/** Overlay x/y expressions for a static placement. Margins are 15% of the frame. */
-function placementExpr(position: IntroOutroPosition): { x: string; y: string } {
-	switch (position) {
-		case "top":
-			return { x: "(W-w)/2", y: "H*0.15" };
-		case "bottom":
-			return { x: "(W-w)/2", y: "H*0.85-h" };
-		case "left":
-			return { x: "W*0.15", y: "(H-h)/2" };
-		case "right":
-			return { x: "W*0.85-w", y: "(H-h)/2" };
-		default:
-			return { x: "(W-w)/2", y: "(H-h)/2" };
-	}
-}
-
-/** Offscreen start x/y for a slide entering from the placement edge. */
-function slideStartExpr(
-	position: IntroOutroPosition,
-	end: { x: string; y: string },
-): {
-	x: string;
-	y: string;
-} {
-	switch (position) {
-		case "top":
-			return { x: end.x, y: "-h" };
-		case "bottom":
-			return { x: end.x, y: "H" };
-		case "right":
-			return { x: "W", y: end.y };
-		default:
-			// center + left both slide in from the left edge.
-			return { x: "-w", y: end.y };
-	}
-}
-
-function buildFilterComplex(
-	side: IntroOutroSideConfig,
-	params: ProbedVideoParams,
-	durationSec: number,
-): string {
-	const lh = logoHeightPx(params, side.size);
-	const fadeDur = Math.min(0.5, durationSec * 0.4);
-	const fadeOutStart = Math.max(0, durationSec - fadeDur).toFixed(3);
-	const place = placementExpr(side.position);
-
-	if (side.preset === "scale-pop") {
-		// Pre-scale logo, overlay centered, then ease a zoom "pop" on the composite.
-		// zoompan is robust where per-frame `scale=eval=frame` is not.
-		const popFrames = Math.max(1, Math.round(params.fps * 0.5));
-		return [
-			`[1:v]scale=-2:${lh},format=rgba[lg]`,
-			`[0:v][lg]overlay=(W-w)/2:(H-h)/2:format=auto[comp]`,
-			`[comp]zoompan=z='if(lte(on,1)\\,0.6\\,min(1.0\\,0.6+0.4*(on/${popFrames})))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${params.width}x${params.height}:fps=${params.fps},fade=t=in:st=0:d=${fadeDur.toFixed(3)},fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(3)},format=yuv420p[v]`,
-		].join(";");
-	}
-
-	if (side.preset === "slide") {
-		const start = slideStartExpr(side.position, place);
-		const slideDur = Math.min(0.6, durationSec * 0.5);
-		const xExpr = `if(lt(t\\,${slideDur.toFixed(3)})\\,${start.x}+(${place.x}-(${start.x}))*(t/${slideDur.toFixed(3)})\\,${place.x})`;
-		const yExpr = `if(lt(t\\,${slideDur.toFixed(3)})\\,${start.y}+(${place.y}-(${start.y}))*(t/${slideDur.toFixed(3)})\\,${place.y})`;
-		return [
-			`[1:v]scale=-2:${lh},format=rgba[lg]`,
-			`[0:v][lg]overlay=x='${xExpr}':y='${yExpr}':eval=frame,fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(3)},format=yuv420p[v]`,
-		].join(";");
-	}
-
-	if (side.preset === "glitch") {
-		// Damped horizontal shake settling into place + fade in/out.
-		const shakeDur = Math.min(0.4, durationSec * 0.35);
-		const xExpr = `${place.x}+if(lt(t\\,${shakeDur.toFixed(3)})\\,18*sin(t*90)*(${shakeDur.toFixed(3)}-t)/${shakeDur.toFixed(3)}\\,0)`;
-		return [
-			`[1:v]scale=-2:${lh},format=rgba[lg]`,
-			`[0:v][lg]overlay=x='${xExpr}':y='${place.y}':eval=frame,fade=t=in:st=0:d=${fadeDur.toFixed(3)},fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(3)},format=yuv420p[v]`,
-		].join(";");
-	}
-
-	// fade (default)
+function audioMatchArgs(params: ProbedVideoParams): string[] {
 	return [
-		`[1:v]scale=-2:${lh},format=rgba[lg]`,
-		`[0:v][lg]overlay=${place.x}:${place.y}:format=auto,fade=t=in:st=0:d=${fadeDur.toFixed(3)},fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(3)},format=yuv420p[v]`,
-	].join(";");
+		"-c:a",
+		"aac",
+		"-b:a",
+		"128k",
+		"-ar",
+		String(params.audioSampleRate),
+		"-ac",
+		String(params.audioChannels),
+	];
 }
 
-async function generateSideClip(
+// ── Built-in stings ─────────────────────────────────────────────────────────
+// Synthesized on demand and cached in userData, so nothing needs bundling.
+
+function stingSynthArgs(trackId: string): string[] {
+	switch (trackId) {
+		case "chime":
+			return [
+				"-f",
+				"lavfi",
+				"-i",
+				"sine=frequency=880:duration=1.2",
+				"-f",
+				"lavfi",
+				"-i",
+				"sine=frequency=1320:duration=1.2",
+				"-filter_complex",
+				"[0][1]amix=inputs=2,afade=t=out:st=0.4:d=0.8,volume=0.6",
+			];
+		case "riser":
+			return [
+				"-f",
+				"lavfi",
+				"-i",
+				"aevalsrc=0.3*sin(2*PI*t*(300+500*t)):d=1.2:s=22050",
+				"-af",
+				"afade=t=out:st=0.9:d=0.3",
+			];
+		case "pulse":
+			return [
+				"-f",
+				"lavfi",
+				"-i",
+				"sine=frequency=330:duration=1.2",
+				"-af",
+				"tremolo=f=8:d=0.8,afade=t=in:d=0.05,afade=t=out:st=0.9:d=0.3,volume=0.7",
+			];
+		default:
+			// whoosh
+			return [
+				"-f",
+				"lavfi",
+				"-i",
+				"anoisesrc=d=1.2:c=pink:a=0.4",
+				"-af",
+				"highpass=f=300,lowpass=f=4000,afade=t=in:d=0.1,afade=t=out:st=0.7:d=0.5,volume=1.5",
+			];
+	}
+}
+
+async function getBuiltinStingPath(ffmpegPath: string, trackId: string): Promise<string | null> {
+	const id = ["whoosh", "riser", "chime", "pulse"].includes(trackId) ? trackId : "whoosh";
+	const cacheDir = path.join(app.getPath("userData"), "intro-stings");
+	await fs.mkdir(cacheDir, { recursive: true });
+	const outPath = path.join(cacheDir, `${id}.m4a`);
+	if (existsSync(outPath)) return outPath;
+	const result = await runFfmpeg(ffmpegPath, [
+		"-y",
+		"-v",
+		"error",
+		...stingSynthArgs(id),
+		"-c:a",
+		"aac",
+		"-b:a",
+		"128k",
+		"-ar",
+		"22050",
+		"-ac",
+		"1",
+		outPath,
+	]);
+	return result.ok ? outPath : null;
+}
+
+/**
+ * Resolve the per-side music input path, or null for no/failed music.
+ * `workDir` holds any uploaded-audio temp file.
+ */
+async function resolveAudioInput(
 	ffmpegPath: string,
 	side: IntroOutroSideConfig,
+	workDir: string,
+	tag: string,
+): Promise<string | null> {
+	if (side.audio.mode === "builtin") {
+		return getBuiltinStingPath(ffmpegPath, side.audio.trackId);
+	}
+	if (side.audio.mode === "upload" && side.audio.dataUrl.startsWith("data:audio/")) {
+		const match = /^data:audio\/[\w.+-]+;base64,(.+)$/i.exec(side.audio.dataUrl);
+		if (!match) return null;
+		const audioPath = path.join(workDir, `audio-${tag}.bin`);
+		await fs.writeFile(audioPath, Buffer.from(match[1], "base64"));
+		return audioPath;
+	}
+	return null;
+}
+
+async function countFrames(framesDir: string): Promise<number> {
+	const files = await fs.readdir(framesDir).catch(() => [] as string[]);
+	return files.filter((f) => f.endsWith(".png")).length;
+}
+
+/** Build a card clip from the renderer's PNG frame sequence. */
+async function buildCardClip(
+	ffmpegPath: string,
+	framesDir: string,
+	side: IntroOutroSideConfig,
 	params: ProbedVideoParams,
-	logoPath: string,
+	audioPath: string | null,
 	outPath: string,
-): Promise<void> {
+): Promise<boolean> {
+	const frameCount = await countFrames(framesDir);
+	if (frameCount === 0) return false;
 	const durationSec = clamp(side.durationMs, MIN_DURATION_MS, MAX_DURATION_MS) / 1000;
-	const bg = sanitizeHexColor(side.background?.color1);
-	const filter = buildFilterComplex(side, params, durationSec);
+	const volume = clamp(side.audio.volume, 0, 1);
+	const withMusic = params.hasAudio && audioPath !== null;
 
 	const args: string[] = [
 		"-y",
 		"-v",
 		"error",
-		"-f",
-		"lavfi",
+		"-framerate",
+		String(params.fps),
 		"-i",
-		`color=c=${bg}:s=${params.width}x${params.height}:r=${params.fps}:d=${durationSec.toFixed(3)}`,
-		"-loop",
-		"1",
-		"-i",
-		logoPath,
+		path.join(framesDir, "f%05d.png"),
 	];
-
-	if (params.hasAudio) {
+	if (withMusic) {
+		args.push("-i", audioPath as string);
+	} else if (params.hasAudio) {
 		args.push(
 			"-f",
 			"lavfi",
@@ -356,75 +369,137 @@ async function generateSideClip(
 			`anullsrc=channel_layout=${params.audioChannels >= 2 ? "stereo" : "mono"}:sample_rate=${params.audioSampleRate}`,
 		);
 	}
-
-	args.push("-filter_complex", filter, "-map", "[v]");
+	// Scale guarantees card dims exactly match the main export (concat-copy needs it).
+	args.push(
+		"-vf",
+		`scale=${params.width}:${params.height},format=${params.pixFmt}`,
+		"-t",
+		durationSec.toFixed(3),
+	);
+	args.push(...videoMatchArgs(params));
 	if (params.hasAudio) {
-		args.push("-map", "2:a");
-	}
-	args.push("-t", durationSec.toFixed(3));
-
-	// Match the export's video params so concat -c copy never re-encodes the main.
-	args.push("-c:v", "libx264", "-profile:v", params.profile, "-pix_fmt", params.pixFmt);
-	if (params.level) {
-		args.push("-level", params.level);
-	}
-	args.push("-r", String(params.fps));
-	if (params.videoTimescale > 0) {
-		args.push("-video_track_timescale", String(params.videoTimescale));
-	}
-	if (params.hasAudio) {
-		args.push(
-			"-c:a",
-			"aac",
-			"-b:a",
-			"128k",
-			"-ar",
-			String(params.audioSampleRate),
-			"-ac",
-			String(params.audioChannels),
-		);
+		if (withMusic) args.push("-af", `volume=${volume.toFixed(2)},apad`);
+		args.push(...audioMatchArgs(params));
 	}
 	args.push(outPath);
 
 	const result = await runFfmpeg(ffmpegPath, args);
-	if (!result.ok) {
-		throw new Error(`Failed to render intro/outro clip: ${result.stderr.slice(-500)}`);
-	}
+	if (!result.ok) console.warn(`[introOutro] card clip failed: ${result.stderr.slice(-400)}`);
+	return result.ok;
 }
 
-function parseLogoDataUrl(dataUrl: string): { buffer: Buffer; ext: string } {
-	const match = /^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i.exec(dataUrl);
-	if (!match) {
-		throw new Error("Logo must be a base64 PNG/JPEG/WebP data URL");
+/** Transcode a user video clip to match the export params. */
+async function buildVideoClip(
+	ffmpegPath: string,
+	side: IntroOutroSideConfig,
+	params: ProbedVideoParams,
+	audioPath: string | null,
+	outPath: string,
+): Promise<boolean> {
+	if (!side.videoPath || !existsSync(side.videoPath)) return false;
+	const volume = clamp(side.audio.volume, 0, 1);
+	const useMusic = params.hasAudio && audioPath !== null;
+
+	const args: string[] = ["-y", "-v", "error", "-i", side.videoPath];
+	if (useMusic) args.push("-i", audioPath as string);
+
+	args.push(
+		"-vf",
+		`scale=${params.width}:${params.height}:force_original_aspect_ratio=decrease,pad=${params.width}:${params.height}:(ow-iw)/2:(oh-ih)/2:black,format=${params.pixFmt},fps=${params.fps}`,
+	);
+	args.push(...videoMatchArgs(params));
+
+	if (params.hasAudio) {
+		if (useMusic) {
+			// Replace the clip's audio with the chosen music.
+			args.push(
+				"-map",
+				"0:v:0",
+				"-map",
+				"1:a:0",
+				"-af",
+				`volume=${volume.toFixed(2)},apad`,
+				"-shortest",
+			);
+		} else {
+			// Keep the clip's own audio if present, else synthesize silence.
+			args.push("-af", "aresample=async=1", "-map", "0:v:0", "-map", "0:a:0?");
+		}
+		args.push(...audioMatchArgs(params));
+	} else {
+		args.push("-an");
 	}
-	const ext = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
-	return { buffer: Buffer.from(match[2], "base64"), ext };
+	args.push(outPath);
+
+	const result = await runFfmpeg(ffmpegPath, args);
+	if (!result.ok) console.warn(`[introOutro] video clip failed: ${result.stderr.slice(-400)}`);
+	// A clip with no audio stream while the main has one breaks concat-copy; add
+	// a silent track in that case via a second pass.
+	if (result.ok && params.hasAudio && !useMusic) {
+		const probe = await probeVideoParams(outPath).catch(() => null);
+		if (probe && !probe.hasAudio) {
+			const withSilence = `${outPath}.silenced.mp4`;
+			const pass2 = await runFfmpeg(ffmpegPath, [
+				"-y",
+				"-v",
+				"error",
+				"-i",
+				outPath,
+				"-f",
+				"lavfi",
+				"-i",
+				`anullsrc=channel_layout=${params.audioChannels >= 2 ? "stereo" : "mono"}:sample_rate=${params.audioSampleRate}`,
+				"-map",
+				"0:v:0",
+				"-map",
+				"1:a:0",
+				"-c:v",
+				"copy",
+				...audioMatchArgs(params),
+				"-shortest",
+				withSilence,
+			]);
+			if (pass2.ok) {
+				await fs.rename(withSilence, outPath).catch(() => undefined);
+			}
+		}
+	}
+	return result.ok;
 }
 
-async function makeTempDir(): Promise<string> {
-	const dir = path.join(os.tmpdir(), `glitchrecord-introoutro-${randomBytes(6).toString("hex")}`);
+async function makeTempDir(prefix: string): Promise<string> {
+	const dir = path.join(os.tmpdir(), `${prefix}-${randomBytes(6).toString("hex")}`);
 	await fs.mkdir(dir, { recursive: true });
 	return dir;
 }
 
+/** Stage renderer PNG frames (base64) into a temp dir; returns the dir. */
+export async function stageIntroOutroFrames(framesBase64: string[]): Promise<string> {
+	const dir = await makeTempDir("glitchrecord-ioframes");
+	await Promise.all(
+		framesBase64.map((b64, i) => {
+			const data = b64.replace(/^data:image\/png;base64,/, "");
+			return fs.writeFile(
+				path.join(dir, `f${String(i).padStart(5, "0")}.png`),
+				Buffer.from(data, "base64"),
+			);
+		}),
+	);
+	return dir;
+}
+
 /**
- * Apply intro/outro to an exported video. Returns a NEW temp path holding the
- * stitched result, or the original `videoPath` unchanged if nothing applies.
- * The caller is responsible for moving the returned file to its destination.
- * Never throws on a rendering failure — falls back to the original export.
+ * Apply intro/outro to an exported mp4. Returns a NEW temp path with the stitched
+ * result, or the original `videoPath` unchanged if nothing applies / on failure.
  */
 export async function applyIntroOutro(
 	videoPath: string,
 	config: IntroOutroConfig | null | undefined,
+	frameDirs?: IntroOutroFrameDirs,
 ): Promise<string> {
-	if (!introOutroIsActive(config) || !config) {
-		return videoPath;
-	}
-	// GIF and other non-mp4 outputs are out of scope for v1.
+	if (!introOutroIsActive(config) || !config) return videoPath;
 	if (!videoPath.toLowerCase().endsWith(".mp4")) {
-		console.warn(
-			`[introOutro] Cards requested but output is not mp4 (${videoPath}); exporting without cards.`,
-		);
+		console.warn(`[introOutro] non-mp4 output, skipping cards: ${videoPath}`);
 		return videoPath;
 	}
 
@@ -432,47 +507,45 @@ export async function applyIntroOutro(
 	try {
 		const ffmpegPath = getFfmpegBinaryPath();
 		const params = await probeVideoParams(videoPath);
-		if (params.width <= 0 || params.height <= 0) {
-			console.warn(
-				"[introOutro] Cards requested but export has no valid video dimensions; exporting without cards.",
-			);
-			return videoPath;
-		}
+		if (params.width <= 0 || params.height <= 0) return videoPath;
 
-		workDir = await makeTempDir();
-		const logo = parseLogoDataUrl(config.logoDataUrl);
-		const logoPath = path.join(workDir, `logo.${logo.ext}`);
-		await fs.writeFile(logoPath, logo.buffer);
+		workDir = await makeTempDir("glitchrecord-introoutro");
+
+		const buildSide = async (
+			side: IntroOutroSideConfig,
+			dir: string | null | undefined,
+			tag: string,
+		): Promise<string | null> => {
+			if (!sideHasContent(side, config.logoDataUrl)) return null;
+			const audioPath = await resolveAudioInput(ffmpegPath, side, workDir as string, tag);
+			const outPath = path.join(workDir as string, `${tag}.mp4`);
+			if (side.mode === "video") {
+				return (await buildVideoClip(ffmpegPath, side, params, audioPath, outPath))
+					? outPath
+					: null;
+			}
+			if (!dir) return null;
+			return (await buildCardClip(ffmpegPath, dir, side, params, audioPath, outPath))
+				? outPath
+				: null;
+		};
+
+		const introClip = await buildSide(config.intro, frameDirs?.intro, "intro");
+		const outroClip = await buildSide(config.outro, frameDirs?.outro, "outro");
 
 		const segments: string[] = [];
-
-		if (isSideActive(config.intro)) {
-			const introPath = path.join(workDir, "intro.mp4");
-			await generateSideClip(ffmpegPath, config.intro, params, logoPath, introPath);
-			segments.push(introPath);
-		}
+		if (introClip) segments.push(introClip);
 		segments.push(videoPath);
-		if (isSideActive(config.outro)) {
-			const outroPath = path.join(workDir, "outro.mp4");
-			await generateSideClip(ffmpegPath, config.outro, params, logoPath, outroPath);
-			segments.push(outroPath);
-		}
+		if (outroClip) segments.push(outroClip);
+		if (segments.length <= 1) return videoPath;
 
-		if (segments.length <= 1) {
-			return videoPath;
-		}
-
-		// FFmpeg concat demuxer list. `-safe 0` allows absolute paths; single
-		// quotes in paths are escaped per the concat protocol.
 		const listPath = path.join(workDir, "concat.txt");
-		const listBody = segments
-			.map((segment) => `file '${segment.replace(/'/g, "'\\''")}'`)
-			.join("\n");
-		await fs.writeFile(listPath, listBody, "utf-8");
+		await fs.writeFile(
+			listPath,
+			segments.map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join("\n"),
+			"utf-8",
+		);
 
-		// Stitched output lives OUTSIDE workDir so we can delete workDir's
-		// scratch files (logo/intro/outro/list) immediately; the caller owns
-		// the returned file and moves it to the destination.
 		const outPath = path.join(
 			os.tmpdir(),
 			`glitchrecord-export-${randomBytes(6).toString("hex")}.mp4`,
@@ -493,20 +566,21 @@ export async function applyIntroOutro(
 		]);
 		if (!concat.ok) {
 			console.warn(
-				`[introOutro] concat failed, exporting without cards: ${concat.stderr.slice(-500)}`,
+				`[introOutro] concat failed, exporting without cards: ${concat.stderr.slice(-400)}`,
 			);
 			return videoPath;
 		}
-
 		return outPath;
 	} catch (error) {
-		console.warn("[introOutro] Failed to apply intro/outro, exporting original:", error);
+		console.warn("[introOutro] failed, exporting original:", error);
 		return videoPath;
 	} finally {
 		if (workDir) {
-			await fs.rm(workDir, { recursive: true, force: true }).catch(() => {
-				// best-effort temp cleanup
-			});
+			await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+		}
+		// Clean staged frame dirs (renderer-created).
+		for (const dir of [frameDirs?.intro, frameDirs?.outro]) {
+			if (dir) await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
 		}
 	}
 }
