@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { IntroOutroConfig } from "./ipc/export/introOutro";
 import type { RecordingSessionData } from "./ipc/types";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
@@ -522,6 +523,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		tempPath: string;
 		fileName: string;
 		outputPath?: string | null;
+		introOutro?: IntroOutroConfig | null;
 	}) => {
 		return ipcRenderer.invoke("finalize-exported-video", payload);
 	},
