@@ -154,7 +154,7 @@ export const DEFAULT_INTRO_OUTRO_SIDE: IntroOutroSideConfig = {
 	layout: "logo-top",
 	background: { ...DEFAULT_CARD_BACKGROUND },
 	logoContainer: "panel",
-	logoPadding: 0.18,
+	logoPadding: 0.1,
 	text: { ...DEFAULT_CARD_TEXT },
 	customAnimation: null,
 	videoPath: "",
