@@ -103,6 +103,8 @@ export interface IntroOutroSideConfig {
 	layout: CardLayout;
 	background: CardBackground;
 	logoContainer: LogoContainerStyle;
+	/** Panel padding around the logo as a fraction of logo height (0.05–0.5). */
+	logoPadding: number;
 	text: CardText;
 	/** AI/hand-authored animation overriding `preset` when set. */
 	customAnimation: AnimationSpec | null;
@@ -152,6 +154,7 @@ export const DEFAULT_INTRO_OUTRO_SIDE: IntroOutroSideConfig = {
 	layout: "logo-top",
 	background: { ...DEFAULT_CARD_BACKGROUND },
 	logoContainer: "panel",
+	logoPadding: 0.18,
 	text: { ...DEFAULT_CARD_TEXT },
 	customAnimation: null,
 	videoPath: "",
@@ -264,6 +267,7 @@ function normalizeSide(value: unknown): IntroOutroSideConfig {
 			LOGO_CONTAINER_STYLES,
 			DEFAULT_INTRO_OUTRO_SIDE.logoContainer,
 		),
+		logoPadding: clampNumber(side.logoPadding, 0.05, 0.5, DEFAULT_INTRO_OUTRO_SIDE.logoPadding),
 		text: normalizeText(side.text),
 		customAnimation: normalizeCustomAnimation(side.customAnimation),
 		videoPath: typeof side.videoPath === "string" ? side.videoPath : "",
