@@ -2,8 +2,32 @@
 // VideoPlayback so the layout math + show/hide rules are unit-testable (the inline
 // version froze the editor via a ResizeObserver loop — pure functions let us catch
 // regressions without rendering Pixi).
-import type { AvatarOverlaySettings, AvatarRegion } from "./types";
+import type { AudioRegion, AvatarOverlaySettings, AvatarRegion } from "./types";
 import { getWebcamOverlayPosition, getWebcamOverlaySizePx } from "./webcamOverlay";
+
+// EXPORT audio: the compositor bakes only avatar VIDEO frames, so when the avatar plays
+// its own voice (unmuted) the export would be silent unless we mux the clip's audio.
+// Append the avatar clip as an audio region at t=0 (synced with its timeline-anchored
+// frames). When muted, the timeline narration carries the audio, so leave it untouched.
+export function buildExportAudioRegions(
+	audioRegions: AudioRegion[],
+	avatar: AvatarOverlaySettings,
+	timelineDurationSec: number,
+): AudioRegion[] {
+	if (avatar.enabled && avatar.muted === false && avatar.sourcePath) {
+		return [
+			...audioRegions,
+			{
+				id: "avatar-voice",
+				audioPath: avatar.sourcePath,
+				startMs: 0,
+				endMs: Math.max(1, Math.round(timelineDurationSec * 1000)),
+				volume: 1,
+			},
+		];
+	}
+	return audioRegions;
+}
 
 export interface AvatarBubbleLayout {
 	x: number;
