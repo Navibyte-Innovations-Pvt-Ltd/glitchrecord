@@ -12,7 +12,6 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { analyzeAudio } from "./analyzeAudio";
 import { CardPreview } from "./CardPreview";
-import { cardDurationMs } from "./cardAnimationRenderer";
 import { ANIMATION_OPTIONS, buildCardDesignPrompt, normalizeCardDesign } from "./cardAnimations";
 import {
 	BUILTIN_TRACKS,
@@ -652,9 +651,7 @@ function AISection({
 	const hasUploadedAudio = side.audio.mode === "upload" && Boolean(side.audio.dataUrl);
 
 	const copyPrompt = async () => {
-		const audio = hasUploadedAudio
-			? await analyzeAudio(side.audio.dataUrl, cardDurationMs(side))
-			: null;
+		const audio = hasUploadedAudio ? await analyzeAudio(side.audio.dataUrl) : null;
 		const text = buildCardDesignPrompt(side, audio);
 		try {
 			if (window.electronAPI?.writeClipboard) {
