@@ -56,11 +56,51 @@ export interface AnimationTrack {
 	keyframes: Keyframe[];
 }
 
+export type TextTarget = "name" | "tagline" | "both";
+
+/** Per-element extra transforms layered on top of the group `tracks`. */
+export interface ElementTracks {
+	logo?: AnimationTrack[];
+	name?: AnimationTrack[];
+	tagline?: AnimationTrack[];
+}
+
+/** Staggered text entrance: words or characters reveal one after another. */
+export interface TextReveal {
+	target: TextTarget;
+	mode: "word" | "char";
+	/** When the reveal starts (0..1). */
+	start: number;
+	/** Fraction of the timeline over which all units finish revealing (0..1). */
+	durationFrac: number;
+}
+
+/** A moving highlight band that sweeps across the text glyphs ("flare"). */
+export interface Shine {
+	target: TextTarget;
+	start: number;
+	durationFrac: number;
+	/** 0..1 brightness of the sweep. */
+	intensity: number;
+}
+
+/** Colored glow halo behind the logo; intensity animates over t (e.g. pulses). */
+export interface GlowPulse {
+	color: string;
+	keyframes: Keyframe[];
+}
+
 export interface AnimationSpec {
 	/** Library id, or "custom" for AI/hand-authored specs. */
 	id: string;
 	label: string;
+	/** Group-level transform applied to the whole card content. */
 	tracks: AnimationTrack[];
+	/** Optional extra transforms per element (logo/name/tagline). */
+	elements?: ElementTracks;
+	reveal?: TextReveal;
+	shine?: Shine;
+	glow?: GlowPulse;
 }
 
 export interface ResolvedAnimation {
@@ -139,14 +179,25 @@ function defaultFor(p: AnimatableProperty): number {
 	return p === "opacity" || p === "scale" ? 1 : 0;
 }
 
-/** Resolve all tracks of a spec at normalized time t into a transform. */
-export function resolveAnimation(spec: AnimationSpec | undefined, t: number): ResolvedAnimation {
-	if (!spec) return { ...IDENTITY };
+/** Resolve a list of tracks at normalized time t into a transform. */
+export function resolveTracks(tracks: AnimationTrack[] | undefined, t: number): ResolvedAnimation {
 	const out: ResolvedAnimation = { ...IDENTITY };
-	for (const track of spec.tracks) {
+	if (!tracks) return out;
+	for (const track of tracks) {
 		out[track.property] = sampleTrack(track, t);
 	}
 	return out;
+}
+
+/** Resolve the group-level tracks of a spec at normalized time t. */
+export function resolveAnimation(spec: AnimationSpec | undefined, t: number): ResolvedAnimation {
+	return resolveTracks(spec?.tracks, t);
+}
+
+/** Sample the glow-pulse intensity (0..1) at t, or 0 if no glow. */
+export function resolveGlow(spec: AnimationSpec | undefined, t: number): number {
+	if (!spec?.glow?.keyframes?.length) return 0;
+	return clamp01(sampleTrack({ property: "opacity", keyframes: spec.glow.keyframes }, t));
 }
 
 // Shared tail fade-out so every animation exits cleanly.
@@ -453,14 +504,14 @@ function collapseInStringWhitespace(s: string): string {
  * Returns a clean AnimationSpec or null if it isn't usable. Lenient: drops bad
  * tracks/keyframes rather than rejecting the whole thing.
  */
-export function normalizeAnimationSpec(raw: unknown): AnimationSpec | null {
-	const obj = coerceJsonObject(raw);
-	if (!obj) return null;
-	const r = obj as { label?: unknown; tracks?: unknown };
-	if (!Array.isArray(r.tracks)) return null;
+function unit(v: unknown, fb: number): number {
+	return typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fb;
+}
 
+function parseTracks(raw: unknown): AnimationTrack[] {
+	if (!Array.isArray(raw)) return [];
 	const tracks: AnimationTrack[] = [];
-	for (const t of r.tracks as unknown[]) {
+	for (const t of raw as unknown[]) {
 		if (!t || typeof t !== "object") continue;
 		const tr = t as { property?: unknown; keyframes?: unknown };
 		const property = tr.property as AnimatableProperty;
@@ -477,12 +528,74 @@ export function normalizeAnimationSpec(raw: unknown): AnimationSpec | null {
 			.sort((a, b) => a.t - b.t);
 		if (keyframes.length > 0) tracks.push({ property, keyframes });
 	}
-	if (tracks.length === 0) return null;
+	return tracks;
+}
+
+function parseTextTarget(v: unknown): TextTarget {
+	return v === "name" || v === "tagline" ? v : "both";
+}
+
+function parseReveal(raw: unknown): TextReveal | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const r = raw as Record<string, unknown>;
 	return {
+		target: parseTextTarget(r.target),
+		mode: r.mode === "char" ? "char" : "word",
+		start: unit(r.start, 0),
+		durationFrac: unit(r.durationFrac, 0.4),
+	};
+}
+
+function parseShine(raw: unknown): Shine | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const r = raw as Record<string, unknown>;
+	return {
+		target: parseTextTarget(r.target),
+		start: unit(r.start, 0.3),
+		durationFrac: unit(r.durationFrac, 0.4),
+		intensity: unit(r.intensity, 0.7),
+	};
+}
+
+function parseGlow(raw: unknown): GlowPulse | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const r = raw as Record<string, unknown>;
+	const keyframes = parseTracks([{ property: "opacity", keyframes: r.keyframes }])[0]?.keyframes;
+	if (!keyframes || keyframes.length === 0) return undefined;
+	return { color: hexOr(r.color, "#6478ff"), keyframes };
+}
+
+export function normalizeAnimationSpec(raw: unknown): AnimationSpec | null {
+	const obj = coerceJsonObject(raw);
+	if (!obj) return null;
+	const r = obj as Record<string, unknown>;
+
+	const tracks = parseTracks(r.tracks);
+	const elements: ElementTracks = {};
+	if (r.elements && typeof r.elements === "object") {
+		const er = r.elements as Record<string, unknown>;
+		for (const key of ["logo", "name", "tagline"] as const) {
+			const et = parseTracks(er[key]);
+			if (et.length > 0) elements[key] = et;
+		}
+	}
+	const hasElements = Object.keys(elements).length > 0;
+	const reveal = parseReveal(r.reveal);
+	const shine = parseShine(r.shine);
+	const glow = parseGlow(r.glow);
+
+	if (tracks.length === 0 && !hasElements && !reveal && !shine && !glow) return null;
+
+	const spec: AnimationSpec = {
 		id: "custom",
 		label: typeof r.label === "string" && r.label.trim() ? r.label.slice(0, 40) : "Custom",
 		tracks,
 	};
+	if (hasElements) spec.elements = elements;
+	if (reveal) spec.reveal = reveal;
+	if (shine) spec.shine = shine;
+	if (glow) spec.glow = glow;
+	return spec;
 }
 
 /** Shallow check used on project load (already-validated specs). */
@@ -563,12 +676,17 @@ export interface CardDesign {
 	logoContainer: LogoContainerStyle;
 	size: number;
 	position: IntroOutroPosition;
-	animation: { label?: string; tracks: AnimationTrack[] };
+	animation: Omit<AnimationSpec, "id">;
 }
 
 /** Snapshot the current side as an editable design object. */
 export function sideToDesign(side: IntroOutroSideConfig): CardDesign {
 	const anim = side.customAnimation ?? getCardAnimation(side.preset);
+	const animation: Omit<AnimationSpec, "id"> = { label: anim.label, tracks: anim.tracks };
+	if (anim.elements) animation.elements = anim.elements;
+	if (anim.reveal) animation.reveal = anim.reveal;
+	if (anim.shine) animation.shine = anim.shine;
+	if (anim.glow) animation.glow = anim.glow;
 	return {
 		background: side.background,
 		text: side.text,
@@ -576,7 +694,7 @@ export function sideToDesign(side: IntroOutroSideConfig): CardDesign {
 		logoContainer: side.logoContainer,
 		size: side.size,
 		position: side.position,
-		animation: { label: anim.label, tracks: anim.tracks },
+		animation,
 	};
 }
 
@@ -630,13 +748,28 @@ const CARD_DESIGN_DOC = `You are designing a GlitchGrab intro/outro brand card. 
   "logoContainer": "panel"|"rounded"|"none",   // panel = white rounded card behind the logo
   "size": 0.1..0.8,                              // logo height as a fraction of frame height
   "position": "center"|"top"|"bottom"|"left"|"right",
-  "animation": { "label": string, "tracks": Track[] }
+  "animation": {
+    "label": string,
+    "tracks": Track[],                              // group motion (whole card)
+    "elements": {                                   // OPTIONAL extra motion per element
+      "logo": Track[], "name": Track[], "tagline": Track[]
+    },
+    "reveal": { "target": "name"|"tagline"|"both", "mode": "word"|"char", "start": 0..1, "durationFrac": 0..1 },  // staggered text reveal
+    "shine": { "target": "name"|"tagline"|"both", "start": 0..1, "durationFrac": 0..1, "intensity": 0..1 },        // light sweep across text
+    "glow": { "color": "#hex", "keyframes": Keyframe[] }                                                          // logo glow pulse (value 0..1 intensity over t)
+  }
 }
 
 A Track animates ONE property over the card lifetime: { "property": Property, "keyframes": [{ "t": 0..1, "value": number, "easing"?: Easing }] }.
 t is normalized time (0 = start, 1 = end); easing applies INTO the keyframe.
 Property (resting value): "opacity"(1) 0..1 | "scale"(1) multiplier | "x"(0)/"y"(0) offset as FRACTION of frame (-1 = one frame off) | "rotate"(0) deg | "blur"(0) px.
 Easing: linear | easeIn | easeOut | easeInOut | easeOutCubic | easeOutBack | easeOutExpo | easeOutBounce.
+
+Capabilities (use what fits):
+- "tracks" = the whole card moves together. "elements" = give the logo / name / tagline their OWN entrance (e.g. logo zooms, name slides up, tagline fades after).
+- "reveal" = text appears word-by-word (or letter-by-letter) — great for the brand name.
+- "shine" = a light flare sweeps across the text. Time its "start" to a beat for impact.
+- "glow" = a colored halo pulses behind the logo — pulse its keyframes on the audio peaks.
 
 Premium guidance:
 - Tasteful, brand-appropriate. Subtle gradients + a little glow/vignette read as professional.
@@ -655,10 +788,11 @@ export function buildCardDesignPrompt(
 		const beats = audio.beats.length ? audio.beats.join(", ") : "none detected";
 		audioBlock = `
 
-The card has background music (${audio.durationSec}s). Loudness over the card (t:level, both 0..1):
+The card has background music (${audio.durationSec}s). Structure: ${audio.summary}.
+Loudness over the card (t:level, both 0..1):
 ${envelope}
 Energy peaks at t: ${beats}
-Make the animation EMPHASIZE the louder moments and accent the peaks.`;
+Sync to it: build the entrance with the swell, time shine/glow pulses and accents to the peaks, and land the climax where the music does.`;
 	}
 	return `${CARD_DESIGN_DOC}
 
