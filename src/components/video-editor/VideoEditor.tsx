@@ -147,6 +147,7 @@ import { extensionHost } from "@/lib/extensions";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { buildExportAudioRegions } from "./avatarOverlay";
+import { buildBackgroundMusicRegion } from "./backgroundMusic";
 import { CardOverlay } from "./CardOverlay";
 import { CropControl } from "./CropControl";
 import { cardDurationMs } from "./cardAnimationRenderer";
@@ -212,6 +213,7 @@ import {
 	type AutoCaptionSettings,
 	type AvatarOverlaySettings,
 	type AvatarRegion,
+	type BackgroundMusicConfig,
 	type CaptionCue,
 	type ClipRegion,
 	type CropRegion,
@@ -226,6 +228,8 @@ import {
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_AUTO_ZOOM_DEPTH,
 	DEFAULT_AVATAR_OVERLAY,
+	DEFAULT_BACKGROUND_MUSIC_CROSSFADE_MS,
+	DEFAULT_BACKGROUND_MUSIC_VOLUME,
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
 	DEFAULT_CONNECTED_ZOOM_GAP_MS,
@@ -826,6 +830,7 @@ export default function VideoEditor() {
 	);
 	// Per-project intro/outro; seeded to default, replaced on project load.
 	const [introOutro, setIntroOutro] = useState<IntroOutroConfig>(DEFAULT_INTRO_OUTRO);
+	const [backgroundMusic, setBackgroundMusic] = useState<BackgroundMusicConfig | null>(null);
 	// Latest config for export-save callbacks whose deps must stay stable.
 	const introOutroRef = useRef(introOutro);
 	introOutroRef.current = introOutro;
@@ -1950,6 +1955,7 @@ export default function VideoEditor() {
 				gifLoop: boolean;
 				gifSizePreset: GifSizePreset;
 				introOutro: IntroOutroConfig;
+				backgroundMusic: BackgroundMusicConfig | null;
 				sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
 				defaultSourceAudioTrackSettings: SourceAudioTrackSettings;
 			}>,
@@ -2061,6 +2067,7 @@ export default function VideoEditor() {
 				gifLoop,
 				gifSizePreset,
 				introOutro,
+				backgroundMusic,
 				sourceAudioTrackSettingsByClip,
 				defaultSourceAudioTrackSettings,
 			}),
@@ -2128,6 +2135,7 @@ export default function VideoEditor() {
 			gifLoop,
 			gifSizePreset,
 			introOutro,
+			backgroundMusic,
 			frame,
 			sourceAudioTrackSettingsByClip,
 			defaultSourceAudioTrackSettings,
@@ -2301,6 +2309,7 @@ export default function VideoEditor() {
 			setCropRegion(normalizedEditor.cropRegion);
 			setWebcam(normalizedEditor.webcam);
 			setIntroOutro(normalizedEditor.introOutro);
+			setBackgroundMusic(normalizedEditor.backgroundMusic ?? null);
 			setZoomRegions(normalizedEditor.zoomRegions);
 			setTrimRegions(normalizedEditor.trimRegions);
 			setClipRegions(normalizedEditor.clipRegions);
@@ -2451,6 +2460,7 @@ export default function VideoEditor() {
 		nextSpeedIdRef.current = 1;
 		setAnnotationRegions([]);
 		setAudioRegions([]);
+		setBackgroundMusic(null);
 		setCursorTelemetry([]);
 		setCursorTelemetrySourcePath(null);
 		setSourceAudioTrackSettingsByClip({});
@@ -3815,16 +3825,32 @@ export default function VideoEditor() {
 	// Add the avatar clip itself as an audio region at t=0 so its voice muxes in, synced
 	// with the avatar frames (which are timeline-anchored). The clip's audio decodes from
 	// the mp4/webm via the normal audio pipeline.
-	const exportAudioRegions = useMemo<AudioRegion[]>(
-		() => buildExportAudioRegions(audioRegions, avatarOverlay, timelineDuration),
-		[audioRegions, avatarOverlay, timelineDuration],
+	// Background-music bed → a single looping AudioRegion spanning the whole OUTPUT
+	// timeline (0 → end). Recomputed when the timeline length changes so trims/speed
+	// edits keep the music covering the video. Reused for export AND preview so what
+	// plays in the editor matches the file.
+	const backgroundMusicRegion = useMemo<AudioRegion | null>(
+		() => buildBackgroundMusicRegion(backgroundMusic, timelineDuration),
+		[backgroundMusic, timelineDuration],
 	);
+
+	const exportAudioRegions = useMemo<AudioRegion[]>(() => {
+		const regions = buildExportAudioRegions(audioRegions, avatarOverlay, timelineDuration);
+		return backgroundMusicRegion ? [...regions, backgroundMusicRegion] : regions;
+	}, [audioRegions, avatarOverlay, timelineDuration, backgroundMusicRegion]);
+
+	// Preview regions: narration (silenced when the avatar plays its own voice) plus
+	// the music bed. Music always plays in preview so the editor mirrors the export.
+	const previewAudioRegions = useMemo<AudioRegion[]>(() => {
+		const base = avatarAudioActive ? EMPTY_AUDIO_REGIONS : audioRegions;
+		return backgroundMusicRegion ? [...base, backgroundMusicRegion] : base;
+	}, [avatarAudioActive, audioRegions, backgroundMusicRegion]);
 
 	const audio = useVideoEditorAudio({
 		currentSourcePath,
 		selectedClipId,
 		clipRegions,
-		audioRegions: avatarAudioActive ? EMPTY_AUDIO_REGIONS : audioRegions,
+		audioRegions: previewAudioRegions,
 		effectiveSpeedRegions,
 		sourceAudioTrackSettingsByClip,
 		setSourceAudioTrackSettingsByClip,
@@ -4905,6 +4931,36 @@ export default function VideoEditor() {
 		},
 		[selectedAudioId],
 	);
+
+	const handlePickBackgroundMusic = useCallback(async () => {
+		try {
+			const result = await window.electronAPI.openAudioFilePicker();
+			if (!result?.success || !result.path) {
+				return;
+			}
+			const name = result.path.split(/[\\/]/).pop();
+			setBackgroundMusic({
+				audioPath: result.path,
+				volume: DEFAULT_BACKGROUND_MUSIC_VOLUME,
+				loopCrossfadeMs: DEFAULT_BACKGROUND_MUSIC_CROSSFADE_MS,
+				...(name ? { name } : {}),
+			});
+		} catch (error) {
+			console.warn("[backgroundMusic] failed to pick file", error);
+		}
+	}, []);
+
+	const handleBackgroundMusicVolumeChange = useCallback((volume: number) => {
+		if (!Number.isFinite(volume)) {
+			return;
+		}
+		const nextVolume = Math.max(0, Math.min(1, volume));
+		setBackgroundMusic((prev) => (prev ? { ...prev, volume: nextVolume } : prev));
+	}, []);
+
+	const handleRemoveBackgroundMusic = useCallback(() => {
+		setBackgroundMusic(null);
+	}, []);
 
 	const handleAnnotationAdded = useCallback((span: Span, trackIndex = 0) => {
 		const id = `annotation-${nextAnnotationIdRef.current++}`;
@@ -6749,6 +6805,12 @@ export default function VideoEditor() {
 									gifOutputDimensions={gifOutputDimensions}
 									introOutro={introOutro}
 									onIntroOutroChange={setIntroOutro}
+									backgroundMusic={backgroundMusic}
+									onPickBackgroundMusic={handlePickBackgroundMusic}
+									onBackgroundMusicVolumeChange={
+										handleBackgroundMusicVolumeChange
+									}
+									onRemoveBackgroundMusic={handleRemoveBackgroundMusic}
 									onExport={handleStartExportFromDropdown}
 									className="shadow-2xl"
 								/>
