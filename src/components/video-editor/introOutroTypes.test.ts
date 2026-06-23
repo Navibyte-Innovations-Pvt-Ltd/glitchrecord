@@ -29,54 +29,75 @@ describe("normalizeIntroOutro", () => {
 		expect(normalized.outro.size).toBe(INTRO_OUTRO_MIN_SIZE);
 	});
 
-	it("falls back to defaults for invalid preset / position / color", () => {
+	it("falls back to defaults for invalid preset / position / layout", () => {
 		const normalized = normalizeIntroOutro({
 			logoDataUrl: "data:image/png;base64,AAAA",
-			intro: { preset: "explode", position: "diagonal", backgroundColor: "not-a-color" },
+			intro: { preset: "explode", position: "diagonal", layout: "nope" },
 		});
 		expect(normalized.intro.preset).toBe("fade");
 		expect(normalized.intro.position).toBe("center");
-		expect(normalized.intro.backgroundColor).toBe(DEFAULT_INTRO_OUTRO.intro.backgroundColor);
+		expect(normalized.intro.layout).toBe(DEFAULT_INTRO_OUTRO.intro.layout);
 	});
 
-	it("normalizes hex color to lowercase #rrggbb and rejects non-image data URLs", () => {
+	it("migrates legacy flat backgroundColor into background.color1", () => {
 		const normalized = normalizeIntroOutro({
-			logoDataUrl: "data:text/html;base64,AAAA",
+			logoDataUrl: "data:image/png;base64,AAAA",
 			intro: { backgroundColor: "FF8800" },
 		});
-		expect(normalized.intro.backgroundColor).toBe("#ff8800");
-		// non-image data URL is dropped, so the logo is treated as absent.
-		expect(normalized.logoDataUrl).toBe("");
+		expect(normalized.intro.background.color1).toBe("#ff8800");
+		expect(normalized.intro.background.type).toBe(DEFAULT_INTRO_OUTRO.intro.background.type);
+	});
+
+	it("normalizes nested background + text + rejects non-image logo", () => {
+		const normalized = normalizeIntroOutro({
+			logoDataUrl: "data:text/html;base64,AAAA",
+			intro: {
+				background: { type: "solid", color1: "AABBCC", angle: 9999 },
+				text: { brandName: "Acme", tagline: "Ship it", color: "00FF00" },
+			},
+		});
+		expect(normalized.logoDataUrl).toBe(""); // non-image dropped
+		expect(normalized.intro.background.type).toBe("solid");
+		expect(normalized.intro.background.color1).toBe("#aabbcc");
+		expect(normalized.intro.background.angle).toBe(360); // clamped
+		expect(normalized.intro.text.brandName).toBe("Acme");
+		expect(normalized.intro.text.color).toBe("#00ff00");
 	});
 
 	it("preserves a valid round-trip", () => {
-		const valid = {
+		const normalized = normalizeIntroOutro({
 			logoDataUrl: "data:image/png;base64,AAAA",
 			intro: {
+				...DEFAULT_INTRO_OUTRO.intro,
 				enabled: true,
-				preset: "scale-pop" as const,
-				durationMs: 2000,
-				backgroundColor: "#101820",
-				position: "top" as const,
-				size: 0.3,
+				mode: "video",
+				videoPath: "/x.mp4",
 			},
-			outro: {
-				enabled: false,
-				preset: "glitch" as const,
-				durationMs: 1200,
-				backgroundColor: "#0b1020",
-				position: "bottom" as const,
-				size: 0.2,
+			outro: { ...DEFAULT_INTRO_OUTRO.outro },
+		});
+		expect(normalized.intro.mode).toBe("video");
+		expect(normalized.intro.videoPath).toBe("/x.mp4");
+		expect(normalized.outro).toEqual(DEFAULT_INTRO_OUTRO.outro);
+	});
+
+	it("normalizes audio config", () => {
+		const normalized = normalizeIntroOutro({
+			logoDataUrl: "data:image/png;base64,AAAA",
+			intro: {
+				audio: { mode: "builtin", trackId: "riser", volume: 2, dataUrl: "not-audio" },
 			},
-		};
-		expect(normalizeIntroOutro(valid)).toEqual(valid);
+		});
+		expect(normalized.intro.audio.mode).toBe("builtin");
+		expect(normalized.intro.audio.trackId).toBe("riser");
+		expect(normalized.intro.audio.volume).toBe(1); // clamped
+		expect(normalized.intro.audio.dataUrl).toBe(""); // non-audio data URL dropped
 	});
 });
 
 describe("introOutroIsActive", () => {
 	const logo = "data:image/png;base64,AAAA";
 
-	it("is false without a logo even if a side is enabled", () => {
+	it("is false without a logo or text even if a side is enabled (card mode)", () => {
 		expect(
 			introOutroIsActive({
 				...DEFAULT_INTRO_OUTRO,
@@ -85,11 +106,7 @@ describe("introOutroIsActive", () => {
 		).toBe(false);
 	});
 
-	it("is false with a logo but no side enabled", () => {
-		expect(introOutroIsActive({ ...DEFAULT_INTRO_OUTRO, logoDataUrl: logo })).toBe(false);
-	});
-
-	it("is true with a logo and at least one side enabled", () => {
+	it("is true when enabled with a logo (card mode)", () => {
 		expect(
 			introOutroIsActive({
 				logoDataUrl: logo,
@@ -97,11 +114,44 @@ describe("introOutroIsActive", () => {
 				outro: DEFAULT_INTRO_OUTRO.outro,
 			}),
 		).toBe(true);
+	});
+
+	it("is true when enabled with only brand text (no logo)", () => {
 		expect(
 			introOutroIsActive({
-				logoDataUrl: logo,
-				intro: DEFAULT_INTRO_OUTRO.intro,
-				outro: { ...DEFAULT_INTRO_OUTRO.outro, enabled: true },
+				logoDataUrl: "",
+				intro: {
+					...DEFAULT_INTRO_OUTRO.intro,
+					enabled: true,
+					text: { ...DEFAULT_INTRO_OUTRO.intro.text, brandName: "Acme" },
+				},
+				outro: DEFAULT_INTRO_OUTRO.outro,
+			}),
+		).toBe(true);
+	});
+
+	it("video mode needs a videoPath", () => {
+		const base = { logoDataUrl: "", outro: DEFAULT_INTRO_OUTRO.outro };
+		expect(
+			introOutroIsActive({
+				...base,
+				intro: {
+					...DEFAULT_INTRO_OUTRO.intro,
+					enabled: true,
+					mode: "video",
+					videoPath: "",
+				},
+			}),
+		).toBe(false);
+		expect(
+			introOutroIsActive({
+				...base,
+				intro: {
+					...DEFAULT_INTRO_OUTRO.intro,
+					enabled: true,
+					mode: "video",
+					videoPath: "/v.mp4",
+				},
 			}),
 		).toBe(true);
 	});
