@@ -31,6 +31,7 @@ import {
 	buildTimelineSourceAudioTracks,
 } from "./sourceAudioTracks";
 import zoomStyles from "./TimelineZoom.module.css";
+import { TIMELINE_AXIS_HEIGHT_PX, TIMELINE_ROW_MAX_HEIGHT_PX } from "./timelineLayout";
 
 /** Clickable intro/outro bookend shown pinned at a track edge. */
 export interface TimelineEndcap {
@@ -558,9 +559,15 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							/>
 						</TimelineWrapper>
 					</div>
-					{/* Intro / outro bookends pinned at the track edges (non-scrolling). */}
+					{/* Intro / outro bookends pinned at the clip-lane edges (non-scrolling). */}
 					{endcaps?.intro || endcaps?.outro ? (
-						<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-between px-1">
+						<div
+							className="pointer-events-none absolute inset-x-0 z-30 flex items-center justify-between px-1"
+							style={{
+								top: TIMELINE_AXIS_HEIGHT_PX,
+								height: TIMELINE_ROW_MAX_HEIGHT_PX,
+							}}
+						>
 							{endcaps?.intro ? (
 								<button
 									type="button"
