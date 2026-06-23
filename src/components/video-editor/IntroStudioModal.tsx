@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { ANIMATION_OPTIONS } from "./cardAnimations";
 import { CardPreview } from "./CardPreview";
 import {
 	BUILTIN_TRACKS,
@@ -32,12 +33,7 @@ import {
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
-const PRESETS: { value: IntroOutroPreset; label: string }[] = [
-	{ value: "fade", label: "Fade" },
-	{ value: "scale-pop", label: "Pop" },
-	{ value: "slide", label: "Slide" },
-	{ value: "glitch", label: "Glitch" },
-];
+const PRESETS = ANIMATION_OPTIONS;
 const LAYOUTS: { value: CardLayout; label: string }[] = [
 	{ value: "logo-top", label: "Logo + text" },
 	{ value: "logo-left", label: "Side by side" },
