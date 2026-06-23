@@ -237,54 +237,66 @@ function audioMatchArgs(params: ProbedVideoParams): string[] {
 // ── Built-in stings ─────────────────────────────────────────────────────────
 // Synthesized on demand and cached in userData, so nothing needs bundling.
 
+const BUILTIN_TRACK_IDS = ["uplift", "cinematic", "pop", "calm", "whoosh"];
+
+// Chord/arpeggio-based musical stings synthesized via FFmpeg (no bundled assets).
+// Far richer than single tones; still synthetic, swap-able by uploading a track.
 function stingSynthArgs(trackId: string): string[] {
+	const sine = (f: number, d: number): string[] => ["-f", "lavfi", "-i", `sine=f=${f}:d=${d}`];
 	switch (trackId) {
-		case "chime":
+		case "cinematic":
+			// Sustained C-major swell + low drone + long reverb tail.
 			return [
-				"-f",
-				"lavfi",
-				"-i",
-				"sine=frequency=880:duration=1.2",
-				"-f",
-				"lavfi",
-				"-i",
-				"sine=frequency=1320:duration=1.2",
+				...sine(130.81, 3),
+				...sine(261.63, 3),
+				...sine(329.63, 3),
+				...sine(392, 3),
 				"-filter_complex",
-				"[0][1]amix=inputs=2,afade=t=out:st=0.4:d=0.8,volume=0.6",
+				"[0][1][2][3]amix=inputs=4:normalize=0,volume=0.22,afade=t=in:d=0.8,afade=t=out:st=2.3:d=0.7,aecho=0.8:0.8:80:0.5",
 			];
-		case "riser":
+		case "pop":
+			// Bouncy staggered high plucks + tremolo.
+			return [
+				...sine(523.25, 2),
+				...sine(659.25, 2),
+				...sine(783.99, 2),
+				"-filter_complex",
+				"[0]adelay=0,volume=0.3[a];[1]adelay=200,volume=0.3[b];[2]adelay=400,volume=0.3[c];[a][b][c]amix=inputs=3:normalize=0,tremolo=f=6:d=0.5,afade=t=out:st=1.5:d=0.5",
+			];
+		case "calm":
+			// Soft A-minor pad with gentle tremolo.
+			return [
+				...sine(220, 3),
+				...sine(277.18, 3),
+				...sine(329.63, 3),
+				"-filter_complex",
+				"[0][1][2]amix=inputs=3:normalize=0,volume=0.2,tremolo=f=3:d=0.3,afade=t=in:d=0.6,afade=t=out:st=2.3:d=0.7",
+			];
+		case "whoosh":
+			// Filtered noise transition SFX.
 			return [
 				"-f",
 				"lavfi",
 				"-i",
-				"aevalsrc=0.3*sin(2*PI*t*(300+500*t)):d=1.2:s=22050",
+				"anoisesrc=d=1.5:c=pink:a=0.4",
 				"-af",
-				"afade=t=out:st=0.9:d=0.3",
-			];
-		case "pulse":
-			return [
-				"-f",
-				"lavfi",
-				"-i",
-				"sine=frequency=330:duration=1.2",
-				"-af",
-				"tremolo=f=8:d=0.8,afade=t=in:d=0.05,afade=t=out:st=0.9:d=0.3,volume=0.7",
+				"highpass=f=300,lowpass=f=4000,afade=t=in:d=0.1,afade=t=out:st=1.0:d=0.5,volume=1.5",
 			];
 		default:
-			// whoosh
+			// uplift: ascending C-major arpeggio + reverb.
 			return [
-				"-f",
-				"lavfi",
-				"-i",
-				"anoisesrc=d=1.2:c=pink:a=0.4",
-				"-af",
-				"highpass=f=300,lowpass=f=4000,afade=t=in:d=0.1,afade=t=out:st=0.7:d=0.5,volume=1.5",
+				...sine(261.63, 2.6),
+				...sine(329.63, 2.6),
+				...sine(392, 2.6),
+				...sine(523.25, 2.6),
+				"-filter_complex",
+				"[0]adelay=0,volume=0.25[a];[1]adelay=160,volume=0.25[b];[2]adelay=320,volume=0.25[c];[3]adelay=480,volume=0.25[d];[a][b][c][d]amix=inputs=4:normalize=0,afade=t=out:st=2.0:d=0.6,aecho=0.8:0.7:55:0.3",
 			];
 	}
 }
 
 async function getBuiltinStingPath(ffmpegPath: string, trackId: string): Promise<string | null> {
-	const id = ["whoosh", "riser", "chime", "pulse"].includes(trackId) ? trackId : "whoosh";
+	const id = BUILTIN_TRACK_IDS.includes(trackId) ? trackId : "uplift";
 	const cacheDir = path.join(app.getPath("userData"), "intro-stings");
 	await fs.mkdir(cacheDir, { recursive: true });
 	const outPath = path.join(cacheDir, `${id}.m4a`);
