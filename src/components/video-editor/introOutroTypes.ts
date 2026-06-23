@@ -6,7 +6,25 @@
  */
 
 export type IntroOutroMode = "card" | "video";
-export type IntroOutroPreset = "fade" | "scale-pop" | "slide" | "glitch";
+/**
+ * Animation ids — keys into the spec library in cardAnimations.ts. Add a new
+ * animation by adding an id here + a spec there; no renderer changes needed.
+ */
+export const CARD_ANIMATION_IDS = [
+	"fade",
+	"zoom-in",
+	"scale-pop",
+	"slide",
+	"slide-up",
+	"rise",
+	"bounce",
+	"zoom-out",
+	"spin-in",
+	"reveal",
+	"glitch",
+	"drop",
+] as const;
+export type IntroOutroPreset = (typeof CARD_ANIMATION_IDS)[number];
 export type IntroOutroPosition = "center" | "top" | "bottom" | "left" | "right";
 export type CardLayout = "logo-only" | "logo-top" | "logo-left" | "text-only";
 export type BackgroundType = "solid" | "gradient";
@@ -14,7 +32,7 @@ export type BackgroundType = "solid" | "gradient";
 export type LogoContainerStyle = "none" | "rounded" | "panel";
 export type CardAudioMode = "none" | "builtin" | "upload";
 
-export const INTRO_OUTRO_PRESETS: IntroOutroPreset[] = ["fade", "scale-pop", "slide", "glitch"];
+export const INTRO_OUTRO_PRESETS: readonly IntroOutroPreset[] = CARD_ANIMATION_IDS;
 export const INTRO_OUTRO_POSITIONS: IntroOutroPosition[] = [
 	"center",
 	"top",
@@ -36,10 +54,11 @@ export interface BuiltinTrack {
 	label: string;
 }
 export const BUILTIN_TRACKS: BuiltinTrack[] = [
+	{ id: "uplift", label: "Uplift" },
+	{ id: "cinematic", label: "Cinematic" },
+	{ id: "pop", label: "Pop" },
+	{ id: "calm", label: "Calm" },
 	{ id: "whoosh", label: "Whoosh" },
-	{ id: "riser", label: "Riser" },
-	{ id: "chime", label: "Chime" },
-	{ id: "pulse", label: "Pulse" },
 ];
 
 export interface CardBackground {
@@ -108,7 +127,7 @@ export const DEFAULT_CARD_TEXT: CardText = {
 
 export const DEFAULT_CARD_AUDIO: CardAudio = {
 	mode: "none",
-	trackId: "whoosh",
+	trackId: "uplift",
 	dataUrl: "",
 	volume: 0.7,
 };
@@ -116,7 +135,7 @@ export const DEFAULT_CARD_AUDIO: CardAudio = {
 export const DEFAULT_INTRO_OUTRO_SIDE: IntroOutroSideConfig = {
 	enabled: false,
 	mode: "card",
-	preset: "fade",
+	preset: "zoom-in",
 	position: "center",
 	durationMs: 2000,
 	size: 0.25,
@@ -141,7 +160,7 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 	return fallback;
 }
 
-function pick<T extends string>(value: unknown, allowed: T[], fallback: T): T {
+function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
 	return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
