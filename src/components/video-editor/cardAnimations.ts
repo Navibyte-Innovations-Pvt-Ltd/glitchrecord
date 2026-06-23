@@ -718,9 +718,11 @@ export function normalizeCardDesign(raw: unknown): Partial<IntroOutroSideConfig>
 	}
 	if (r.text && typeof r.text === "object") {
 		const tx = r.text as Partial<CardText>;
+		const collapse = (v: unknown) =>
+			typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, 120) : "";
 		patch.text = {
-			brandName: typeof tx.brandName === "string" ? tx.brandName.slice(0, 120) : "",
-			tagline: typeof tx.tagline === "string" ? tx.tagline.slice(0, 120) : "",
+			brandName: collapse(tx.brandName),
+			tagline: collapse(tx.tagline),
 			color: hexOr(tx.color, DEFAULT_CARD_TEXT.color),
 		};
 	}
