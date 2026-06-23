@@ -175,6 +175,7 @@ import {
 	type IntroOutroConfig,
 	type IntroOutroSideConfig,
 	introOutroIsActive,
+	sideIsRenderable,
 } from "./introOutroTypes";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import { hasUnsavedProjectChanges } from "./projectDirtyState";
@@ -189,6 +190,7 @@ import {
 	toFileUrl,
 	validateProjectData,
 } from "./projectPersistence";
+import { renderCardFrames } from "./renderCardFrames";
 import { SettingsPanel } from "./SettingsPanel";
 import { getDevOpenRecordingConfig, getSmokeExportConfig } from "./smokeExportConfig";
 import { createSmokeExportProgressSampler } from "./smokeExportProgress";
@@ -1544,15 +1546,18 @@ export default function VideoEditor() {
 			try {
 				const tempFilePath = await streamExportBlobToTempFile(blob, extension);
 				if (tempFilePath) {
+					const useIntroOutro =
+						extension === "mp4" && introOutroIsActive(introOutroRef.current);
+					const introOutroFrameDirs = useIntroOutro
+						? await buildIntroOutroFrameDirsRef.current()
+						: undefined;
 					return {
 						saveResult: await window.electronAPI.finalizeExportedVideo({
 							tempPath: tempFilePath,
 							fileName,
 							outputPath,
-							introOutro:
-								extension === "mp4" && introOutroIsActive(introOutroRef.current)
-									? introOutroRef.current
-									: null,
+							introOutro: useIntroOutro ? introOutroRef.current : null,
+							introOutroFrameDirs,
 						}),
 						pendingSave: {
 							fileName,
@@ -1691,6 +1696,41 @@ export default function VideoEditor() {
 		supportedMp4SourceDimensions.height,
 		supportedMp4SourceDimensions.width,
 	]);
+
+	// Render intro/outro CARD frames (canvas drawCard → PNG seq) at the export
+	// resolution and stage them in a main-process temp dir, so the export encodes
+	// the same visuals as the preview. Video-mode sides are handled in main from
+	// their path. Returns per-side staged dirs, or undefined if nothing applies.
+	const buildIntroOutroFrameDirs = useCallback(async (): Promise<
+		{ intro?: string | null; outro?: string | null } | undefined
+	> => {
+		const io = introOutroRef.current;
+		if (!introOutroIsActive(io)) return undefined;
+		const dims = mp4OutputDimensions[exportQuality] ?? { width: 1920, height: 1080 };
+		const dirs: { intro?: string | null; outro?: string | null } = {};
+		for (const key of ["intro", "outro"] as const) {
+			const side = io[key];
+			if (!side.enabled || side.mode !== "card") continue;
+			if (!sideIsRenderable(side, io.logoDataUrl)) continue;
+			try {
+				const frames = await renderCardFrames(
+					side,
+					io.logoDataUrl,
+					dims.width,
+					dims.height,
+					mp4FrameRate,
+				);
+				if (frames.length === 0) continue;
+				const staged = await window.electronAPI.stageIntroOutroFrames(frames);
+				if (staged.success && staged.dir) dirs[key] = staged.dir;
+			} catch (error) {
+				console.warn(`[introOutro] failed to render ${key} frames`, error);
+			}
+		}
+		return dirs.intro || dirs.outro ? dirs : undefined;
+	}, [mp4OutputDimensions, exportQuality, mp4FrameRate]);
+	const buildIntroOutroFrameDirsRef = useRef(buildIntroOutroFrameDirs);
+	buildIntroOutroFrameDirsRef.current = buildIntroOutroFrameDirs;
 
 	const ensureSupportedMp4SourceDimensions = useCallback(
 		async (frameRate: ExportMp4FrameRate) => {
@@ -3294,15 +3334,28 @@ export default function VideoEditor() {
 	// Recovery autosave for UNSAVED recordings (no project path): debounce-write the
 	// editor state to a sidecar next to the recording so reopening it restores the
 	// narration/zoom/speed edits even if the app closed/crashed before a real save.
+	// After a successful write, advance the saved baseline to the snapshot we just
+	// persisted — the work IS on disk, so the close handler must not falsely prompt
+	// "unsaved changes". Without this, every edit after the initial baseline-adopt
+	// leaves the project permanently dirty even though the sidecar already has it.
 	useEffect(() => {
 		if (currentProjectPath || !currentSourcePath || !currentProjectSnapshot) return;
+		const snapshot = currentProjectSnapshot;
+		let cancelled = false;
 		const timer = window.setTimeout(() => {
-			void window.electronAPI.saveRecordingProject?.(
-				currentSourcePath,
-				currentProjectSnapshot,
-			);
+			void (async () => {
+				const result = await window.electronAPI.saveRecordingProject?.(
+					currentSourcePath,
+					snapshot,
+				);
+				if (cancelled || result?.success === false) return;
+				setLastSavedSnapshot(cloneStructured(snapshot));
+			})();
 		}, 1500);
-		return () => window.clearTimeout(timer);
+		return () => {
+			cancelled = true;
+			window.clearTimeout(timer);
+		};
 	}, [currentProjectPath, currentSourcePath, currentProjectSnapshot]);
 
 	/**
@@ -3684,21 +3737,35 @@ export default function VideoEditor() {
 		timelinePlayheadRef.current = timelinePlayheadTime;
 	}, [timelinePlayheadTime]);
 
-	// Plays one intro/outro card over the preview, advancing `progress` 0→1 across
-	// its duration, then clears and calls `onDone`. The <video> stays parked.
+	// Completion callback for the active card (video mode resolves on the clip's
+	// `ended` event; card mode resolves when its rAF reaches progress 1).
+	const cardOnDoneRef = useRef<(() => void) | null>(null);
+
+	// Plays one intro/outro card over the preview. Card mode advances `progress`
+	// 0→1 across its duration; video mode shows the clip and waits for its `ended`.
+	// The main <video> stays parked. Then clears and calls `onDone`.
 	const playCard = useCallback((side: IntroOutroSideConfig, onDone?: () => void) => {
 		if (cardRafRef.current !== null) {
 			cancelAnimationFrame(cardRafRef.current);
+			cardRafRef.current = null;
 		}
+		cardOnDoneRef.current = onDone ?? null;
+		setActiveCard({ side, progress: 0 });
+
+		if (side.mode === "video" && side.videoPath) {
+			return; // CardOverlay <video> drives completion via onEnded.
+		}
+
 		const durationMs = cardDurationMs(side);
 		const startedAt = performance.now();
-		setActiveCard({ side, progress: 0 });
 		const tick = (now: number) => {
 			const progress = (now - startedAt) / durationMs;
 			if (progress >= 1) {
 				cardRafRef.current = null;
 				setActiveCard(null);
-				onDone?.();
+				const done = cardOnDoneRef.current;
+				cardOnDoneRef.current = null;
+				done?.();
 				return;
 			}
 			setActiveCard({ side, progress });
@@ -3712,7 +3779,16 @@ export default function VideoEditor() {
 			cancelAnimationFrame(cardRafRef.current);
 			cardRafRef.current = null;
 		}
+		cardOnDoneRef.current = null;
 		setActiveCard(null);
+	}, []);
+
+	// Video-mode card finished → clear overlay and resume the flow.
+	const handleCardVideoEnded = useCallback(() => {
+		setActiveCard(null);
+		const done = cardOnDoneRef.current;
+		cardOnDoneRef.current = null;
+		done?.();
 	}, []);
 
 	// Speed = per-clip speed (carve). Derived from clipRegions only; the old
@@ -3785,7 +3861,7 @@ export default function VideoEditor() {
 		// Intro pre-roll: only when starting from the very beginning of the
 		// timeline and not already shown for this play run. Otherwise normal play.
 		const io = introOutroRef.current;
-		const introCard = introOutroIsActive(io) && io.intro.enabled ? io.intro : null;
+		const introCard = sideIsRenderable(io.intro, io.logoDataUrl) ? io.intro : null;
 		const atStart = timelinePlayheadRef.current <= 0.05;
 		if (introCard && atStart && !introPlayedForRunRef.current) {
 			// Keep isPlaying false while the card plays so the audio hook / source
@@ -3976,7 +4052,7 @@ export default function VideoEditor() {
 			// roll the outro card before settling to paused.
 			introPlayedForRunRef.current = false;
 			const io = introOutroRef.current;
-			const outroCard = introOutroIsActive(io) && io.outro.enabled ? io.outro : null;
+			const outroCard = sideIsRenderable(io.outro, io.logoDataUrl) ? io.outro : null;
 			const endMs = playbackEndSourceMsRef.current;
 			const atEnd = endMs > 0 && currentTimeRef.current * 1000 >= endMs - 150;
 			setIsPlaying(false);
@@ -5428,19 +5504,24 @@ export default function VideoEditor() {
 							// Preferred path: main process already holds the finished MP4 on
 							// disk, so we just ask it to move the temp file into place. This
 							// avoids ever allocating a multi-GiB ArrayBuffer in the renderer.
-							saveResult = await window.electronAPI.finalizeExportedVideo({
-								tempPath: result.tempFilePath,
-								fileName,
-								outputPath:
-									smokeExportConfig.enabled && smokeExportConfig.outputPath
-										? smokeExportConfig.outputPath
-										: null,
-								introOutro:
+							{
+								const useIntroOutro =
 									fileName.toLowerCase().endsWith(".mp4") &&
-									introOutroIsActive(introOutroRef.current)
-										? introOutroRef.current
-										: null,
-							});
+									introOutroIsActive(introOutroRef.current);
+								const introOutroFrameDirs = useIntroOutro
+									? await buildIntroOutroFrameDirsRef.current()
+									: undefined;
+								saveResult = await window.electronAPI.finalizeExportedVideo({
+									tempPath: result.tempFilePath,
+									fileName,
+									outputPath:
+										smokeExportConfig.enabled && smokeExportConfig.outputPath
+											? smokeExportConfig.outputPath
+											: null,
+									introOutro: useIntroOutro ? introOutroRef.current : null,
+									introOutroFrameDirs,
+								});
+							}
 							pendingOnCancel = { fileName, tempFilePath: result.tempFilePath };
 						} else if (result.blob) {
 							// Legacy fallback: some export paths still surface a Blob, but in
@@ -5882,15 +5963,18 @@ export default function VideoEditor() {
 		};
 
 		if (pendingSave.tempFilePath) {
+			const useIntroOutro =
+				pendingSave.fileName.toLowerCase().endsWith(".mp4") &&
+				introOutroIsActive(introOutroRef.current);
+			const introOutroFrameDirs = useIntroOutro
+				? await buildIntroOutroFrameDirsRef.current()
+				: undefined;
 			saveResult = await window.electronAPI.finalizeExportedVideo({
 				tempPath: pendingSave.tempFilePath,
 				fileName: pendingSave.fileName,
 				outputPath: null,
-				introOutro:
-					pendingSave.fileName.toLowerCase().endsWith(".mp4") &&
-					introOutroIsActive(introOutroRef.current)
-						? introOutroRef.current
-						: null,
+				introOutro: useIntroOutro ? introOutroRef.current : null,
+				introOutroFrameDirs,
 			});
 		} else if (pendingSave.arrayBuffer) {
 			saveResult = await window.electronAPI.saveExportedVideo(
@@ -7076,6 +7160,7 @@ export default function VideoEditor() {
 													side={activeCard.side}
 													logoDataUrl={introOutro.logoDataUrl}
 													progress={activeCard.progress}
+													onEnded={handleCardVideoEnded}
 												/>
 											) : null}
 										</div>
