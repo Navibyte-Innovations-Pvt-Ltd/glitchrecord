@@ -135,9 +135,6 @@ const PhListBullets = (props: { className?: string; weight?: "fill" | "regular" 
 const PhAvatar = (props: { className?: string; weight?: "fill" | "regular" }) => (
 	<User weight={props.weight ?? "regular"} className={props.className} />
 );
-const PhMusic = (props: { className?: string; weight?: "fill" | "regular" }) => (
-	<MusicNotes weight={props.weight ?? "regular"} className={props.className} />
-);
 
 // Stable empty audio-regions reference. MUST be module-level: when the avatar plays
 // its own voice we silence the timeline narration in preview by passing an empty list
@@ -1861,11 +1858,6 @@ export default function VideoEditor() {
 				id: "captions" as const,
 				label: t("settings.sections.captions", "Captions"),
 				icon: PhCaptions,
-			},
-			{
-				id: "music" as const,
-				label: t("settings.sections.music", "Music"),
-				icon: PhMusic,
 			},
 			{
 				id: "glitchgrab" as const,
@@ -6814,12 +6806,6 @@ export default function VideoEditor() {
 									gifOutputDimensions={gifOutputDimensions}
 									introOutro={introOutro}
 									onIntroOutroChange={setIntroOutro}
-									backgroundMusic={backgroundMusic}
-									onPickBackgroundMusic={handlePickBackgroundMusic}
-									onBackgroundMusicVolumeChange={
-										handleBackgroundMusicVolumeChange
-									}
-									onRemoveBackgroundMusic={handleRemoveBackgroundMusic}
 									onExport={handleStartExportFromDropdown}
 									className="shadow-2xl"
 								/>
@@ -7015,10 +7001,6 @@ export default function VideoEditor() {
 								onAudioVolumeChange={handleAudioVolumeChange}
 								onAudioNormalizeChange={handleAudioNormalizeChange}
 								onAudioDelete={handleAudioDelete}
-								backgroundMusic={backgroundMusic}
-								onPickBackgroundMusic={handlePickBackgroundMusic}
-								onBackgroundMusicVolumeChange={handleBackgroundMusicVolumeChange}
-								onRemoveBackgroundMusic={handleRemoveBackgroundMusic}
 								shadowIntensity={shadowIntensity}
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}
@@ -7471,6 +7453,60 @@ export default function VideoEditor() {
 						minHeight: TIMELINE_MIN_HEIGHT,
 					}}
 				>
+					{/* Background-music bed: one global track that loops under the whole
+					    video (silent during intro/outro). Lives above the timeline so it's
+					    visible/understandable, not hidden in a settings tab. */}
+					{backgroundMusic ? (
+						<div className="mb-1 flex items-center gap-2 rounded-md border border-[#2563EB]/25 bg-[#2563EB]/5 px-2 py-1">
+							<MusicNotes
+								weight="fill"
+								className="h-3.5 w-3.5 shrink-0 text-[#2563EB]"
+							/>
+							<span className="truncate text-[11px] font-medium text-foreground">
+								{backgroundMusic.name ??
+									backgroundMusic.audioPath.split(/[\\/]/).pop()}
+							</span>
+							<span className="shrink-0 text-[10px] text-muted-foreground">
+								· loops whole video
+							</span>
+							<div className="ml-auto flex shrink-0 items-center gap-1.5">
+								<span className="text-[10px] text-muted-foreground">Vol</span>
+								<input
+									type="range"
+									min={0}
+									max={100}
+									value={Math.round(backgroundMusic.volume * 100)}
+									onChange={(e) =>
+										handleBackgroundMusicVolumeChange(
+											Number(e.target.value) / 100,
+										)
+									}
+									className="h-1 w-24 cursor-pointer"
+									aria-label="Background music volume"
+								/>
+								<span className="w-8 text-right text-[10px] tabular-nums text-muted-foreground">
+									{Math.round(backgroundMusic.volume * 100)}%
+								</span>
+								<button
+									type="button"
+									onClick={handleRemoveBackgroundMusic}
+									title="Remove background music"
+									className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-red-500"
+								>
+									<X className="h-3.5 w-3.5" />
+								</button>
+							</div>
+						</div>
+					) : (
+						<button
+							type="button"
+							onClick={handlePickBackgroundMusic}
+							className="mb-1 flex w-fit items-center gap-1.5 rounded-md border border-dashed border-foreground/20 px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-[#2563EB]/40 hover:text-foreground"
+						>
+							<MusicNotes className="h-3.5 w-3.5" />
+							Add background music
+						</button>
+					)}
 					{sideIsRenderable(introOutro.intro, introOutro.logoDataUrl) ||
 					sideIsRenderable(introOutro.outro, introOutro.logoDataUrl) ? (
 						<div className="mb-1 flex items-center gap-1.5 px-1 text-[10px] text-muted-foreground/70">
