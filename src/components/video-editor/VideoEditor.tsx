@@ -145,6 +145,7 @@ const EMPTY_AUDIO_REGIONS: AudioRegion[] = [];
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { extensionHost } from "@/lib/extensions";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
+import { buildExportAudioRegions } from "./avatarOverlay";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
@@ -3644,9 +3645,18 @@ export default function VideoEditor() {
 	);
 	// When the avatar plays its OWN baked-in voice (unmuted to check sync), silence
 	// the timeline narration in PREVIEW so the user doesn't hear a double-voice echo.
-	// Export is unaffected (the avatar clip's audio == the narration content anyway).
 	const avatarAudioActive =
 		avatarOverlay.enabled && avatarOverlay.muted === false && !!resolvedAvatarVideoUrl;
+
+	// EXPORT audio: when the avatar is unmuted, its baked-in voice is the audio (the
+	// compositor only bakes avatar VIDEO frames, so without this the export is silent).
+	// Add the avatar clip itself as an audio region at t=0 so its voice muxes in, synced
+	// with the avatar frames (which are timeline-anchored). The clip's audio decodes from
+	// the mp4/webm via the normal audio pipeline.
+	const exportAudioRegions = useMemo<AudioRegion[]>(
+		() => buildExportAudioRegions(audioRegions, avatarOverlay, timelineDuration),
+		[audioRegions, avatarOverlay, timelineDuration],
+	);
 
 	const audio = useVideoEditorAudio({
 		currentSourcePath,
@@ -5237,7 +5247,7 @@ export default function VideoEditor() {
 						cursorClickBounceDuration,
 						cursorSway,
 						frame,
-						audioRegions,
+						audioRegions: exportAudioRegions,
 						clipRegions,
 						sourceAudioFallbackPaths: audio.sourceAudioFallbackPaths,
 						sourceAudioFallbackStartDelayMsByPath:
@@ -5493,7 +5503,7 @@ export default function VideoEditor() {
 			cursorClickBounce,
 			cursorClickBounceDuration,
 			cursorSway,
-			audioRegions,
+			exportAudioRegions,
 			clipRegions,
 			audio.sourceAudioFallbackPaths,
 			audio.sourceAudioFallbackStartDelayMsByPath,
