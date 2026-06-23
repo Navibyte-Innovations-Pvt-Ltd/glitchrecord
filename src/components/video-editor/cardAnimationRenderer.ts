@@ -216,7 +216,14 @@ function setLetterSpacing(ctx: CanvasRenderingContext2D, px: number): void {
 	(ctx as CtxWithLetterSpacing).letterSpacing = `${px}px`;
 }
 
-function drawName(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string): void {
+function drawName(
+	ctx: CanvasRenderingContext2D,
+	text: string,
+	x: number,
+	y: number,
+	size: number,
+	color: string,
+): void {
 	ctx.fillStyle = color;
 	ctx.font = `800 ${size}px Inter, system-ui, sans-serif`;
 	setLetterSpacing(ctx, -size * 0.02);
@@ -224,7 +231,14 @@ function drawName(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
 	setLetterSpacing(ctx, 0);
 }
 
-function drawTagline(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string): void {
+function drawTagline(
+	ctx: CanvasRenderingContext2D,
+	text: string,
+	x: number,
+	y: number,
+	size: number,
+	color: string,
+): void {
 	ctx.fillStyle = color;
 	ctx.font = `400 ${size}px Inter, system-ui, sans-serif`;
 	setLetterSpacing(ctx, size * 0.01);
@@ -236,7 +250,13 @@ function drawTagline(ctx: CanvasRenderingContext2D, text: string, x: number, y: 
 }
 
 /** Short accent divider centered at (cx) on baseline y. */
-function drawDivider(ctx: CanvasRenderingContext2D, cx: number, y: number, width: number, color: string): void {
+function drawDivider(
+	ctx: CanvasRenderingContext2D,
+	cx: number,
+	y: number,
+	width: number,
+	color: string,
+): void {
 	const prev = ctx.globalAlpha;
 	ctx.globalAlpha = prev * 0.4;
 	ctx.fillStyle = color;
@@ -270,7 +290,13 @@ function drawGroup(
 		if (m.hasName) {
 			drawName(ctx, side.text.brandName, textX, ty, m.nameSize, side.text.color);
 			if (m.hasTagline) {
-				drawDivider(ctx, textX + m.nameSize * 0.7, ty + m.nameSize + textGap * 0.35, m.nameSize * 1.2, side.text.color);
+				drawDivider(
+					ctx,
+					textX + m.nameSize * 0.7,
+					ty + m.nameSize + textGap * 0.35,
+					m.nameSize * 1.2,
+					side.text.color,
+				);
 			}
 			ty += m.nameSize + textGap;
 		}
