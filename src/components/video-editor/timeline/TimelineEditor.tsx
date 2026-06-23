@@ -55,6 +55,8 @@ export interface TimelineEndcap {
 	onScrub?: (progress: number) => void;
 	/** Pointer released after a scrub drag. */
 	onScrubEnd?: () => void;
+	/** 0..1 while THIS side is being scrubbed — pins the blue playhead at that spot. */
+	scrubProgress?: number;
 	/** × button — remove this side (active only). */
 	onDelete?: () => void;
 }
@@ -598,24 +600,34 @@ function EndcapGutter({ endcap, side }: { endcap: TimelineEndcap; side: "intro" 
 	const dragRef = useRef<{ startX: number; moved: boolean } | null>(null);
 	const scrubbable = endcap.active && !!endcap.onScrub;
 
-	// Sweep a mini-playhead 0→100% over the card duration via WAAPI (no per-frame
-	// React state, no CSS keyframe injection).
+	// The block is inset inside the 104px gutter; the playhead sweeps across that
+	// inset span so it lines up with the card block (matching the main playhead).
+	const insetLeft = side === "intro" ? 4 : 2;
+	const sweepRangePx = 104 - 6; // gutter (104) − total horizontal insets (4 + 2)
+
+	// Drive the blue playhead: pinned while scrubbing, else swept 0→100% over the
+	// card duration via WAAPI (no per-frame React state, no CSS keyframe injection).
 	useEffect(() => {
 		const el = sweepRef.current;
 		if (!el) return;
+		if (endcap.scrubProgress !== undefined) {
+			const p = Math.min(1, Math.max(0, endcap.scrubProgress));
+			el.style.opacity = "1";
+			el.style.left = `${insetLeft + p * sweepRangePx}px`;
+			return;
+		}
 		if (!endcap.playing || !endcap.durationMs) {
 			el.style.opacity = "0";
-			el.style.left = "0%";
+			el.style.left = `${insetLeft}px`;
 			return;
 		}
 		el.style.opacity = "1";
-		const anim = el.animate([{ left: "0%" }, { left: "100%" }], {
-			duration: endcap.durationMs,
-			easing: "linear",
-			fill: "forwards",
-		});
+		const anim = el.animate(
+			[{ left: `${insetLeft}px` }, { left: `${insetLeft + sweepRangePx}px` }],
+			{ duration: endcap.durationMs, easing: "linear", fill: "forwards" },
+		);
 		return () => anim.cancel();
-	}, [endcap.playing, endcap.durationMs]);
+	}, [endcap.playing, endcap.durationMs, endcap.scrubProgress, insetLeft]);
 
 	const fractionAt = (clientX: number) => {
 		const rect = blockRef.current?.getBoundingClientRect();
@@ -667,11 +679,20 @@ function EndcapGutter({ endcap, side }: { endcap: TimelineEndcap; side: "intro" 
 				}}
 			>
 				{side === "intro" ? `▶ ${endcap.label}` : `${endcap.label} ◀`}
-				<div
-					ref={sweepRef}
-					className="pointer-events-none absolute top-0 bottom-0 w-px bg-white/90 shadow-[0_0_4px_rgba(255,255,255,0.85)]"
-					style={{ opacity: 0, left: "0%" }}
-				/>
+			</div>
+			{/* Blue playhead — lives in the gutter (not the clipped block) so it spans
+			    the full timeline height like the main playhead. */}
+			<div
+				ref={sweepRef}
+				className="pointer-events-none absolute z-20 w-0.5 bg-[#2563EB] shadow-[0_0_6px_rgba(37,99,235,0.9)]"
+				style={{
+					opacity: 0,
+					left: `${insetLeft}px`,
+					top: TIMELINE_AXIS_HEIGHT_PX,
+					bottom: 0,
+				}}
+			>
+				<div className="absolute -left-[3px] -top-[3px] h-2 w-2 rounded-full bg-[#2563EB] shadow-[0_0_4px_rgba(37,99,235,0.9)]" />
 			</div>
 			{endcap.onEdit ? (
 				<button
