@@ -5,13 +5,18 @@ import {
 	UploadSimple as UploadIcon,
 	X as XIcon,
 } from "@phosphor-icons/react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { ANIMATION_OPTIONS } from "./cardAnimations";
 import { CardPreview } from "./CardPreview";
+import {
+	ANIMATION_OPTIONS,
+	buildAnimationPrompt,
+	getCardAnimation,
+	normalizeAnimationSpec,
+} from "./cardAnimations";
 import {
 	BUILTIN_TRACKS,
 	type CardAudio,
@@ -25,7 +30,6 @@ import {
 	type IntroOutroConfig,
 	type IntroOutroMode,
 	type IntroOutroPosition,
-	type IntroOutroPreset,
 	type IntroOutroSideConfig,
 	type LogoContainerStyle,
 } from "./introOutroTypes";
@@ -222,10 +226,13 @@ export function IntroStudioModal({
 								<Section title="Animation">
 									<ChipRow
 										options={PRESETS}
-										value={side.preset}
-										onSelect={(preset) => setSide({ preset })}
+										value={side.customAnimation ? ("" as never) : side.preset}
+										onSelect={(preset) =>
+											setSide({ preset, customAnimation: null })
+										}
 									/>
 								</Section>
+								<AISection side={side} setSide={setSide} />
 								<Section title="Position">
 									<ChipRow
 										options={POSITIONS}
@@ -526,6 +533,106 @@ function AudioSection({
 					onValueChange={(volume) => setAudio({ volume })}
 				/>
 			) : null}
+		</Section>
+	);
+}
+
+function AISection({
+	side,
+	setSide,
+}: {
+	side: IntroOutroSideConfig;
+	setSide: (patch: Partial<IntroOutroSideConfig>) => void;
+}) {
+	const [paste, setPaste] = useState("");
+	const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+	const [copied, setCopied] = useState(false);
+
+	const currentSpec = side.customAnimation ?? getCardAnimation(side.preset);
+
+	const copyPrompt = async () => {
+		const text = buildAnimationPrompt(currentSpec);
+		try {
+			if (window.electronAPI?.writeClipboard) {
+				await window.electronAPI.writeClipboard(text);
+			} else {
+				await navigator.clipboard.writeText(text);
+			}
+			setCopied(true);
+			window.setTimeout(() => setCopied(false), 1500);
+		} catch {
+			// ignore clipboard failure
+		}
+	};
+
+	const apply = () => {
+		const spec = normalizeAnimationSpec(paste);
+		if (!spec) {
+			setStatus({ ok: false, msg: "Couldn't read that — paste the JSON the AI returned." });
+			return;
+		}
+		setSide({ customAnimation: spec });
+		setStatus({ ok: true, msg: "Custom animation applied." });
+		setPaste("");
+	};
+
+	return (
+		<Section title="Edit with AI">
+			<p className="mb-2 text-[11px] text-muted-foreground">
+				Copy the prompt, paste it into any AI with your change (e.g. "logo bounces in then
+				spins"), then paste the returned JSON back.
+			</p>
+			<div className="mb-2 flex items-center gap-2">
+				<button
+					type="button"
+					onClick={copyPrompt}
+					className="rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-foreground/10"
+				>
+					{copied ? "Copied!" : "Copy AI prompt"}
+				</button>
+				{side.customAnimation ? (
+					<>
+						<span className="text-[11px] text-emerald-400">Custom active</span>
+						<button
+							type="button"
+							onClick={() => {
+								setSide({ customAnimation: null });
+								setStatus(null);
+							}}
+							className="rounded-lg border border-foreground/10 px-2 py-1 text-[11px] text-muted-foreground hover:bg-foreground/10"
+						>
+							Reset to preset
+						</button>
+					</>
+				) : null}
+			</div>
+			<textarea
+				value={paste}
+				onChange={(e) => setPaste(e.target.value)}
+				placeholder="Paste the AI's JSON here"
+				rows={3}
+				className="w-full resize-none rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-[11px] outline-none focus:border-[#2563EB]/50"
+			/>
+			<div className="mt-2 flex items-center justify-between gap-2">
+				<button
+					type="button"
+					onClick={apply}
+					disabled={!paste.trim()}
+					className="rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#2563EB]/90 disabled:opacity-40"
+				>
+					Apply pasted animation
+				</button>
+				{status ? (
+					<span
+						className={cn(
+							"text-[11px]",
+							status.ok ? "text-emerald-400" : "text-amber-500",
+						)}
+					>
+						{status.msg}
+					</span>
+				) : null}
+			</div>
 		</Section>
 	);
 }
