@@ -21,6 +21,7 @@ import {
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
+import { type IntroOutroConfig, normalizeIntroOutro } from "./introOutroTypes";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
@@ -152,6 +153,7 @@ export interface ProjectEditorState {
 	gifFrameRate: GifFrameRate;
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
+	introOutro: IntroOutroConfig;
 }
 
 export interface EditorProjectData {
@@ -1096,6 +1098,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			editor.gifSizePreset === "original"
 				? editor.gifSizePreset
 				: "medium",
+		introOutro: normalizeIntroOutro(editor.introOutro),
 	};
 }
 
