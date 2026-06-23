@@ -7529,14 +7529,27 @@ export default function VideoEditor() {
 									? `Intro ${(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s`
 									: "+ Intro",
 								active: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl),
-								onClick: () => openIntroStudio("intro"),
+								// Click = preview the card in the player; pencil = open setup.
+								onClick: () =>
+									sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
+										? playCard(introOutro.intro)
+										: openIntroStudio("intro"),
+								onEdit: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
+									? () => openIntroStudio("intro")
+									: undefined,
 							},
 							outro: {
 								label: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
 									? `Outro ${(cardDurationMs(introOutro.outro) / 1000).toFixed(1)}s`
 									: "+ Outro",
 								active: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl),
-								onClick: () => openIntroStudio("outro"),
+								onClick: () =>
+									sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
+										? playCard(introOutro.outro)
+										: openIntroStudio("outro"),
+								onEdit: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
+									? () => openIntroStudio("outro")
+									: undefined,
 							},
 						}}
 						videoPath={videoPath}
