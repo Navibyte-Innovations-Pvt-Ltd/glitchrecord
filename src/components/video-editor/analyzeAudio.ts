@@ -10,18 +10,24 @@ export interface AudioAnalysis {
 	points: { t: number; level: number }[];
 	/** Times (0..1) of energy peaks — natural emphasis/beat points. */
 	beats: number[];
-	/** Seconds of audio covered (min of clip length and card duration). */
+	/** Seconds of audio analyzed (min of clip length and the cap). */
 	durationSec: number;
+	/** Full length of the uploaded clip in seconds. */
+	fullDurationSec: number;
+	/** Suggested card durationMs so the animation spans the analyzed music. */
+	recommendedDurationMs: number;
 	/** Plain-language structure summary for the AI to reason about. */
 	summary: string;
 }
 
 const BUCKETS = 32;
 
-export async function analyzeAudio(
-	dataUrl: string,
-	cardDurationMs: number,
-): Promise<AudioAnalysis | null> {
+/**
+ * Analyze the music over the first `capMs` (default = max card length) of the
+ * clip, so the AI sees the whole usable track and can set the card duration to
+ * match. `t` in the result is normalized over the analyzed window.
+ */
+export async function analyzeAudio(dataUrl: string, capMs = 8000): Promise<AudioAnalysis | null> {
 	try {
 		const resp = await fetch(dataUrl);
 		const buf = await resp.arrayBuffer();
@@ -35,7 +41,7 @@ export async function analyzeAudio(
 
 		const channel = audio.getChannelData(0);
 		const sampleRate = audio.sampleRate;
-		const cardSec = Math.min(cardDurationMs / 1000, audio.duration);
+		const cardSec = Math.min(capMs / 1000, audio.duration);
 		const totalSamples = Math.max(1, Math.floor(cardSec * sampleRate));
 		const per = Math.max(1, Math.floor(totalSamples / BUCKETS));
 
@@ -67,7 +73,14 @@ export async function analyzeAudio(
 		}
 
 		const summary = describeStructure(rms, beats.length);
-		return { points, beats, durationSec: Number(cardSec.toFixed(2)), summary };
+		return {
+			points,
+			beats,
+			durationSec: Number(cardSec.toFixed(2)),
+			fullDurationSec: Number(audio.duration.toFixed(2)),
+			recommendedDurationMs: Math.round(cardSec * 1000),
+			summary,
+		};
 	} catch {
 		return null;
 	}
