@@ -7517,57 +7517,28 @@ export default function VideoEditor() {
 							Add background music
 						</button>
 					)}
-					{/* Intro / outro blocks flanking the timeline — click to open the studio. */}
-					<div className="mb-1 flex items-stretch gap-1 px-0.5">
-						{(() => {
-							const introOn = sideIsRenderable(
-								introOutro.intro,
-								introOutro.logoDataUrl,
-							);
-							const outroOn = sideIsRenderable(
-								introOutro.outro,
-								introOutro.logoDataUrl,
-							);
-							const blockCls = (on: boolean) =>
-								cn(
-									"flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold transition-colors",
-									on
-										? "border border-[#2563EB]/40 bg-[#2563EB]/20 text-[#2563EB] dark:text-[#93c5fd] hover:bg-[#2563EB]/30"
-										: "border border-dashed border-foreground/15 text-muted-foreground/60 hover:bg-foreground/5",
-								);
-							return (
-								<>
-									<button
-										type="button"
-										onClick={() => openIntroStudio("intro")}
-										className={blockCls(introOn)}
-									>
-										{introOn
-											? `▶ Intro ${(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s`
-											: "+ Intro"}
-									</button>
-									<div className="flex flex-1 items-center justify-center truncate rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 text-[10px] text-muted-foreground/50">
-										your recording
-									</div>
-									<button
-										type="button"
-										onClick={() => openIntroStudio("outro")}
-										className={blockCls(outroOn)}
-									>
-										{outroOn
-											? `Outro ${(cardDurationMs(introOutro.outro) / 1000).toFixed(1)}s ◀`
-											: "+ Outro"}
-									</button>
-								</>
-							);
-						})()}
-					</div>
 					<TimelineEditor
 						ref={timelineRef}
 						videoDuration={timelineDuration}
 						currentTime={currentTime}
 						playheadTime={timelinePlayheadTime}
 						onSeek={handleTimelineSeek}
+						endcaps={{
+							intro: {
+								label: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
+									? `Intro ${(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s`
+									: "+ Intro",
+								active: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl),
+								onClick: () => openIntroStudio("intro"),
+							},
+							outro: {
+								label: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
+									? `Outro ${(cardDurationMs(introOutro.outro) / 1000).toFixed(1)}s`
+									: "+ Outro",
+								active: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl),
+								onClick: () => openIntroStudio("outro"),
+							},
+						}}
 						videoPath={videoPath}
 						videoSourcePath={videoSourcePath}
 						cursorTelemetrySourcePath={cursorTelemetrySourcePath}
