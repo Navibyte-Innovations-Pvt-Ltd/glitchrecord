@@ -14,6 +14,8 @@ import type {
 } from "@/lib/exporter";
 import { GIF_FRAME_RATES, GIF_SIZE_PRESETS, MP4_FRAME_RATES } from "@/lib/exporter";
 import { cn } from "@/lib/utils";
+import { IntroOutroSettings } from "./IntroOutroSettings";
+import type { IntroOutroConfig } from "./introOutroTypes";
 
 interface ExportSettingsMenuProps {
 	exportFormat: ExportFormat;
@@ -37,6 +39,8 @@ interface ExportSettingsMenuProps {
 	gifSizePreset: GifSizePreset;
 	onGifSizePresetChange?: (preset: GifSizePreset) => void;
 	gifOutputDimensions: { width: number; height: number };
+	introOutro?: IntroOutroConfig;
+	onIntroOutroChange?: (config: IntroOutroConfig) => void;
 	onExport?: () => void;
 	className?: string;
 }
@@ -63,6 +67,8 @@ export function ExportSettingsMenu({
 	gifSizePreset,
 	onGifSizePresetChange,
 	gifOutputDimensions,
+	introOutro,
+	onIntroOutroChange,
 	onExport,
 	className,
 }: ExportSettingsMenuProps) {
@@ -145,7 +151,7 @@ export function ExportSettingsMenu({
 									{isActive ? (
 										<motion.span
 											layoutId="header-export-quality-pill"
-										className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 											transition={{
 												type: "spring",
 												stiffness: 420,
@@ -157,17 +163,19 @@ export function ExportSettingsMenu({
 										<span
 											className={cn(
 												isActive
-												? "text-white dark:text-black"
-												: "text-muted-foreground hover:text-foreground",
-										)}
-									>
-										{option.label}
-									</span>
-									{mp4OutputDimensions ? (
-										<span
-											className={cn(
-												"mt-0.5 text-[9px]",
-												isActive ? "text-white/75 dark:text-black/75" : "text-muted-foreground/70",
+													? "text-white dark:text-black"
+													: "text-muted-foreground hover:text-foreground",
+											)}
+										>
+											{option.label}
+										</span>
+										{mp4OutputDimensions ? (
+											<span
+												className={cn(
+													"mt-0.5 text-[9px]",
+													isActive
+														? "text-white/75 dark:text-black/75"
+														: "text-muted-foreground/70",
 												)}
 											>
 												{mp4OutputDimensions[option.value].width} x{" "}
@@ -210,7 +218,7 @@ export function ExportSettingsMenu({
 									{isActive ? (
 										<motion.span
 											layoutId="header-export-encoding-pill"
-										className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 											transition={{
 												type: "spring",
 												stiffness: 420,
@@ -251,7 +259,7 @@ export function ExportSettingsMenu({
 									{isActive ? (
 										<motion.span
 											layoutId="header-export-fps-pill"
-										className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 											transition={{
 												type: "spring",
 												stiffness: 420,
@@ -303,7 +311,7 @@ export function ExportSettingsMenu({
 									{isActive ? (
 										<motion.span
 											layoutId="header-export-pipeline-pill"
-										className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 											transition={{
 												type: "spring",
 												stiffness: 420,
@@ -365,6 +373,9 @@ export function ExportSettingsMenu({
 							/>
 						</div>
 					) : null}
+					{introOutro && onIntroOutroChange ? (
+						<IntroOutroSettings config={introOutro} onChange={onIntroOutroChange} />
+					) : null}
 				</LayoutGroup>
 			) : (
 				<div className="mb-3 space-y-2">
@@ -384,7 +395,7 @@ export function ExportSettingsMenu({
 											{isActive ? (
 												<motion.span
 													layoutId="header-gif-frame-rate-pill"
-											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+													className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 													transition={{
 														type: "spring",
 														stiffness: 420,
@@ -424,7 +435,7 @@ export function ExportSettingsMenu({
 											{isActive ? (
 												<motion.span
 													layoutId="header-gif-size-pill"
-											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+													className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 													transition={{
 														type: "spring",
 														stiffness: 420,
