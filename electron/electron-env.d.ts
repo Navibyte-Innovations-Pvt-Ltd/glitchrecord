@@ -558,27 +558,9 @@ interface Window {
 			tempPath: string;
 			fileName: string;
 			outputPath?: string | null;
-			// Structural mirror of electron/ipc/export/introOutro.ts
-			// IntroOutroConfig (ambient .d.ts cannot import across the boundary).
-			introOutro?: {
-				logoDataUrl: string;
-				intro: {
-					enabled: boolean;
-					preset: "fade" | "scale-pop" | "slide" | "glitch";
-					durationMs: number;
-					backgroundColor: string;
-					position: "center" | "top" | "bottom" | "left" | "right";
-					size: number;
-				};
-				outro: {
-					enabled: boolean;
-					preset: "fade" | "scale-pop" | "slide" | "glitch";
-					durationMs: number;
-					backgroundColor: string;
-					position: "center" | "top" | "bottom" | "left" | "right";
-					size: number;
-				};
-			} | null;
+			introOutro?:
+				| import("../src/components/video-editor/introOutroTypes").IntroOutroConfig
+				| null;
 		}) => Promise<{
 			success: boolean;
 			path?: string;
