@@ -4,18 +4,29 @@ import type { IntroOutroSideConfig } from "./introOutroTypes";
 
 /**
  * Full-bleed intro/outro overlay over the editor preview during playback.
- * Card mode: the parent drives `progress` (0→1) via its rAF loop; this paints.
- * Video mode: plays the user's clip and calls `onEnded` when it finishes.
- * Shown while the player is parked in a card phase.
+ *
+ * Card mode SELF-ANIMATES: it runs its own rAF loop and draws imperatively to the
+ * canvas — it does NOT push progress through React state, so the (huge) editor
+ * does not re-render every frame (that was the lag). Calls `onEnded` when done.
+ * Video mode plays the user's clip and calls `onEnded` on its `ended` event.
  */
 interface CardOverlayProps {
 	side: IntroOutroSideConfig;
 	logoDataUrl: string;
-	progress: number;
+	/** Card length in ms (card mode). */
+	durationMs: number;
 	onEnded?: () => void;
 }
 
-export function CardOverlay({ side, logoDataUrl, progress, onEnded }: CardOverlayProps) {
+const CAP_W = 720;
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+	if (edge1 <= edge0) return x < edge0 ? 0 : 1;
+	const u = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+	return u * u * (3 - 2 * u);
+}
+
+export function CardOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOverlayProps) {
 	if (side.mode === "video" && side.videoPath) {
 		return (
 			<div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black">
@@ -31,13 +42,24 @@ export function CardOverlay({ side, logoDataUrl, progress, onEnded }: CardOverla
 			</div>
 		);
 	}
-	return <CardCanvasOverlay side={side} logoDataUrl={logoDataUrl} progress={progress} />;
+	return (
+		<CardCanvasOverlay
+			side={side}
+			logoDataUrl={logoDataUrl}
+			durationMs={durationMs}
+			onEnded={onEnded}
+		/>
+	);
 }
 
-function CardCanvasOverlay({ side, logoDataUrl, progress }: CardOverlayProps) {
+function CardCanvasOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOverlayProps) {
+	const wrapRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const logoRef = useRef<HTMLImageElement | null>(null);
 	const [logoReady, setLogoReady] = useState(false);
+	// Keep the latest onEnded without restarting the animation loop.
+	const onEndedRef = useRef(onEnded);
+	onEndedRef.current = onEnded;
 
 	useEffect(() => {
 		setLogoReady(false);
@@ -60,12 +82,10 @@ function CardCanvasOverlay({ side, logoDataUrl, progress }: CardOverlayProps) {
 		};
 	}, [logoDataUrl]);
 
-	// Size the canvas once (and on resize), capped to keep per-frame blur/shadow
-	// cheap — drawing every rAF frame at the full preview pixel size lagged.
+	// Size the canvas (capped) once + on resize, so per-frame blur/shadow is cheap.
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		if (!canvas) return;
-		const CAP_W = 720;
 		const measure = () => {
 			const dw = canvas.offsetWidth || 640;
 			const dh = canvas.offsetHeight || 360;
@@ -81,40 +101,46 @@ function CardCanvasOverlay({ side, logoDataUrl, progress }: CardOverlayProps) {
 		return () => ro.disconnect();
 	}, []);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: paint reads current side
+	// Self-driven animation loop — imperative draw, no React state per frame.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: draws current side; restarts on side/duration change
 	useEffect(() => {
-		const canvas = canvasRef.current;
-		const ctx = canvas?.getContext("2d");
-		if (!canvas || !ctx) return;
-		drawCard({
-			ctx,
-			width: canvas.width,
-			height: canvas.height,
-			logo: logoRef.current,
-			side,
-			progress,
-		});
-	}, [progress, logoReady, side]);
-
-	// Crossfade the WHOLE overlay (background included) against the video at the
-	// card edges so intro→video and video→outro hand off smoothly instead of
-	// popping. The card stays fully opaque through the middle.
-	const fadeIn = smoothstep(0, 0.12, progress);
-	const fadeOut = 1 - smoothstep(0.88, 1, progress);
-	const edgeOpacity = Math.min(fadeIn, fadeOut);
+		let raf = 0;
+		const startedAt = performance.now();
+		const loop = (now: number) => {
+			const canvas = canvasRef.current;
+			const ctx = canvas?.getContext("2d");
+			if (canvas && ctx) {
+				const p = Math.min(1, (now - startedAt) / Math.max(1, durationMs));
+				drawCard({
+					ctx,
+					width: canvas.width,
+					height: canvas.height,
+					logo: logoRef.current,
+					side,
+					progress: p,
+				});
+				// Crossfade the whole overlay (bg included) against the video at the
+				// card edges → smooth intro→video and video→outro handoff.
+				const edge = Math.min(smoothstep(0, 0.12, p), 1 - smoothstep(0.88, 1, p));
+				if (wrapRef.current) wrapRef.current.style.opacity = String(edge);
+				if (p >= 1) {
+					onEndedRef.current?.();
+					return;
+				}
+			}
+			raf = requestAnimationFrame(loop);
+		};
+		raf = requestAnimationFrame(loop);
+		return () => cancelAnimationFrame(raf);
+	}, [side, durationMs, logoReady]);
 
 	return (
 		<div
+			ref={wrapRef}
 			className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
-			style={{ opacity: edgeOpacity }}
+			style={{ opacity: 0 }}
 		>
 			<canvas ref={canvasRef} className="h-full w-full" />
 		</div>
 	);
-}
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-	if (edge1 <= edge0) return x < edge0 ? 0 : 1;
-	const u = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
-	return u * u * (3 - 2 * u);
 }
