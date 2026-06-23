@@ -13,7 +13,12 @@ import {
 	releaseOwnedExportPath,
 	writeToExportStream,
 } from "../export/exportStream";
-import { applyIntroOutro, type IntroOutroConfig } from "../export/introOutro";
+import {
+	applyIntroOutro,
+	type IntroOutroConfig,
+	type IntroOutroFrameDirs,
+	stageIntroOutroFrames,
+} from "../export/introOutro";
 import {
 	enqueueNativeVideoExportFrameWrite,
 	enqueueNativeVideoExportFrameWrites,
@@ -924,6 +929,7 @@ export function registerExportHandlers() {
 				fileName: string;
 				outputPath?: string | null;
 				introOutro?: IntroOutroConfig | null;
+				introOutroFrameDirs?: IntroOutroFrameDirs | null;
 			},
 		) => {
 			const tempPath = payload?.tempPath;
@@ -954,7 +960,11 @@ export function registerExportHandlers() {
 			// unchanged if nothing applies or on any failure, so a card-rendering
 			// hiccup never blocks the export.
 			const finalizeTo = async (destination: string) => {
-				const sourcePath = await applyIntroOutro(tempPath, payload.introOutro);
+				const sourcePath = await applyIntroOutro(
+					tempPath,
+					payload.introOutro,
+					payload.introOutroFrameDirs ?? undefined,
+				);
 				await moveExportedTempFile(sourcePath, destination);
 				releaseOwnedExportPath(tempPath);
 				if (sourcePath !== tempPath) {
@@ -1019,6 +1029,24 @@ export function registerExportHandlers() {
 					message: "Failed to save exported video",
 					error: String(error),
 				};
+			}
+		},
+	);
+
+	ipcMain.handle(
+		"stage-intro-outro-frames",
+		async (
+			_event,
+			framesBase64: unknown,
+		): Promise<{ success: boolean; dir?: string; error?: string }> => {
+			if (!Array.isArray(framesBase64) || framesBase64.some((f) => typeof f !== "string")) {
+				return { success: false, error: "Invalid frames payload" };
+			}
+			try {
+				const dir = await stageIntroOutroFrames(framesBase64 as string[]);
+				return { success: true, dir };
+			} catch (error) {
+				return { success: false, error: String(error) };
 			}
 		},
 	);
