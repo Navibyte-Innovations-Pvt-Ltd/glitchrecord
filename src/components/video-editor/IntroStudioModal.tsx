@@ -379,7 +379,7 @@ function getLogoColor(dataUrl: string): Promise<string | null> {
 				const c = document.createElement("canvas");
 				c.width = w;
 				c.height = h;
-				const ctx = c.getContext("2d");
+				const ctx = c.getContext("2d", { willReadFrequently: true });
 				if (!ctx) {
 					resolve(null);
 					return;
@@ -426,7 +426,7 @@ function isLogoOpaque(dataUrl: string): Promise<boolean> {
 				const c = document.createElement("canvas");
 				c.width = w;
 				c.height = h;
-				const ctx = c.getContext("2d");
+				const ctx = c.getContext("2d", { willReadFrequently: true });
 				if (!ctx) {
 					resolve(false);
 					return;
