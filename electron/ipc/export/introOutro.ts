@@ -16,25 +16,52 @@ import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
  * counts). See the validated spike in the feature design notes.
  */
 
+export type IntroOutroMode = "card" | "video";
 export type IntroOutroPreset = "fade" | "scale-pop" | "slide" | "glitch";
-
 export type IntroOutroPosition = "center" | "top" | "bottom" | "left" | "right";
+export type CardLayout = "logo-only" | "logo-top" | "logo-left" | "text-only";
+export type BackgroundType = "solid" | "gradient";
+export type LogoContainerStyle = "none" | "rounded" | "panel";
+export type CardAudioMode = "none" | "builtin" | "upload";
 
+export interface CardBackground {
+	type: BackgroundType;
+	color1: string;
+	color2: string;
+	angle: number;
+}
+export interface CardText {
+	brandName: string;
+	tagline: string;
+	color: string;
+}
+export interface CardAudio {
+	mode: CardAudioMode;
+	trackId: string;
+	dataUrl: string;
+	volume: number;
+}
+
+// Mirrors src/components/video-editor/introOutroTypes.ts (the renderer config
+// crosses to here over `finalize-exported-video`). The export currently uses a
+// subset (preset/position/duration/size/background.color1 + logo); text,
+// gradient, audio and video modes are wired in later phases.
 export interface IntroOutroSideConfig {
 	enabled: boolean;
+	mode: IntroOutroMode;
 	preset: IntroOutroPreset;
-	/** Card duration in milliseconds (clamped 500–5000). */
-	durationMs: number;
-	/** Background hex color, e.g. "#0B1020". */
-	backgroundColor: string;
-	/** Logo placement for static presets; slide enters from this edge. */
 	position: IntroOutroPosition;
-	/** Logo height as a fraction of frame height (clamped 0.1–0.8). */
+	durationMs: number;
 	size: number;
+	layout: CardLayout;
+	background: CardBackground;
+	logoContainer: LogoContainerStyle;
+	text: CardText;
+	videoPath: string;
+	audio: CardAudio;
 }
 
 export interface IntroOutroConfig {
-	/** "data:image/png;base64,..." — the user's transparent logo. */
 	logoDataUrl: string;
 	intro: IntroOutroSideConfig;
 	outro: IntroOutroSideConfig;
@@ -304,7 +331,7 @@ async function generateSideClip(
 	outPath: string,
 ): Promise<void> {
 	const durationSec = clamp(side.durationMs, MIN_DURATION_MS, MAX_DURATION_MS) / 1000;
-	const bg = sanitizeHexColor(side.backgroundColor);
+	const bg = sanitizeHexColor(side.background?.color1);
 	const filter = buildFilterComplex(side, params, durationSec);
 
 	const args: string[] = [
