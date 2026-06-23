@@ -1,4 +1,11 @@
-import { getCardAnimation, resolveAnimation } from "./cardAnimations";
+import {
+	type AnimationSpec,
+	getCardAnimation,
+	type ResolvedAnimation,
+	resolveAnimation,
+	resolveGlow,
+	resolveTracks,
+} from "./cardAnimations";
 import type { IntroOutroPosition, IntroOutroSideConfig } from "./introOutroTypes";
 
 /**
@@ -216,36 +223,132 @@ function setLetterSpacing(ctx: CanvasRenderingContext2D, px: number): void {
 	(ctx as CtxWithLetterSpacing).letterSpacing = `${px}px`;
 }
 
-function drawName(
-	ctx: CanvasRenderingContext2D,
-	text: string,
-	x: number,
-	y: number,
-	size: number,
-	color: string,
-): void {
-	ctx.fillStyle = color;
-	ctx.font = `800 ${size}px Inter, system-ui, sans-serif`;
-	setLetterSpacing(ctx, -size * 0.02);
-	ctx.fillText(text, x, y);
-	setLetterSpacing(ctx, 0);
+function smoothstep01(edge0: number, edge1: number, x: number): number {
+	if (edge1 <= edge0) return x < edge0 ? 0 : 1;
+	const u = clamp01((x - edge0) / (edge1 - edge0));
+	return u * u * (3 - 2 * u);
 }
 
-function drawTagline(
+/** Apply a per-element transform (around its center) then run the draw. */
+function withElement(
+	ctx: CanvasRenderingContext2D,
+	cx: number,
+	cy: number,
+	anim: ResolvedAnimation,
+	draw: () => void,
+): void {
+	const W = ctx.canvas.width;
+	const H = ctx.canvas.height;
+	ctx.save();
+	ctx.globalAlpha *= clamp01(anim.opacity);
+	if (anim.blur > 0) ctx.filter = `blur(${anim.blur}px)`;
+	ctx.translate(cx + anim.x * W, cy + anim.y * H);
+	if (anim.scale !== 1) ctx.scale(anim.scale, anim.scale);
+	if (anim.rotate !== 0) ctx.rotate((anim.rotate * Math.PI) / 180);
+	ctx.translate(-cx, -cy);
+	draw();
+	ctx.restore();
+}
+
+/** Colored radial glow behind the logo; `intensity` 0..1. */
+function drawLogoGlow(
+	ctx: CanvasRenderingContext2D,
+	cx: number,
+	cy: number,
+	radius: number,
+	color: string,
+	intensity: number,
+): void {
+	if (intensity <= 0 || radius <= 0) return;
+	const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+	const a = clamp01(intensity);
+	g.addColorStop(0, hexToRgba(color, 0.55 * a));
+	g.addColorStop(1, hexToRgba(color, 0));
+	const prev = ctx.globalCompositeOperation;
+	ctx.globalCompositeOperation = "lighter";
+	ctx.fillStyle = g;
+	ctx.beginPath();
+	ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.globalCompositeOperation = prev;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+	const h = hex.replace(/^#/, "");
+	const r = parseInt(h.slice(0, 2), 16) || 0;
+	const g = parseInt(h.slice(2, 4), 16) || 0;
+	const b = parseInt(h.slice(4, 6), 16) || 0;
+	return `rgba(${r},${g},${b},${alpha})`;
+}
+
+interface TextStyle {
+	size: number;
+	weight: 800 | 400;
+	dim: number; // base alpha multiplier (tagline = 0.72)
+	letter: number; // letter-spacing px
+}
+
+/** Draw a text element with optional word/char reveal stagger + shine sweep. */
+function drawText(
 	ctx: CanvasRenderingContext2D,
 	text: string,
-	x: number,
-	y: number,
-	size: number,
+	leftX: number,
+	topY: number,
+	style: TextStyle,
 	color: string,
+	reveal: { mode: "word" | "char"; start: number; durationFrac: number } | null,
+	shine: { start: number; durationFrac: number; intensity: number } | null,
+	t: number,
 ): void {
-	ctx.fillStyle = color;
-	ctx.font = `400 ${size}px Inter, system-ui, sans-serif`;
-	setLetterSpacing(ctx, size * 0.01);
-	const prev = ctx.globalAlpha;
-	ctx.globalAlpha = prev * 0.72;
-	ctx.fillText(text, x, y);
-	ctx.globalAlpha = prev;
+	ctx.textAlign = "left";
+	ctx.textBaseline = "top";
+	ctx.font = `${style.weight} ${style.size}px Inter, system-ui, sans-serif`;
+	setLetterSpacing(ctx, style.letter);
+	const prevAlpha = ctx.globalAlpha;
+	const base = prevAlpha * style.dim;
+	const totalW = ctx.measureText(text).width;
+
+	if (reveal) {
+		const units = reveal.mode === "char" ? Array.from(text) : text.split(" ");
+		const n = Math.max(1, units.length);
+		const spaceW = ctx.measureText(" ").width;
+		const window = Math.max(0.05, reveal.durationFrac);
+		const unitFade = Math.max(0.06, window / n + 0.06);
+		let penX = leftX;
+		ctx.fillStyle = color;
+		for (let i = 0; i < n; i++) {
+			const u = units[i];
+			const startI = reveal.start + (i / n) * window;
+			const op = smoothstep01(startI, startI + unitFade, t);
+			const rise = (1 - op) * style.size * 0.35;
+			ctx.globalAlpha = base * op;
+			ctx.fillText(u, penX, topY + rise);
+			penX += ctx.measureText(u).width + (reveal.mode === "char" ? 0 : spaceW);
+		}
+	} else {
+		ctx.globalAlpha = base;
+		ctx.fillStyle = color;
+		ctx.fillText(text, leftX, topY);
+	}
+
+	// Shine: a moving bright band re-filling the glyphs (composite lighter).
+	if (shine && t >= shine.start && t <= shine.start + shine.durationFrac) {
+		const p = (t - shine.start) / Math.max(0.001, shine.durationFrac); // 0..1
+		const bandX = leftX - totalW * 0.3 + p * totalW * 1.6;
+		const half = totalW * 0.18;
+		const grad = ctx.createLinearGradient(bandX - half, 0, bandX + half, 0);
+		grad.addColorStop(0, "rgba(255,255,255,0)");
+		grad.addColorStop(0.5, `rgba(255,255,255,${clamp01(shine.intensity)})`);
+		grad.addColorStop(1, "rgba(255,255,255,0)");
+		const prevOp = ctx.globalCompositeOperation;
+		ctx.globalCompositeOperation = "lighter";
+		ctx.globalAlpha = prevAlpha;
+		ctx.fillStyle = grad;
+		ctx.fillText(text, leftX, topY);
+		ctx.globalCompositeOperation = prevOp;
+	}
+
+	ctx.globalAlpha = prevAlpha;
 	setLetterSpacing(ctx, 0);
 }
 
@@ -265,6 +368,29 @@ function drawDivider(
 	ctx.globalAlpha = prev;
 }
 
+function revealFor(
+	spec: AnimationSpec,
+	role: "name" | "tagline",
+): { mode: "word" | "char"; start: number; durationFrac: number } | null {
+	const r = spec.reveal;
+	if (!r) return null;
+	if (r.target === role || r.target === "both") {
+		return { mode: r.mode, start: r.start, durationFrac: r.durationFrac };
+	}
+	return null;
+}
+function shineFor(
+	spec: AnimationSpec,
+	role: "name" | "tagline",
+): { start: number; durationFrac: number; intensity: number } | null {
+	const s = spec.shine;
+	if (!s) return null;
+	if (s.target === role || s.target === "both") {
+		return { start: s.start, durationFrac: s.durationFrac, intensity: s.intensity };
+	}
+	return null;
+}
+
 function drawGroup(
 	ctx: CanvasRenderingContext2D,
 	logo: HTMLImageElement | null,
@@ -272,36 +398,93 @@ function drawGroup(
 	m: GroupMetrics,
 	ox: number,
 	oy: number,
+	spec: AnimationSpec,
+	t: number,
 ): void {
 	const gap = Math.round(ctx.canvas.height * 0.035);
 	const textGap = gap * 0.45;
-	ctx.textAlign = side.layout === "logo-left" ? "left" : "center";
-	ctx.textBaseline = "top";
+	const color = side.text.color;
+	const nameStyle: TextStyle = {
+		size: m.nameSize,
+		weight: 800,
+		dim: 1,
+		letter: -m.nameSize * 0.02,
+	};
+	const tagStyle: TextStyle = {
+		size: m.taglineSize,
+		weight: 400,
+		dim: 0.72,
+		letter: m.taglineSize * 0.01,
+	};
+	const logoAnim = resolveTracks(spec.elements?.logo, t);
+	const nameAnim = resolveTracks(spec.elements?.name, t);
+	const tagAnim = resolveTracks(spec.elements?.tagline, t);
+	const glowIntensity = resolveGlow(spec, t);
+	const glowColor = spec.glow?.color ?? "#6478ff";
+
+	const drawLogo = (lx: number, ly: number) => {
+		if (!m.hasLogo || !logo) return;
+		const cx = lx + m.logoW / 2;
+		const cy = ly + m.logoH / 2;
+		withElement(ctx, cx, cy, logoAnim, () => {
+			drawLogoGlow(ctx, cx, cy, m.logoH * 0.95, glowColor, glowIntensity);
+			drawLogoWithContainer(ctx, logo, lx, ly, m.logoW, m.logoH, side.logoContainer);
+		});
+	};
 
 	if (side.layout === "logo-left") {
-		const logoY = oy + (m.height - m.logoH) / 2;
-		if (m.hasLogo && logo) {
-			drawLogoWithContainer(ctx, logo, ox, logoY, m.logoW, m.logoH, side.logoContainer);
-		}
+		drawLogo(ox, oy + (m.height - m.logoH) / 2);
 		const textX = ox + (m.hasLogo ? m.logoW + gap : 0);
 		const textBlockH =
 			(m.hasName ? m.nameSize : 0) + (m.hasTagline ? m.taglineSize + textGap : 0);
 		let ty = oy + (m.height - textBlockH) / 2;
 		if (m.hasName) {
-			drawName(ctx, side.text.brandName, textX, ty, m.nameSize, side.text.color);
+			ctx.font = `800 ${m.nameSize}px Inter, system-ui, sans-serif`;
+			setLetterSpacing(ctx, -m.nameSize * 0.02);
+			const nw = ctx.measureText(side.text.brandName).width;
+			setLetterSpacing(ctx, 0);
+			const ny = ty;
+			withElement(ctx, textX + nw / 2, ny + m.nameSize / 2, nameAnim, () =>
+				drawText(
+					ctx,
+					side.text.brandName,
+					textX,
+					ny,
+					nameStyle,
+					color,
+					revealFor(spec, "name"),
+					shineFor(spec, "name"),
+					t,
+				),
+			);
 			if (m.hasTagline) {
 				drawDivider(
 					ctx,
 					textX + m.nameSize * 0.7,
 					ty + m.nameSize + textGap * 0.35,
 					m.nameSize * 1.2,
-					side.text.color,
+					color,
 				);
 			}
 			ty += m.nameSize + textGap;
 		}
 		if (m.hasTagline) {
-			drawTagline(ctx, side.text.tagline, textX, ty, m.taglineSize, side.text.color);
+			const gy = ty;
+			ctx.font = `400 ${m.taglineSize}px Inter, system-ui, sans-serif`;
+			const tw = ctx.measureText(side.text.tagline).width;
+			withElement(ctx, textX + tw / 2, gy + m.taglineSize / 2, tagAnim, () =>
+				drawText(
+					ctx,
+					side.text.tagline,
+					textX,
+					gy,
+					tagStyle,
+					color,
+					revealFor(spec, "tagline"),
+					shineFor(spec, "tagline"),
+					t,
+				),
+			);
 		}
 		return;
 	}
@@ -310,18 +493,50 @@ function drawGroup(
 	const cx = ox + m.width / 2;
 	let y = oy;
 	if (m.hasLogo && logo) {
-		drawLogoWithContainer(ctx, logo, cx - m.logoW / 2, y, m.logoW, m.logoH, side.logoContainer);
+		drawLogo(cx - m.logoW / 2, y);
 		y += m.logoH + gap;
 	}
 	if (m.hasName) {
-		drawName(ctx, side.text.brandName, cx, y, m.nameSize, side.text.color);
+		ctx.font = `800 ${m.nameSize}px Inter, system-ui, sans-serif`;
+		setLetterSpacing(ctx, -m.nameSize * 0.02);
+		const nw = ctx.measureText(side.text.brandName).width;
+		setLetterSpacing(ctx, 0);
+		const ny = y;
+		withElement(ctx, cx, ny + m.nameSize / 2, nameAnim, () =>
+			drawText(
+				ctx,
+				side.text.brandName,
+				cx - nw / 2,
+				ny,
+				nameStyle,
+				color,
+				revealFor(spec, "name"),
+				shineFor(spec, "name"),
+				t,
+			),
+		);
 		if (m.hasTagline) {
-			drawDivider(ctx, cx, y + m.nameSize + textGap * 0.3, m.nameSize * 1.3, side.text.color);
+			drawDivider(ctx, cx, y + m.nameSize + textGap * 0.3, m.nameSize * 1.3, color);
 		}
 		y += m.nameSize + textGap;
 	}
 	if (m.hasTagline) {
-		drawTagline(ctx, side.text.tagline, cx, y, m.taglineSize, side.text.color);
+		ctx.font = `400 ${m.taglineSize}px Inter, system-ui, sans-serif`;
+		const tw = ctx.measureText(side.text.tagline).width;
+		const gy = y;
+		withElement(ctx, cx, gy + m.taglineSize / 2, tagAnim, () =>
+			drawText(
+				ctx,
+				side.text.tagline,
+				cx - tw / 2,
+				gy,
+				tagStyle,
+				color,
+				revealFor(spec, "tagline"),
+				shineFor(spec, "tagline"),
+				t,
+			),
+		);
 	}
 }
 
@@ -338,10 +553,10 @@ export function drawCard({ ctx, width, height, logo, side, progress }: CardRende
 	if (m.width <= 0 || m.height <= 0) return;
 
 	const origin = groupOrigin(side.position, W, H, m.width, m.height);
-	// The animation is a declarative spec sampled at t (see cardAnimations.ts).
-	// Its transform is applied to the whole content group about its center; the
+	// Group-level transform from the spec, applied about the content center; the
 	// resting position comes from `origin`, x/y are frame-fraction offsets.
-	const anim = resolveAnimation(side.customAnimation ?? getCardAnimation(side.preset), t);
+	const spec = side.customAnimation ?? getCardAnimation(side.preset);
+	const anim = resolveAnimation(spec, t);
 	const cx = origin.x + m.width / 2;
 	const cy = origin.y + m.height / 2;
 
@@ -352,7 +567,7 @@ export function drawCard({ ctx, width, height, logo, side, progress }: CardRende
 	if (anim.scale !== 1) ctx.scale(anim.scale, anim.scale);
 	if (anim.rotate !== 0) ctx.rotate((anim.rotate * Math.PI) / 180);
 	ctx.translate(-cx, -cy);
-	drawGroup(ctx, logo, side, m, origin.x, origin.y);
+	drawGroup(ctx, logo, side, m, origin.x, origin.y, spec, t);
 	ctx.restore();
 }
 
