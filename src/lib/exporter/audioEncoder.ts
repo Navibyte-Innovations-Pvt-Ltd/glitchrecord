@@ -987,13 +987,7 @@ export class AudioProcessor {
 
 			// Schedule audio region overlays
 			for (const { buffer, region } of prepared.regionEntries) {
-				this.scheduleRegionForChunk(
-					offlineCtx,
-					buffer,
-					region,
-					outputOffsetSec,
-					chunkSec,
-				);
+				this.scheduleRegionForChunk(offlineCtx, buffer, region, outputOffsetSec, chunkSec);
 			}
 
 			const rendered = await offlineCtx.startRendering();
@@ -1142,11 +1136,15 @@ export class AudioProcessor {
 						g *= Math.sin((Math.PI / 2) * (into / crossfade));
 					}
 					if (into > bufferDur - crossfade) {
-						g *= Math.cos((Math.PI / 2) * ((into - (bufferDur - crossfade)) / crossfade));
+						g *= Math.cos(
+							(Math.PI / 2) * ((into - (bufferDur - crossfade)) / crossfade),
+						);
 					}
 					// Soft fade-out at the very end of the whole region.
 					if (u > regionEndSec - crossfade) {
-						g *= Math.cos((Math.PI / 2) * ((u - (regionEndSec - crossfade)) / crossfade));
+						g *= Math.cos(
+							(Math.PI / 2) * ((u - (regionEndSec - crossfade)) / crossfade),
+						);
 					}
 					curve[i] = baseGain * Math.max(0, g);
 				}
