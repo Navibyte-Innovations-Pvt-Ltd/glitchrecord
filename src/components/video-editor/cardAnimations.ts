@@ -676,6 +676,8 @@ export interface CardDesign {
 	text: CardText;
 	layout: CardLayout;
 	logoContainer: LogoContainerStyle;
+	/** Panel padding around the logo (0.05–0.5 of logo height). */
+	logoPadding: number;
 	size: number;
 	position: IntroOutroPosition;
 	/** Card length in milliseconds (500–8000). */
@@ -696,6 +698,7 @@ export function sideToDesign(side: IntroOutroSideConfig): CardDesign {
 		text: side.text,
 		layout: side.layout,
 		logoContainer: side.logoContainer,
+		logoPadding: side.logoPadding,
 		size: side.size,
 		position: side.position,
 		durationMs: side.durationMs,
@@ -735,6 +738,9 @@ export function normalizeCardDesign(raw: unknown): Partial<IntroOutroSideConfig>
 	if (LOGO_CONTAINER_STYLES.includes(r.logoContainer as LogoContainerStyle)) {
 		patch.logoContainer = r.logoContainer as LogoContainerStyle;
 	}
+	if (Number.isFinite(r.logoPadding)) {
+		patch.logoPadding = clampNum(r.logoPadding, 0.05, 0.5, 0.18);
+	}
 	if (INTRO_OUTRO_POSITIONS.includes(r.position as IntroOutroPosition)) {
 		patch.position = r.position as IntroOutroPosition;
 	}
@@ -761,6 +767,7 @@ const CARD_DESIGN_DOC = `You are designing a GlitchGrab intro/outro brand card. 
   "text": { "brandName": string, "tagline": string, "color": "#hex" },
   "layout": "logo-top"|"logo-left"|"logo-only"|"text-only",
   "logoContainer": "panel"|"rounded"|"none",   // panel = white rounded card behind the logo
+  "logoPadding": 0.05..0.5,                      // padding inside the panel (fraction of logo height)
   "size": 0.1..0.8,                              // logo height as a fraction of frame height
   "position": "center"|"top"|"bottom"|"left"|"right",
   "durationMs": 500..8000,                        // total card length; set this to match the music
@@ -785,7 +792,7 @@ EVERY field above is yours to change — you can freely change:
 - "background": colors, gradient angle, glow, vignette (or switch to solid).
 - "layout": "logo-top" (logo above text), "logo-left" (logo beside text), "logo-only", "text-only".
 - "position": where the whole card content sits — center / top / bottom / left / right.
-- "logoContainer": "panel" (white card behind logo), "rounded" (clip corners), "none" (raw logo — best for transparent logos).
+- "logoContainer": "panel" (white card behind logo), "rounded" (clip corners), "none" (raw logo — best for transparent logos). "logoPadding" = breathing room inside the panel.
 - "size": logo size. "durationMs": how long the card lasts.
 - "text": brand name + tagline + color.
 
@@ -806,7 +813,11 @@ Premium guidance:
 export function buildCardDesignPrompt(
 	side: IntroOutroSideConfig,
 	audio?: AudioAnalysis | null,
+	logoColor?: string | null,
 ): string {
+	const logoBlock = logoColor
+		? `\n\nThe logo's dominant color is ${logoColor}. Choose a background gradient, glow color and text color that COMPLEMENT it (good contrast, on-brand) — e.g. a deep complementary/neutral background so the logo pops, glow tinted near ${logoColor}.`
+		: "";
 	let audioBlock = "";
 	if (audio && audio.points.length > 0) {
 		const envelope = audio.points.map((p) => `${p.t}:${p.level}`).join("  ");
@@ -828,7 +839,7 @@ Sync to it: set durationMs to the music length, build the entrance with the swel
 	return `${CARD_DESIGN_DOC}
 
 Current design:
-${JSON.stringify(sideToDesign(side), null, 2)}${audioBlock}
+${JSON.stringify(sideToDesign(side), null, 2)}${logoBlock}${audioBlock}
 
 Now apply this change: <describe what you want, e.g. "make it feel premium and cinematic with a deep blue gradient and a confident logo entrance"${audio ? '; or "design it around the music"' : ""}>
 
