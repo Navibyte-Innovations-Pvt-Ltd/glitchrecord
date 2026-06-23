@@ -664,7 +664,40 @@ export interface AudioRegion {
 	volume: number;
 	normalize?: boolean;
 	trackIndex?: number;
+	/**
+	 * Loop the source audio to fill [startMs, endMs] when the file is shorter
+	 * than the region. Used by the timeline background-music bed so it plays the
+	 * full video with no gap. Plain audio regions leave this undefined (play once).
+	 */
+	loop?: boolean;
+	/**
+	 * Equal-power crossfade applied at each loop seam (ms) so the repeat feels
+	 * seamless rather than a hard cut/click. Only meaningful when `loop` is true.
+	 */
+	loopCrossfadeMs?: number;
 }
+
+/**
+ * Timeline background-music bed. A single track that plays UNDER the narration
+ * for the whole main video (output time 0 → timeline end). It loops seamlessly
+ * when the file is shorter than the video. It lives outside the intro/outro
+ * cards (those are concatenated after export), so music never bleeds into them.
+ */
+export interface BackgroundMusicConfig {
+	/** Absolute local path to the user-picked audio file. */
+	audioPath: string;
+	/** 0..1 — kept low by default so it sits under the narration. */
+	volume: number;
+	/** Equal-power crossfade at each loop seam, in ms. */
+	loopCrossfadeMs: number;
+	/** File basename, for display in the export menu. */
+	name?: string;
+}
+
+/** Default music volume — low enough to sit under narration without ducking. */
+export const DEFAULT_BACKGROUND_MUSIC_VOLUME = 0.18;
+/** Default loop seam crossfade — ~200ms reads as seamless. */
+export const DEFAULT_BACKGROUND_MUSIC_CROSSFADE_MS = 200;
 
 export interface CaptionCue {
 	id: string;
