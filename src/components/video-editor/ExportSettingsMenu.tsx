@@ -41,6 +41,7 @@ interface ExportSettingsMenuProps {
 	gifOutputDimensions: { width: number; height: number };
 	introOutro?: IntroOutroConfig;
 	onIntroOutroChange?: (config: IntroOutroConfig) => void;
+	onIntroOutroOpenStudio?: (tab: "intro" | "outro") => void;
 	onExport?: () => void;
 	className?: string;
 }
@@ -69,6 +70,7 @@ export function ExportSettingsMenu({
 	gifOutputDimensions,
 	introOutro,
 	onIntroOutroChange,
+	onIntroOutroOpenStudio,
 	onExport,
 	className,
 }: ExportSettingsMenuProps) {
@@ -373,8 +375,12 @@ export function ExportSettingsMenu({
 							/>
 						</div>
 					) : null}
-					{introOutro && onIntroOutroChange ? (
-						<IntroOutroSettings config={introOutro} onChange={onIntroOutroChange} />
+					{introOutro && onIntroOutroChange && onIntroOutroOpenStudio ? (
+						<IntroOutroSettings
+							config={introOutro}
+							onChange={onIntroOutroChange}
+							onOpenStudio={onIntroOutroOpenStudio}
+						/>
 					) : null}
 				</LayoutGroup>
 			) : (
