@@ -186,6 +186,11 @@ function normalizeString(value: unknown, max = 120): string {
 	return typeof value === "string" ? value.slice(0, max) : "";
 }
 
+/** Collapse whitespace runs (incl. those introduced by repairing wrapped JSON). */
+function normalizeDisplayText(value: unknown, max = 120): string {
+	return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
+}
+
 function normalizeBackground(value: unknown, legacyColor?: unknown): CardBackground {
 	const bg = (value ?? {}) as Partial<CardBackground>;
 	// Migrate the legacy flat `backgroundColor` into color1 when no nested bg.
@@ -217,8 +222,8 @@ function normalizeCustomAnimation(value: unknown): AnimationSpec | null {
 function normalizeText(value: unknown): CardText {
 	const text = (value ?? {}) as Partial<CardText>;
 	return {
-		brandName: normalizeString(text.brandName),
-		tagline: normalizeString(text.tagline),
+		brandName: normalizeDisplayText(text.brandName),
+		tagline: normalizeDisplayText(text.tagline),
 		color: normalizeHexColor(text.color, DEFAULT_CARD_TEXT.color),
 	};
 }
