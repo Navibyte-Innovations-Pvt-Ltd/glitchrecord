@@ -1,23 +1,15 @@
 import { Sparkle as SparkleIcon } from "@phosphor-icons/react";
-import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
-import { IntroStudioModal } from "./IntroStudioModal";
 import { type IntroOutroConfig, sideIsRenderable } from "./introOutroTypes";
 
 interface IntroOutroSettingsProps {
 	config: IntroOutroConfig;
 	onChange: (next: IntroOutroConfig) => void;
+	/** Opens the (lifted) Intro Studio modal on the given tab. */
+	onOpenStudio: (tab: "intro" | "outro") => void;
 }
 
-export function IntroOutroSettings({ config, onChange }: IntroOutroSettingsProps) {
-	const [studioOpen, setStudioOpen] = useState(false);
-	const [activeTab, setActiveTab] = useState<"intro" | "outro">("intro");
-
-	const openStudio = (tab: "intro" | "outro") => {
-		setActiveTab(tab);
-		setStudioOpen(true);
-	};
-
+export function IntroOutroSettings({ config, onChange, onOpenStudio }: IntroOutroSettingsProps) {
 	const sideSummary = (which: "intro" | "outro") => {
 		const side = config[which];
 		if (!side.enabled) return "Off";
@@ -43,7 +35,7 @@ export function IntroOutroSettings({ config, onChange }: IntroOutroSettingsProps
 				>
 					<button
 						type="button"
-						onClick={() => openStudio(which)}
+						onClick={() => onOpenStudio(which)}
 						className="flex min-w-0 flex-1 flex-col items-start text-left"
 					>
 						<span className="text-[11px] font-semibold capitalize text-foreground">
@@ -66,21 +58,12 @@ export function IntroOutroSettings({ config, onChange }: IntroOutroSettingsProps
 
 			<button
 				type="button"
-				onClick={() => openStudio(activeTab)}
+				onClick={() => onOpenStudio("intro")}
 				className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] py-2 text-xs font-semibold text-white transition-colors hover:bg-[#2563EB]/90"
 			>
 				<SparkleIcon className="h-3.5 w-3.5" weight="fill" />
 				Open Intro Studio
 			</button>
-
-			<IntroStudioModal
-				open={studioOpen}
-				onClose={() => setStudioOpen(false)}
-				config={config}
-				onChange={onChange}
-				activeTab={activeTab}
-				onTabChange={setActiveTab}
-			/>
 		</div>
 	);
 }
