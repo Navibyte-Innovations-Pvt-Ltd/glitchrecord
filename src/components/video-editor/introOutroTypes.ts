@@ -5,6 +5,8 @@
  * portable; uploaded videos are referenced by path (too big to embed).
  */
 
+import type { AnimationSpec } from "./cardAnimations";
+
 export type IntroOutroMode = "card" | "video";
 /**
  * Animation ids — keys into the spec library in cardAnimations.ts. Add a new
@@ -98,6 +100,8 @@ export interface IntroOutroSideConfig {
 	background: CardBackground;
 	logoContainer: LogoContainerStyle;
 	text: CardText;
+	/** AI/hand-authored animation overriding `preset` when set. */
+	customAnimation: AnimationSpec | null;
 	// --- video mode ---
 	/** Absolute path to a user-supplied intro/outro clip (not portable). */
 	videoPath: string;
@@ -143,6 +147,7 @@ export const DEFAULT_INTRO_OUTRO_SIDE: IntroOutroSideConfig = {
 	background: { ...DEFAULT_CARD_BACKGROUND },
 	logoContainer: "panel",
 	text: { ...DEFAULT_CARD_TEXT },
+	customAnimation: null,
 	videoPath: "",
 	audio: { ...DEFAULT_CARD_AUDIO },
 };
@@ -188,6 +193,17 @@ function normalizeBackground(value: unknown, legacyColor?: unknown): CardBackgro
 		color2: normalizeHexColor(bg.color2, DEFAULT_CARD_BACKGROUND.color2),
 		angle: clampNumber(bg.angle, 0, 360, DEFAULT_CARD_BACKGROUND.angle),
 	};
+}
+
+// Shallow pass-through on load — specs are deep-validated in the UI before they
+// are ever stored (cardAnimations.normalizeAnimationSpec). Local check avoids a
+// value import from cardAnimations (which imports this module).
+function normalizeCustomAnimation(value: unknown): AnimationSpec | null {
+	return value &&
+		typeof value === "object" &&
+		Array.isArray((value as { tracks?: unknown }).tracks)
+		? (value as AnimationSpec)
+		: null;
 }
 
 function normalizeText(value: unknown): CardText {
@@ -240,6 +256,7 @@ function normalizeSide(value: unknown): IntroOutroSideConfig {
 			DEFAULT_INTRO_OUTRO_SIDE.logoContainer,
 		),
 		text: normalizeText(side.text),
+		customAnimation: normalizeCustomAnimation(side.customAnimation),
 		videoPath: typeof side.videoPath === "string" ? side.videoPath : "",
 		audio: normalizeAudio(side.audio),
 	};
