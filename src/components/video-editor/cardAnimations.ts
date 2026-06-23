@@ -739,7 +739,7 @@ export function normalizeCardDesign(raw: unknown): Partial<IntroOutroSideConfig>
 		patch.logoContainer = r.logoContainer as LogoContainerStyle;
 	}
 	if (Number.isFinite(r.logoPadding)) {
-		patch.logoPadding = clampNum(r.logoPadding, 0.05, 0.5, 0.18);
+		patch.logoPadding = clampNum(r.logoPadding, 0.05, 0.5, 0.1);
 	}
 	if (INTRO_OUTRO_POSITIONS.includes(r.position as IntroOutroPosition)) {
 		patch.position = r.position as IntroOutroPosition;
