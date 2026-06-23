@@ -549,7 +549,8 @@ export function normalizeCardDesign(raw: unknown): Partial<IntroOutroSideConfig>
 	if (r.background && typeof r.background === "object") {
 		const b = r.background as Partial<CardBackground>;
 		patch.background = {
-			type: b.type === "solid" || b.type === "gradient" ? b.type : DEFAULT_CARD_BACKGROUND.type,
+			type:
+				b.type === "solid" || b.type === "gradient" ? b.type : DEFAULT_CARD_BACKGROUND.type,
 			color1: hexOr(b.color1, DEFAULT_CARD_BACKGROUND.color1),
 			color2: hexOr(b.color2, DEFAULT_CARD_BACKGROUND.color2),
 			angle: clampNum(b.angle, 0, 360, DEFAULT_CARD_BACKGROUND.angle),
@@ -604,7 +605,10 @@ Premium guidance:
 - Return ONLY the JSON object, no prose, no markdown fences.`;
 
 /** Full prompt: the entire card design (not just animation) for any AI. */
-export function buildCardDesignPrompt(side: IntroOutroSideConfig, audio?: AudioAnalysis | null): string {
+export function buildCardDesignPrompt(
+	side: IntroOutroSideConfig,
+	audio?: AudioAnalysis | null,
+): string {
 	let audioBlock = "";
 	if (audio && audio.points.length > 0) {
 		const envelope = audio.points.map((p) => `${p.t}:${p.level}`).join("  ");
