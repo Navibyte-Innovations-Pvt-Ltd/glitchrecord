@@ -7,7 +7,9 @@ import {
 	type CardText,
 	DEFAULT_CARD_BACKGROUND,
 	DEFAULT_CARD_TEXT,
+	INTRO_OUTRO_MAX_DURATION_MS,
 	INTRO_OUTRO_MAX_SIZE,
+	INTRO_OUTRO_MIN_DURATION_MS,
 	INTRO_OUTRO_MIN_SIZE,
 	INTRO_OUTRO_POSITIONS,
 	type IntroOutroPosition,
@@ -676,6 +678,8 @@ export interface CardDesign {
 	logoContainer: LogoContainerStyle;
 	size: number;
 	position: IntroOutroPosition;
+	/** Card length in milliseconds (500–8000). */
+	durationMs: number;
 	animation: Omit<AnimationSpec, "id">;
 }
 
@@ -694,6 +698,7 @@ export function sideToDesign(side: IntroOutroSideConfig): CardDesign {
 		logoContainer: side.logoContainer,
 		size: side.size,
 		position: side.position,
+		durationMs: side.durationMs,
 		animation,
 	};
 }
@@ -736,6 +741,14 @@ export function normalizeCardDesign(raw: unknown): Partial<IntroOutroSideConfig>
 	if (Number.isFinite(r.size)) {
 		patch.size = clampNum(r.size, INTRO_OUTRO_MIN_SIZE, INTRO_OUTRO_MAX_SIZE, 0.25);
 	}
+	if (Number.isFinite(r.durationMs)) {
+		patch.durationMs = clampNum(
+			r.durationMs,
+			INTRO_OUTRO_MIN_DURATION_MS,
+			INTRO_OUTRO_MAX_DURATION_MS,
+			2000,
+		);
+	}
 	const anim = normalizeAnimationSpec(r.animation);
 	if (anim) patch.customAnimation = anim;
 
@@ -750,6 +763,7 @@ const CARD_DESIGN_DOC = `You are designing a GlitchGrab intro/outro brand card. 
   "logoContainer": "panel"|"rounded"|"none",   // panel = white rounded card behind the logo
   "size": 0.1..0.8,                              // logo height as a fraction of frame height
   "position": "center"|"top"|"bottom"|"left"|"right",
+  "durationMs": 500..8000,                        // total card length; set this to match the music
   "animation": {
     "label": string,
     "tracks": Track[],                              // group motion (whole card)
@@ -767,7 +781,15 @@ t is normalized time (0 = start, 1 = end); easing applies INTO the keyframe.
 Property (resting value): "opacity"(1) 0..1 | "scale"(1) multiplier | "x"(0)/"y"(0) offset as FRACTION of frame (-1 = one frame off) | "rotate"(0) deg | "blur"(0) px.
 Easing: linear | easeIn | easeOut | easeInOut | easeOutCubic | easeOutBack | easeOutExpo | easeOutBounce.
 
-Capabilities (use what fits):
+EVERY field above is yours to change — you can freely change:
+- "background": colors, gradient angle, glow, vignette (or switch to solid).
+- "layout": "logo-top" (logo above text), "logo-left" (logo beside text), "logo-only", "text-only".
+- "position": where the whole card content sits — center / top / bottom / left / right.
+- "logoContainer": "panel" (white card behind logo), "rounded" (clip corners), "none" (raw logo — best for transparent logos).
+- "size": logo size. "durationMs": how long the card lasts.
+- "text": brand name + tagline + color.
+
+Animation capabilities (use what fits):
 - "tracks" = the whole card moves together. "elements" = give the logo / name / tagline their OWN entrance (e.g. logo zooms, name slides up, tagline fades after).
 - "reveal" = text appears word-by-word (or letter-by-letter) — great for the brand name.
 - "shine" = a light flare sweeps across the text. Time its "start" to a beat for impact.
@@ -777,6 +799,7 @@ Premium guidance:
 - Tasteful, brand-appropriate. Subtle gradients + a little glow/vignette read as professional.
 - Keep brandName/tagline if present unless asked to change copy. Ensure text color contrasts the background.
 - Animation should end visible then fade out near t=1 unless told otherwise.
+- IMPORTANT: t=0..1 spans the WHOLE card (durationMs). If you set durationMs longer, the same keyframes stretch over more time.
 - Return ONLY the JSON object, no prose, no markdown fences.`;
 
 /** Full prompt: the entire card design (not just animation) for any AI. */
@@ -788,13 +811,19 @@ export function buildCardDesignPrompt(
 	if (audio && audio.points.length > 0) {
 		const envelope = audio.points.map((p) => `${p.t}:${p.level}`).join("  ");
 		const beats = audio.beats.length ? audio.beats.join(", ") : "none detected";
+		const longer = audio.fullDurationSec > side.durationMs / 1000 + 0.05;
 		audioBlock = `
 
-The card has background music (${audio.durationSec}s). Structure: ${audio.summary}.
-Loudness over the card (t:level, both 0..1):
+Background music: ${audio.fullDurationSec}s long; the card is currently ${(side.durationMs / 1000).toFixed(1)}s.${
+			longer
+				? ` ⚠ The music is LONGER than the card — set "durationMs": ${audio.recommendedDurationMs} so the animation spans the whole track (the envelope below is normalized over that ${audio.durationSec}s window).`
+				: ""
+		}
+Structure: ${audio.summary}.
+Loudness over the analyzed window (t:level, both 0..1, t=0 is card start, t=1 is card end):
 ${envelope}
 Energy peaks at t: ${beats}
-Sync to it: build the entrance with the swell, time shine/glow pulses and accents to the peaks, and land the climax where the music does.`;
+Sync to it: set durationMs to the music length, build the entrance with the swell, time shine/glow pulses + accents to the peaks, and land the climax where the music does.`;
 	}
 	return `${CARD_DESIGN_DOC}
 
