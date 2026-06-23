@@ -16,6 +16,8 @@ interface CardOverlayProps {
 	/** Card length in ms (card mode). */
 	durationMs: number;
 	onEnded?: () => void;
+	/** When set (0..1), show a single frozen frame at this progress (scrubbing) — no loop. */
+	frozenProgress?: number;
 }
 
 const CAP_W = 720;
@@ -26,7 +28,13 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 	return u * u * (3 - 2 * u);
 }
 
-export function CardOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOverlayProps) {
+export function CardOverlay({
+	side,
+	logoDataUrl,
+	durationMs,
+	onEnded,
+	frozenProgress,
+}: CardOverlayProps) {
 	if (side.mode === "video" && side.videoPath) {
 		return (
 			<div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black">
@@ -34,7 +42,7 @@ export function CardOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOver
 				<video
 					key={side.videoPath}
 					src={`file://${side.videoPath}`}
-					autoPlay
+					autoPlay={frozenProgress === undefined}
 					className="h-full w-full object-contain"
 					onEnded={onEnded}
 					onError={onEnded}
@@ -48,11 +56,18 @@ export function CardOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOver
 			logoDataUrl={logoDataUrl}
 			durationMs={durationMs}
 			onEnded={onEnded}
+			frozenProgress={frozenProgress}
 		/>
 	);
 }
 
-function CardCanvasOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOverlayProps) {
+function CardCanvasOverlay({
+	side,
+	logoDataUrl,
+	durationMs,
+	onEnded,
+	frozenProgress,
+}: CardOverlayProps) {
 	const wrapRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const logoRef = useRef<HTMLImageElement | null>(null);
@@ -106,45 +121,57 @@ function CardCanvasOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOverl
 	const bgRef = useRef<HTMLCanvasElement | null>(null);
 	const bgKeyRef = useRef("");
 
-	// Self-driven loop — imperative draw, capped to ~30fps (60fps doubled GPU/CPU
-	// for no visible gain). Blits the cached background, then draws the foreground.
+	// Paint one frame at progress p (bg from cache + foreground). `edgeFade`
+	// crossfades the whole overlay at the card edges; off for scrub frames.
+	const paint = useRef<(p: number, edgeFade: boolean) => void>(() => undefined);
+	paint.current = (p: number, edgeFade: boolean) => {
+		const canvas = canvasRef.current;
+		const ctx = canvas?.getContext("2d");
+		if (!canvas || !ctx) return;
+		const w = canvas.width;
+		const h = canvas.height;
+		const bg = side.background;
+		const key = `${w}x${h}|${bg.type}|${bg.color1}|${bg.color2}|${bg.angle}|${bg.glow}|${bg.vignette}`;
+		if (key !== bgKeyRef.current || !bgRef.current) {
+			const bgCanvas = bgRef.current ?? document.createElement("canvas");
+			bgCanvas.width = w;
+			bgCanvas.height = h;
+			const bgCtx = bgCanvas.getContext("2d");
+			if (bgCtx) drawCardBackground(bgCtx, w, h, side);
+			bgRef.current = bgCanvas;
+			bgKeyRef.current = key;
+		}
+		ctx.clearRect(0, 0, w, h);
+		if (bgRef.current) ctx.drawImage(bgRef.current, 0, 0);
+		drawCardForeground(ctx, w, h, logoRef.current, side, p);
+		const edge = edgeFade ? Math.min(smoothstep(0, 0.12, p), 1 - smoothstep(0.88, 1, p)) : 1;
+		if (wrapRef.current) wrapRef.current.style.opacity = String(edge);
+	};
+
+	const isFrozen = frozenProgress !== undefined;
+
+	// Scrub mode: draw a single frozen frame (no loop) whenever progress changes.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: paint reads current side
+	useEffect(() => {
+		if (!isFrozen) return;
+		paint.current(Math.min(1, Math.max(0, frozenProgress ?? 0)), false);
+	}, [isFrozen, frozenProgress, side, logoReady]);
+
+	// Playback mode: self-driven loop capped to ~30fps.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: draws current side; restarts on side/duration change
 	useEffect(() => {
+		if (isFrozen) return;
 		let raf = 0;
 		const startedAt = performance.now();
 		let lastDraw = -1;
 		const frameMs = 1000 / 30;
 		const loop = (now: number) => {
 			raf = requestAnimationFrame(loop);
-			const canvas = canvasRef.current;
-			const ctx = canvas?.getContext("2d");
-			if (!canvas || !ctx) return;
 			const p = Math.min(1, (now - startedAt) / Math.max(1, durationMs));
 			const done = p >= 1;
 			if (!done && lastDraw >= 0 && now - lastDraw < frameMs) return;
 			lastDraw = now;
-
-			const w = canvas.width;
-			const h = canvas.height;
-			// Rebuild the cached background if size/bg changed.
-			const bg = side.background;
-			const key = `${w}x${h}|${bg.type}|${bg.color1}|${bg.color2}|${bg.angle}|${bg.glow}|${bg.vignette}`;
-			if (key !== bgKeyRef.current || !bgRef.current) {
-				const bgCanvas = bgRef.current ?? document.createElement("canvas");
-				bgCanvas.width = w;
-				bgCanvas.height = h;
-				const bgCtx = bgCanvas.getContext("2d");
-				if (bgCtx) drawCardBackground(bgCtx, w, h, side);
-				bgRef.current = bgCanvas;
-				bgKeyRef.current = key;
-			}
-
-			ctx.clearRect(0, 0, w, h);
-			if (bgRef.current) ctx.drawImage(bgRef.current, 0, 0);
-			drawCardForeground(ctx, w, h, logoRef.current, side, p);
-
-			const edge = Math.min(smoothstep(0, 0.12, p), 1 - smoothstep(0.88, 1, p));
-			if (wrapRef.current) wrapRef.current.style.opacity = String(edge);
+			paint.current(p, true);
 			if (done) {
 				cancelAnimationFrame(raf);
 				onEndedRef.current?.();
@@ -152,7 +179,7 @@ function CardCanvasOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOverl
 		};
 		raf = requestAnimationFrame(loop);
 		return () => cancelAnimationFrame(raf);
-	}, [side, durationMs, logoReady]);
+	}, [isFrozen, side, durationMs, logoReady]);
 
 	return (
 		<div
