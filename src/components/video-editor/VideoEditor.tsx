@@ -3906,32 +3906,40 @@ export default function VideoEditor() {
 
 	const getActivePlayback = useCallback(() => videoPlaybackRef.current, []);
 
-	const startPlayback = useCallback(() => {
-		const playback = getActivePlayback();
-		const video = playback?.video;
-		if (!playback || !video) return;
+	const startPlayback = useCallback(
+		(opts?: { fromIntro?: boolean }) => {
+			const playback = getActivePlayback();
+			const video = playback?.video;
+			if (!playback || !video) return;
 
-		const playContent = () => {
-			audio.playSourceAudioPreview();
-			playback.play().catch((err) => console.error("Video play failed:", err));
-		};
+			const playContent = () => {
+				audio.playSourceAudioPreview();
+				playback.play().catch((err) => console.error("Video play failed:", err));
+			};
 
-		// Intro pre-roll: only when starting from the very beginning of the
-		// timeline and not already shown for this play run. Otherwise normal play.
-		const io = introOutroRef.current;
-		const introCard = sideIsRenderable(io.intro, io.logoDataUrl) ? io.intro : null;
-		const atStart = timelinePlayheadRef.current <= 0.05;
-		if (introCard && atStart && !introPlayedForRunRef.current) {
-			// Keep isPlaying false while the card plays so the audio hook / source
-			// preview don't start early (the card runs on its own rAF). Audio + video
-			// kick in together at handoff in playContent().
-			introPlayedForRunRef.current = true;
-			playCard(introCard, playContent);
-			return;
-		}
+			// Intro pre-roll: auto when starting from the very beginning of the
+			// timeline (and not already shown this run), OR forced when the user
+			// clicks the Intro gutter — then it rewinds to the start so the recording
+			// plays continuously right after the card.
+			const io = introOutroRef.current;
+			const introCard = sideIsRenderable(io.intro, io.logoDataUrl) ? io.intro : null;
+			const atStart = timelinePlayheadRef.current <= 0.05;
+			const wantIntro =
+				introCard && (opts?.fromIntro || (atStart && !introPlayedForRunRef.current));
+			if (introCard && wantIntro) {
+				if (opts?.fromIntro) video.currentTime = mapTimelineTimeToSourceTime(0) / 1000;
+				// Keep isPlaying false while the card plays so the audio hook / source
+				// preview don't start early (the card runs on its own rAF). Audio + video
+				// kick in together at handoff in playContent().
+				introPlayedForRunRef.current = true;
+				playCard(introCard, playContent);
+				return;
+			}
 
-		playContent();
-	}, [audio.playSourceAudioPreview, getActivePlayback, playCard]);
+			playContent();
+		},
+		[audio.playSourceAudioPreview, getActivePlayback, mapTimelineTimeToSourceTime, playCard],
+	);
 
 	function togglePlayPause() {
 		const playback = getActivePlayback();
@@ -7558,10 +7566,11 @@ export default function VideoEditor() {
 									? `Intro ${(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s`
 									: "+ Intro",
 								active: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl),
-								// Click = preview the card; drag = scrub; pencil = open setup; × = remove.
+								// Click = play intro then continue into the recording (unified
+								// playhead); drag = scrub; pencil = open setup; × = remove.
 								onClick: () =>
 									sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
-										? playCard(introOutro.intro)
+										? startPlayback({ fromIntro: true })
 										: openIntroStudio("intro"),
 								onEdit: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
 									? () => openIntroStudio("intro")
@@ -7570,6 +7579,10 @@ export default function VideoEditor() {
 								playing: !!activeCard && activeCard.side === introOutro.intro,
 								onScrub: (p) => scrubCardTo(introOutro.intro, p),
 								onScrubEnd: endScrubCard,
+								scrubProgress:
+									scrubCard?.side === introOutro.intro
+										? scrubCard.progress
+										: undefined,
 								onDelete: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
 									? () => deleteSide("intro")
 									: undefined,
@@ -7590,6 +7603,10 @@ export default function VideoEditor() {
 								playing: !!activeCard && activeCard.side === introOutro.outro,
 								onScrub: (p) => scrubCardTo(introOutro.outro, p),
 								onScrubEnd: endScrubCard,
+								scrubProgress:
+									scrubCard?.side === introOutro.outro
+										? scrubCard.progress
+										: undefined,
 								onDelete: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
 									? () => deleteSide("outro")
 									: undefined,
