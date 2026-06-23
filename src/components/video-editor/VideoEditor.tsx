@@ -1625,6 +1625,8 @@ export default function VideoEditor() {
 				cancelAnimationFrame(cardRafRef.current);
 				cardRafRef.current = null;
 			}
+			cardAudioRef.current?.pause();
+			cardAudioRef.current = null;
 			const pending = pendingExportSaveRef.current;
 			pendingExportSaveRef.current = null;
 			if (pending?.tempFilePath && typeof window !== "undefined") {
@@ -3740,56 +3742,85 @@ export default function VideoEditor() {
 	// Completion callback for the active card (video mode resolves on the clip's
 	// `ended` event; card mode resolves when its rAF reaches progress 1).
 	const cardOnDoneRef = useRef<(() => void) | null>(null);
+	const cardAudioRef = useRef<HTMLAudioElement | null>(null);
+
+	// The card's uploaded audio plays alongside the inline card (built-in stings
+	// are main-process-only, so can't play in the renderer here).
+	const stopCardAudio = useCallback(() => {
+		if (cardAudioRef.current) {
+			cardAudioRef.current.pause();
+			cardAudioRef.current = null;
+		}
+	}, []);
+	const startCardAudio = useCallback(
+		(side: IntroOutroSideConfig) => {
+			stopCardAudio();
+			if (side.audio.mode !== "upload" || !side.audio.dataUrl) return;
+			const el = new Audio(side.audio.dataUrl);
+			el.volume = Math.min(1, Math.max(0, side.audio.volume));
+			cardAudioRef.current = el;
+			el.play().catch(() => undefined);
+		},
+		[stopCardAudio],
+	);
 
 	// Plays one intro/outro card over the preview. Card mode advances `progress`
 	// 0→1 across its duration; video mode shows the clip and waits for its `ended`.
 	// The main <video> stays parked. Then clears and calls `onDone`.
-	const playCard = useCallback((side: IntroOutroSideConfig, onDone?: () => void) => {
-		if (cardRafRef.current !== null) {
-			cancelAnimationFrame(cardRafRef.current);
-			cardRafRef.current = null;
-		}
-		cardOnDoneRef.current = onDone ?? null;
-		setActiveCard({ side, progress: 0 });
-
-		if (side.mode === "video" && side.videoPath) {
-			return; // CardOverlay <video> drives completion via onEnded.
-		}
-
-		const durationMs = cardDurationMs(side);
-		const startedAt = performance.now();
-		const tick = (now: number) => {
-			const progress = (now - startedAt) / durationMs;
-			if (progress >= 1) {
+	const playCard = useCallback(
+		(side: IntroOutroSideConfig, onDone?: () => void) => {
+			if (cardRafRef.current !== null) {
+				cancelAnimationFrame(cardRafRef.current);
 				cardRafRef.current = null;
-				setActiveCard(null);
-				const done = cardOnDoneRef.current;
-				cardOnDoneRef.current = null;
-				done?.();
-				return;
 			}
-			setActiveCard({ side, progress });
+			cardOnDoneRef.current = onDone ?? null;
+			setActiveCard({ side, progress: 0 });
+
+			if (side.mode === "video" && side.videoPath) {
+				return; // CardOverlay <video> drives completion via onEnded (+ its own audio).
+			}
+
+			startCardAudio(side);
+
+			const durationMs = cardDurationMs(side);
+			const startedAt = performance.now();
+			const tick = (now: number) => {
+				const progress = (now - startedAt) / durationMs;
+				if (progress >= 1) {
+					cardRafRef.current = null;
+					stopCardAudio();
+					setActiveCard(null);
+					const done = cardOnDoneRef.current;
+					cardOnDoneRef.current = null;
+					done?.();
+					return;
+				}
+				setActiveCard({ side, progress });
+				cardRafRef.current = requestAnimationFrame(tick);
+			};
 			cardRafRef.current = requestAnimationFrame(tick);
-		};
-		cardRafRef.current = requestAnimationFrame(tick);
-	}, []);
+		},
+		[startCardAudio, stopCardAudio],
+	);
 
 	const stopCard = useCallback(() => {
 		if (cardRafRef.current !== null) {
 			cancelAnimationFrame(cardRafRef.current);
 			cardRafRef.current = null;
 		}
+		stopCardAudio();
 		cardOnDoneRef.current = null;
 		setActiveCard(null);
-	}, []);
+	}, [stopCardAudio]);
 
 	// Video-mode card finished → clear overlay and resume the flow.
 	const handleCardVideoEnded = useCallback(() => {
+		stopCardAudio();
 		setActiveCard(null);
 		const done = cardOnDoneRef.current;
 		cardOnDoneRef.current = null;
 		done?.();
-	}, []);
+	}, [stopCardAudio]);
 
 	// Speed = per-clip speed (carve). Derived from clipRegions only; the old
 	// overlay speedRegions state is no longer used so it can't apply invisibly.
@@ -7396,6 +7427,24 @@ export default function VideoEditor() {
 						minHeight: TIMELINE_MIN_HEIGHT,
 					}}
 				>
+					{sideIsRenderable(introOutro.intro, introOutro.logoDataUrl) ||
+					sideIsRenderable(introOutro.outro, introOutro.logoDataUrl) ? (
+						<div className="mb-1 flex items-center gap-1.5 px-1 text-[10px] text-muted-foreground/70">
+							{sideIsRenderable(introOutro.intro, introOutro.logoDataUrl) ? (
+								<span className="rounded bg-[#2563EB]/15 px-1.5 py-0.5 font-medium text-[#2563EB] dark:text-[#93c5fd]">
+									▶ Intro {(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s
+								</span>
+							) : null}
+							<span className="truncate">
+								plays around your recording (export + preview)
+							</span>
+							{sideIsRenderable(introOutro.outro, introOutro.logoDataUrl) ? (
+								<span className="ml-auto rounded bg-[#2563EB]/15 px-1.5 py-0.5 font-medium text-[#2563EB] dark:text-[#93c5fd]">
+									Outro {(cardDurationMs(introOutro.outro) / 1000).toFixed(1)}s ◀
+								</span>
+							) : null}
+						</div>
+					) : null}
 					<TimelineEditor
 						ref={timelineRef}
 						videoDuration={timelineDuration}
