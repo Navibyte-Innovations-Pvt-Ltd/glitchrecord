@@ -20,11 +20,13 @@ import {
 } from "@/lib/exporter/temporalMotionBlur";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
+import { normalizeBackgroundMusic } from "./backgroundMusic";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
 import { type IntroOutroConfig, normalizeIntroOutro } from "./introOutroTypes";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
+	type BackgroundMusicConfig,
 	type AutoCaptionAnimation,
 	type AutoCaptionSettings,
 	type CaptionCue,
@@ -154,6 +156,7 @@ export interface ProjectEditorState {
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
 	introOutro: IntroOutroConfig;
+	backgroundMusic?: BackgroundMusicConfig | null;
 }
 
 export interface EditorProjectData {
@@ -1099,6 +1102,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				? editor.gifSizePreset
 				: "medium",
 		introOutro: normalizeIntroOutro(editor.introOutro),
+		backgroundMusic: normalizeBackgroundMusic(editor.backgroundMusic),
 	};
 }
 
