@@ -225,7 +225,13 @@ interface Window {
 		writeClipboard: (text: string) => Promise<{ ok: boolean }>;
 		generateNarration: (
 			text: string,
-			opts?: { engine?: string; lang?: string; speaker?: string; voice?: string; apiKey?: string },
+			opts?: {
+				engine?: string;
+				lang?: string;
+				speaker?: string;
+				voice?: string;
+				apiKey?: string;
+			},
 		) => Promise<{ ok: boolean; path?: string; error?: string }>;
 		onNarrationProgress: (cb: (stage: string) => void) => () => void;
 		openNarrationTester: () => Promise<{ ok: boolean }>;
@@ -552,6 +558,27 @@ interface Window {
 			tempPath: string;
 			fileName: string;
 			outputPath?: string | null;
+			// Structural mirror of electron/ipc/export/introOutro.ts
+			// IntroOutroConfig (ambient .d.ts cannot import across the boundary).
+			introOutro?: {
+				logoDataUrl: string;
+				intro: {
+					enabled: boolean;
+					preset: "fade" | "scale-pop" | "slide" | "glitch";
+					durationMs: number;
+					backgroundColor: string;
+					position: "center" | "top" | "bottom" | "left" | "right";
+					size: number;
+				};
+				outro: {
+					enabled: boolean;
+					preset: "fade" | "scale-pop" | "slide" | "glitch";
+					durationMs: number;
+					backgroundColor: string;
+					position: "center" | "top" | "bottom" | "left" | "right";
+					size: number;
+				};
+			} | null;
 		}) => Promise<{
 			success: boolean;
 			path?: string;
@@ -755,7 +782,10 @@ interface Window {
 			canceled?: boolean;
 			error?: string;
 		}>;
-		saveRecordingProject: (videoPath: string, projectData: unknown) => Promise<{
+		saveRecordingProject: (
+			videoPath: string,
+			projectData: unknown,
+		) => Promise<{
 			success: boolean;
 			error?: string;
 		}>;
