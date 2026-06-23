@@ -96,6 +96,11 @@ interface GroupMetrics {
 	height: number;
 	logoW: number;
 	logoH: number;
+	/** Panel padding around the logo (0 unless logoContainer === "panel"). */
+	panelPad: number;
+	/** Logo + panel-padding box dimensions (what the layout reserves). */
+	logoBoxW: number;
+	logoBoxH: number;
 	nameSize: number;
 	taglineSize: number;
 	hasLogo: boolean;
@@ -112,6 +117,12 @@ function measureGroup(
 	const showLogo = side.layout !== "text-only" && !!logo && logo.naturalWidth > 0;
 	const logoH = showLogo ? Math.max(2, Math.round(H * clamp01(side.size))) : 0;
 	const logoW = showLogo ? Math.round(logoH * (logo.naturalWidth / logo.naturalHeight)) : 0;
+	const panelPad =
+		showLogo && side.logoContainer === "panel"
+			? Math.round(logoH * Math.min(0.5, Math.max(0.05, side.logoPadding)))
+			: 0;
+	const logoBoxW = logoW + panelPad * 2;
+	const logoBoxH = logoH + panelPad * 2;
 
 	const hasName = Boolean(side.text.brandName.trim());
 	const hasTagline = Boolean(side.text.tagline.trim());
@@ -137,12 +148,12 @@ function measureGroup(
 	let width = 0;
 	let height = 0;
 	if (side.layout === "logo-left") {
-		width = logoW + (textBlockW ? gap + textBlockW : 0);
-		height = Math.max(logoH, textBlockH);
+		width = logoBoxW + (textBlockW ? gap + textBlockW : 0);
+		height = Math.max(logoBoxH, textBlockH);
 	} else {
 		// logo-only / logo-top / text-only stack vertically.
-		width = Math.max(logoW, textBlockW);
-		height = logoH + (logoH && textBlockH ? gap : 0) + textBlockH;
+		width = Math.max(logoBoxW, textBlockW);
+		height = logoBoxH + (logoBoxH && textBlockH ? gap : 0) + textBlockH;
 	}
 
 	return {
@@ -150,6 +161,9 @@ function measureGroup(
 		height,
 		logoW,
 		logoH,
+		panelPad,
+		logoBoxW,
+		logoBoxH,
 		nameSize,
 		taglineSize,
 		hasLogo: showLogo,
@@ -183,12 +197,13 @@ function drawLogoWithContainer(
 	w: number,
 	h: number,
 	style: IntroOutroSideConfig["logoContainer"],
+	pad: number,
 ): void {
 	if (style === "panel") {
 		// Filled rounded card behind the logo with a soft shadow + hairline ring —
-		// makes white-bg / busy logos look intentional and premium.
-		const pad = Math.round(Math.min(w, h) * 0.18);
-		const radius = Math.round(Math.min(w, h) * 0.18) + pad;
+		// makes white-bg / busy logos look intentional and premium. `pad` comes
+		// from the layout so the panel box is reserved in spacing (no text overlap).
+		const radius = Math.round(Math.min(w, h) * 0.14) + pad;
 		ctx.save();
 		ctx.shadowColor = "rgba(0,0,0,0.45)";
 		ctx.shadowBlur = Math.round(h * 0.22);
@@ -422,19 +437,31 @@ function drawGroup(
 	const glowIntensity = resolveGlow(spec, t);
 	const glowColor = spec.glow?.color ?? "#6478ff";
 
-	const drawLogo = (lx: number, ly: number) => {
+	// (boxX, boxY) = top-left of the logo's reserved box (logo + panel padding).
+	const drawLogo = (boxX: number, boxY: number) => {
 		if (!m.hasLogo || !logo) return;
-		const cx = lx + m.logoW / 2;
-		const cy = ly + m.logoH / 2;
+		const imgX = boxX + m.panelPad;
+		const imgY = boxY + m.panelPad;
+		const cx = imgX + m.logoW / 2;
+		const cy = imgY + m.logoH / 2;
 		withElement(ctx, cx, cy, logoAnim, () => {
 			drawLogoGlow(ctx, cx, cy, m.logoH * 0.95, glowColor, glowIntensity);
-			drawLogoWithContainer(ctx, logo, lx, ly, m.logoW, m.logoH, side.logoContainer);
+			drawLogoWithContainer(
+				ctx,
+				logo,
+				imgX,
+				imgY,
+				m.logoW,
+				m.logoH,
+				side.logoContainer,
+				m.panelPad,
+			);
 		});
 	};
 
 	if (side.layout === "logo-left") {
-		drawLogo(ox, oy + (m.height - m.logoH) / 2);
-		const textX = ox + (m.hasLogo ? m.logoW + gap : 0);
+		drawLogo(ox, oy + (m.height - m.logoBoxH) / 2);
+		const textX = ox + (m.hasLogo ? m.logoBoxW + gap : 0);
 		const textBlockH =
 			(m.hasName ? m.nameSize : 0) + (m.hasTagline ? m.taglineSize + textGap : 0);
 		let ty = oy + (m.height - textBlockH) / 2;
@@ -493,8 +520,8 @@ function drawGroup(
 	const cx = ox + m.width / 2;
 	let y = oy;
 	if (m.hasLogo && logo) {
-		drawLogo(cx - m.logoW / 2, y);
-		y += m.logoH + gap;
+		drawLogo(cx - m.logoBoxW / 2, y);
+		y += m.logoBoxH + gap;
 	}
 	if (m.hasName) {
 		ctx.font = `800 ${m.nameSize}px Inter, system-ui, sans-serif`;
