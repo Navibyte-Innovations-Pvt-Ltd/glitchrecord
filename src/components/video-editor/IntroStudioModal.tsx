@@ -477,13 +477,13 @@ function LogoRow({
 			{hasLogo && opaque ? (
 				<p className="mt-1.5 text-[10px] text-amber-500">
 					⚠ This logo has a solid background. Upload a{" "}
-					<span className="font-semibold">transparent PNG</span> — or set Logo Container to
-					“None” — to avoid a hard box edge against the card.
+					<span className="font-semibold">transparent PNG</span> — or set Logo Container
+					to “None” — to avoid a hard box edge against the card.
 				</p>
 			) : (
 				<p className="mt-1.5 text-[10px] text-muted-foreground/70">
-					Use a transparent PNG (no background) — a logo with its own white/solid box shows a
-					hard edge against the card.
+					Use a transparent PNG (no background) — a logo with its own white/solid box
+					shows a hard edge against the card.
 				</p>
 			)}
 		</Section>
