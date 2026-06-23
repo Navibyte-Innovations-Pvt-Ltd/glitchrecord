@@ -228,7 +228,11 @@ export function IntroStudioModal({
 										}
 									/>
 								</Section>
-								<AISection side={side} setSide={setSide} />
+								<AISection
+									side={side}
+									setSide={setSide}
+									logoDataUrl={config.logoDataUrl}
+								/>
 								<Section title="Position">
 									<ChipRow
 										options={POSITIONS}
@@ -242,6 +246,19 @@ export function IntroStudioModal({
 										value={side.logoContainer}
 										onSelect={(logoContainer) => setSide({ logoContainer })}
 									/>
+									{side.logoContainer === "panel" ? (
+										<SliderRow
+											label="Panel padding"
+											valueLabel={`${Math.round(side.logoPadding * 100)}%`}
+											min={0.05}
+											max={0.5}
+											step={0.01}
+											value={side.logoPadding}
+											onValueChange={(logoPadding) =>
+												setSide({ logoPadding })
+											}
+										/>
+									) : null}
 								</Section>
 								<Section title="Background">
 									<div className="mb-2 flex rounded-lg border border-foreground/10 bg-foreground/5 p-0.5">
@@ -351,6 +368,54 @@ export function IntroStudioModal({
 }
 
 /** True if the image likely has a solid background (opaque corners / no alpha). */
+/** Average ink color of the logo (skips transparent + near-white pixels). */
+function getLogoColor(dataUrl: string): Promise<string | null> {
+	return new Promise((resolve) => {
+		const img = new Image();
+		img.onload = () => {
+			try {
+				const w = 32;
+				const h = 32;
+				const c = document.createElement("canvas");
+				c.width = w;
+				c.height = h;
+				const ctx = c.getContext("2d");
+				if (!ctx) {
+					resolve(null);
+					return;
+				}
+				ctx.drawImage(img, 0, 0, w, h);
+				const d = ctx.getImageData(0, 0, w, h).data;
+				let r = 0;
+				let g = 0;
+				let b = 0;
+				let n = 0;
+				for (let i = 0; i < d.length; i += 4) {
+					if (d[i + 3] < 20) continue;
+					if (d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235) continue; // skip white box/bg
+					r += d[i];
+					g += d[i + 1];
+					b += d[i + 2];
+					n++;
+				}
+				if (n === 0) {
+					resolve(null);
+					return;
+				}
+				const hx = (x: number) =>
+					Math.round(x / n)
+						.toString(16)
+						.padStart(2, "0");
+				resolve(`#${hx(r)}${hx(g)}${hx(b)}`);
+			} catch {
+				resolve(null);
+			}
+		};
+		img.onerror = () => resolve(null);
+		img.src = dataUrl;
+	});
+}
+
 function isLogoOpaque(dataUrl: string): Promise<boolean> {
 	return new Promise((resolve) => {
 		const img = new Image();
@@ -640,9 +705,11 @@ function AudioSection({
 function AISection({
 	side,
 	setSide,
+	logoDataUrl,
 }: {
 	side: IntroOutroSideConfig;
 	setSide: (patch: Partial<IntroOutroSideConfig>) => void;
+	logoDataUrl: string;
 }) {
 	const [paste, setPaste] = useState("");
 	const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -652,7 +719,8 @@ function AISection({
 
 	const copyPrompt = async () => {
 		const audio = hasUploadedAudio ? await analyzeAudio(side.audio.dataUrl) : null;
-		const text = buildCardDesignPrompt(side, audio);
+		const logoColor = logoDataUrl ? await getLogoColor(logoDataUrl) : null;
+		const text = buildCardDesignPrompt(side, audio, logoColor);
 		try {
 			if (window.electronAPI?.writeClipboard) {
 				await window.electronAPI.writeClipboard(text);
