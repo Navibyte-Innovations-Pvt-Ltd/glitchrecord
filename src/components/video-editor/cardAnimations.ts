@@ -1,3 +1,4 @@
+import type { AudioAnalysis } from "./analyzeAudio";
 import { CARD_ANIMATION_IDS, type IntroOutroPreset } from "./introOutroTypes";
 
 /**
@@ -453,13 +454,28 @@ Rules:
 - Return ONLY the JSON object, no prose, no markdown fences.`;
 
 /** Build the full prompt for the user to paste into any AI. */
-export function buildAnimationPrompt(spec: AnimationSpec): string {
+export function buildAnimationPrompt(spec: AnimationSpec, audio?: AudioAnalysis | null): string {
+	let audioBlock = "";
+	if (audio && audio.points.length > 0) {
+		const envelope = audio.points.map((p) => `${p.t}:${p.level}`).join("  ");
+		const beats = audio.beats.length ? audio.beats.join(", ") : "none detected";
+		audioBlock = `
+
+The card has background music (${audio.durationSec}s). Its loudness over the card timeline
+(format t:level, t=0..1 normalized to the card, level=0..1 peak-normalized):
+${envelope}
+Energy peaks (good moments to emphasize / hit) at t: ${beats}
+
+Design the animation so the logo's motion EMPHASIZES the louder moments and lands accents on
+the energy peaks (e.g. a scale bump or settle on each peak, build with the swell). Keep it tasteful.`;
+	}
+
 	return `${ANIMATION_LANGUAGE_DOC}
 
 Here is the current animation:
-${JSON.stringify({ label: spec.label, tracks: spec.tracks }, null, 2)}
+${JSON.stringify({ label: spec.label, tracks: spec.tracks }, null, 2)}${audioBlock}
 
-Now apply this change: <describe what you want, e.g. "make the logo bounce in harder and spin slightly">
+Now apply this change: <describe what you want, e.g. "make the logo bounce in harder and spin slightly"${audio ? '; or just "sync the logo motion to the music"' : ""}>
 
 Return the full updated JSON object only.`;
 }
