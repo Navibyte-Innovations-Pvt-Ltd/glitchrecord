@@ -1,4 +1,9 @@
-import { MagnifyingGlassMinus, MagnifyingGlassPlus, Plus } from "@phosphor-icons/react";
+import {
+	MagnifyingGlassMinus,
+	MagnifyingGlassPlus,
+	PencilSimple,
+	Plus,
+} from "@phosphor-icons/react";
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -37,7 +42,10 @@ import { TIMELINE_AXIS_HEIGHT_PX, TIMELINE_ROW_MAX_HEIGHT_PX } from "./timelineL
 export interface TimelineEndcap {
 	label: string;
 	active: boolean;
+	/** Primary click — preview the card in the player (or open setup if empty). */
 	onClick: () => void;
+	/** Pencil button — open the studio to edit this side (active only). */
+	onEdit?: () => void;
 }
 
 export interface TimelineEditorProps {
@@ -483,6 +491,20 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							>
 								▶ {endcaps.intro.label}
 							</button>
+							{endcaps.intro.onEdit ? (
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation();
+										endcaps.intro?.onEdit?.();
+									}}
+									aria-label="Edit intro"
+									className="absolute z-10 rounded bg-black/55 p-0.5 text-white/80 hover:text-white"
+									style={{ top: TIMELINE_AXIS_HEIGHT_PX + 3, right: 6 }}
+								>
+									<PencilSimple className="h-3 w-3" weight="bold" />
+								</button>
+							) : null}
 						</div>
 					) : null}
 					<div
@@ -593,6 +615,20 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							>
 								{endcaps.outro.label} ◀
 							</button>
+							{endcaps.outro.onEdit ? (
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation();
+										endcaps.outro?.onEdit?.();
+									}}
+									aria-label="Edit outro"
+									className="absolute z-10 rounded bg-black/55 p-0.5 text-white/80 hover:text-white"
+									style={{ top: TIMELINE_AXIS_HEIGHT_PX + 3, right: 6 }}
+								>
+									<PencilSimple className="h-3 w-3" weight="bold" />
+								</button>
+							) : null}
 						</div>
 					) : null}
 				</div>
