@@ -58,8 +58,6 @@ export function normalizeBackgroundMusic(value: unknown): BackgroundMusicConfig 
 			typeof raw.loopCrossfadeMs === "number" && Number.isFinite(raw.loopCrossfadeMs)
 				? Math.max(0, Math.round(raw.loopCrossfadeMs))
 				: DEFAULT_BACKGROUND_MUSIC_CROSSFADE_MS,
-		...(typeof raw.name === "string" && raw.name.trim().length > 0
-			? { name: raw.name }
-			: {}),
+		...(typeof raw.name === "string" && raw.name.trim().length > 0 ? { name: raw.name } : {}),
 	};
 }
