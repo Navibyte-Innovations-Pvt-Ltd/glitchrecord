@@ -850,6 +850,12 @@ export default function VideoEditor() {
 	// Which card is showing (the overlay self-animates; we don't track progress
 	// in React state — that re-rendered the whole editor every frame and lagged).
 	const [activeCard, setActiveCard] = useState<{ side: IntroOutroSideConfig } | null>(null);
+	// Frozen card frame shown while the user scrubs an intro/outro gutter (no rAF
+	// loop — CardOverlay paints a single frame at this progress).
+	const [scrubCard, setScrubCard] = useState<{
+		side: IntroOutroSideConfig;
+		progress: number;
+	} | null>(null);
 	const introPlayedForRunRef = useRef(false);
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
@@ -3810,6 +3816,22 @@ export default function VideoEditor() {
 		cardOnDoneRef.current = null;
 		done?.();
 	}, [stopCardAudio]);
+
+	// Scrubbing an intro/outro gutter: stop any playing card and freeze a single
+	// frame at the dragged progress into the preview.
+	const scrubCardTo = useCallback(
+		(side: IntroOutroSideConfig, progress: number) => {
+			if (cardActiveRef.current) stopCard();
+			setScrubCard({ side, progress });
+		},
+		[stopCard],
+	);
+	const endScrubCard = useCallback(() => setScrubCard(null), []);
+
+	// × on a gutter — remove the side (disable it).
+	const deleteSide = useCallback((which: "intro" | "outro") => {
+		setIntroOutro((io) => ({ ...io, [which]: { ...io[which], enabled: false } }));
+	}, []);
 
 	// Speed = per-clip speed (carve). Derived from clipRegions only; the old
 	// overlay speedRegions state is no longer used so it can't apply invisibly.
@@ -7229,6 +7251,13 @@ export default function VideoEditor() {
 													durationMs={cardDurationMs(activeCard.side)}
 													onEnded={handleCardVideoEnded}
 												/>
+											) : scrubCard ? (
+												<CardOverlay
+													side={scrubCard.side}
+													logoDataUrl={introOutro.logoDataUrl}
+													durationMs={cardDurationMs(scrubCard.side)}
+													frozenProgress={scrubCard.progress}
+												/>
 											) : null}
 										</div>
 									</div>
@@ -7529,13 +7558,20 @@ export default function VideoEditor() {
 									? `Intro ${(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s`
 									: "+ Intro",
 								active: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl),
-								// Click = preview the card in the player; pencil = open setup.
+								// Click = preview the card; drag = scrub; pencil = open setup; × = remove.
 								onClick: () =>
 									sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
 										? playCard(introOutro.intro)
 										: openIntroStudio("intro"),
 								onEdit: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
 									? () => openIntroStudio("intro")
+									: undefined,
+								durationMs: cardDurationMs(introOutro.intro),
+								playing: !!activeCard && activeCard.side === introOutro.intro,
+								onScrub: (p) => scrubCardTo(introOutro.intro, p),
+								onScrubEnd: endScrubCard,
+								onDelete: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
+									? () => deleteSide("intro")
 									: undefined,
 							},
 							outro: {
@@ -7549,6 +7585,13 @@ export default function VideoEditor() {
 										: openIntroStudio("outro"),
 								onEdit: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
 									? () => openIntroStudio("outro")
+									: undefined,
+								durationMs: cardDurationMs(introOutro.outro),
+								playing: !!activeCard && activeCard.side === introOutro.outro,
+								onScrub: (p) => scrubCardTo(introOutro.outro, p),
+								onScrubEnd: endScrubCard,
+								onDelete: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
+									? () => deleteSide("outro")
 									: undefined,
 							},
 						}}
