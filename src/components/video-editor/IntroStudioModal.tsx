@@ -333,6 +333,18 @@ export function IntroStudioModal({
 						)}
 					</div>
 				</div>
+				<div className="flex items-center justify-between border-t border-foreground/10 px-5 py-3">
+					<span className="text-[11px] text-muted-foreground">
+						Changes save automatically with your project.
+					</span>
+					<button
+						type="button"
+						onClick={onClose}
+						className="rounded-lg bg-[#2563EB] px-6 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#2563EB]/90"
+					>
+						Done
+					</button>
+				</div>
 			</div>
 		</div>,
 		document.body,
