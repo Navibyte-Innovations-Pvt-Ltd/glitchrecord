@@ -5,7 +5,7 @@ import {
 	UploadSimple as UploadIcon,
 	X as XIcon,
 } from "@phosphor-icons/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -351,6 +351,51 @@ export function IntroStudioModal({
 	);
 }
 
+/** True if the image likely has a solid background (opaque corners / no alpha). */
+function isLogoOpaque(dataUrl: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		const img = new Image();
+		img.onload = () => {
+			try {
+				const w = 64;
+				const h = 64;
+				const c = document.createElement("canvas");
+				c.width = w;
+				c.height = h;
+				const ctx = c.getContext("2d");
+				if (!ctx) {
+					resolve(false);
+					return;
+				}
+				ctx.drawImage(img, 0, 0, w, h);
+				const corners: [number, number][] = [
+					[1, 1],
+					[w - 2, 1],
+					[1, h - 2],
+					[w - 2, h - 2],
+				];
+				let opaqueCorners = 0;
+				for (const [x, y] of corners) {
+					if (ctx.getImageData(x, y, 1, 1).data[3] >= 250) opaqueCorners++;
+				}
+				const data = ctx.getImageData(0, 0, w, h).data;
+				let hasTransparent = false;
+				for (let i = 3; i < data.length; i += 4) {
+					if (data[i] < 10) {
+						hasTransparent = true;
+						break;
+					}
+				}
+				resolve(opaqueCorners === 4 || !hasTransparent);
+			} catch {
+				resolve(false);
+			}
+		};
+		img.onerror = () => resolve(false);
+		img.src = dataUrl;
+	});
+}
+
 function LogoRow({
 	config,
 	onChange,
@@ -360,6 +405,23 @@ function LogoRow({
 }) {
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const hasLogo = Boolean(config.logoDataUrl);
+	const [opaque, setOpaque] = useState(false);
+
+	// Detect a logo with a solid background (opaque corners) → warn the user.
+	useEffect(() => {
+		if (!config.logoDataUrl) {
+			setOpaque(false);
+			return;
+		}
+		let cancelled = false;
+		isLogoOpaque(config.logoDataUrl).then((v) => {
+			if (!cancelled) setOpaque(v);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [config.logoDataUrl]);
+
 	const handleFile = (file: File | undefined) => {
 		if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > MAX_LOGO_BYTES)
 			return;
@@ -412,10 +474,18 @@ function LogoRow({
 					</button>
 				) : null}
 			</div>
-			<p className="mt-1.5 text-[10px] text-muted-foreground/70">
-				Use a transparent PNG (no background) — a logo with its own white/solid box shows a
-				hard edge against the card.
-			</p>
+			{hasLogo && opaque ? (
+				<p className="mt-1.5 text-[10px] text-amber-500">
+					⚠ This logo has a solid background. Upload a{" "}
+					<span className="font-semibold">transparent PNG</span> — or set Logo Container to
+					“None” — to avoid a hard box edge against the card.
+				</p>
+			) : (
+				<p className="mt-1.5 text-[10px] text-muted-foreground/70">
+					Use a transparent PNG (no background) — a logo with its own white/solid box shows a
+					hard edge against the card.
+				</p>
+			)}
 		</Section>
 	);
 }
