@@ -26,9 +26,9 @@ import { type IntroOutroConfig, normalizeIntroOutro } from "./introOutroTypes";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
-	type BackgroundMusicConfig,
 	type AutoCaptionAnimation,
 	type AutoCaptionSettings,
+	type BackgroundMusicConfig,
 	type CaptionCue,
 	type CaptionCueWord,
 	type ClipRegion,
