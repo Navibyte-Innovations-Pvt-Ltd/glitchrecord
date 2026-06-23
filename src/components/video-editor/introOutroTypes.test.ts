@@ -34,7 +34,7 @@ describe("normalizeIntroOutro", () => {
 			logoDataUrl: "data:image/png;base64,AAAA",
 			intro: { preset: "explode", position: "diagonal", layout: "nope" },
 		});
-		expect(normalized.intro.preset).toBe("fade");
+		expect(normalized.intro.preset).toBe(DEFAULT_INTRO_OUTRO.intro.preset);
 		expect(normalized.intro.position).toBe("center");
 		expect(normalized.intro.layout).toBe(DEFAULT_INTRO_OUTRO.intro.layout);
 	});
