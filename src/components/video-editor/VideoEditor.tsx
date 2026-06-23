@@ -172,6 +172,7 @@ import {
 	serializeEditorPresetSnapshot,
 } from "./editorPreferences";
 import { GlitchgrabLogPanel } from "./GlitchgrabLogPanel";
+import { IntroStudioModal } from "./IntroStudioModal";
 import {
 	DEFAULT_INTRO_OUTRO,
 	type IntroOutroConfig,
@@ -832,6 +833,14 @@ export default function VideoEditor() {
 	// Per-project intro/outro; seeded to default, replaced on project load.
 	const [introOutro, setIntroOutro] = useState<IntroOutroConfig>(DEFAULT_INTRO_OUTRO);
 	const [backgroundMusic, setBackgroundMusic] = useState<BackgroundMusicConfig | null>(null);
+	// Intro Studio modal lifted here so both the export panel and the timeline
+	// intro/outro blocks can open it.
+	const [introStudioOpen, setIntroStudioOpen] = useState(false);
+	const [introStudioTab, setIntroStudioTab] = useState<"intro" | "outro">("intro");
+	const openIntroStudio = useCallback((tab: "intro" | "outro") => {
+		setIntroStudioTab(tab);
+		setIntroStudioOpen(true);
+	}, []);
 	// Latest config for export-save callbacks whose deps must stay stable.
 	const introOutroRef = useRef(introOutro);
 	introOutroRef.current = introOutro;
@@ -6806,6 +6815,7 @@ export default function VideoEditor() {
 									gifOutputDimensions={gifOutputDimensions}
 									introOutro={introOutro}
 									onIntroOutroChange={setIntroOutro}
+									onIntroOutroOpenStudio={openIntroStudio}
 									onExport={handleStartExportFromDropdown}
 									className="shadow-2xl"
 								/>
@@ -7507,24 +7517,51 @@ export default function VideoEditor() {
 							Add background music
 						</button>
 					)}
-					{sideIsRenderable(introOutro.intro, introOutro.logoDataUrl) ||
-					sideIsRenderable(introOutro.outro, introOutro.logoDataUrl) ? (
-						<div className="mb-1 flex items-center gap-1.5 px-1 text-[10px] text-muted-foreground/70">
-							{sideIsRenderable(introOutro.intro, introOutro.logoDataUrl) ? (
-								<span className="rounded bg-[#2563EB]/15 px-1.5 py-0.5 font-medium text-[#2563EB] dark:text-[#93c5fd]">
-									▶ Intro {(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s
-								</span>
-							) : null}
-							<span className="truncate">
-								plays around your recording (export + preview)
-							</span>
-							{sideIsRenderable(introOutro.outro, introOutro.logoDataUrl) ? (
-								<span className="ml-auto rounded bg-[#2563EB]/15 px-1.5 py-0.5 font-medium text-[#2563EB] dark:text-[#93c5fd]">
-									Outro {(cardDurationMs(introOutro.outro) / 1000).toFixed(1)}s ◀
-								</span>
-							) : null}
-						</div>
-					) : null}
+					{/* Intro / outro blocks flanking the timeline — click to open the studio. */}
+					<div className="mb-1 flex items-stretch gap-1 px-0.5">
+						{(() => {
+							const introOn = sideIsRenderable(
+								introOutro.intro,
+								introOutro.logoDataUrl,
+							);
+							const outroOn = sideIsRenderable(
+								introOutro.outro,
+								introOutro.logoDataUrl,
+							);
+							const blockCls = (on: boolean) =>
+								cn(
+									"flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold transition-colors",
+									on
+										? "border border-[#2563EB]/40 bg-[#2563EB]/20 text-[#2563EB] dark:text-[#93c5fd] hover:bg-[#2563EB]/30"
+										: "border border-dashed border-foreground/15 text-muted-foreground/60 hover:bg-foreground/5",
+								);
+							return (
+								<>
+									<button
+										type="button"
+										onClick={() => openIntroStudio("intro")}
+										className={blockCls(introOn)}
+									>
+										{introOn
+											? `▶ Intro ${(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s`
+											: "+ Intro"}
+									</button>
+									<div className="flex flex-1 items-center justify-center truncate rounded-md border border-foreground/10 bg-foreground/[0.03] px-2 text-[10px] text-muted-foreground/50">
+										your recording
+									</div>
+									<button
+										type="button"
+										onClick={() => openIntroStudio("outro")}
+										className={blockCls(outroOn)}
+									>
+										{outroOn
+											? `Outro ${(cardDurationMs(introOutro.outro) / 1000).toFixed(1)}s ◀`
+											: "+ Outro"}
+									</button>
+								</>
+							);
+						})()}
+					</div>
 					<TimelineEditor
 						ref={timelineRef}
 						videoDuration={timelineDuration}
@@ -7587,6 +7624,15 @@ export default function VideoEditor() {
 					/>
 				</div>
 			</div>
+
+			<IntroStudioModal
+				open={introStudioOpen}
+				onClose={() => setIntroStudioOpen(false)}
+				config={introOutro}
+				onChange={setIntroOutro}
+				activeTab={introStudioTab}
+				onTabChange={setIntroStudioTab}
+			/>
 
 			{showCropModal ? (
 				<>
