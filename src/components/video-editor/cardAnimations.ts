@@ -404,8 +404,14 @@ function coerceJsonObject(raw: unknown): Record<string, unknown> | null {
 	const start = raw.indexOf("{");
 	const end = raw.lastIndexOf("}");
 	if (start < 0 || end <= start) return null;
+	const slice = raw
+		.slice(start, end + 1)
+		// Normalize smart quotes / non-breaking spaces that sneak in via copy-paste.
+		.replace(/[“”]/g, '"')
+		.replace(/[‘’]/g, "'")
+		.replace(/ /g, " ");
 	try {
-		const parsed = JSON.parse(raw.slice(start, end + 1));
+		const parsed = JSON.parse(slice);
 		return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
 	} catch {
 		return null;
