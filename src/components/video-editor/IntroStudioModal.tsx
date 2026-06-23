@@ -13,12 +13,7 @@ import { cn } from "@/lib/utils";
 import { analyzeAudio } from "./analyzeAudio";
 import { CardPreview } from "./CardPreview";
 import { cardDurationMs } from "./cardAnimationRenderer";
-import {
-	ANIMATION_OPTIONS,
-	buildAnimationPrompt,
-	getCardAnimation,
-	normalizeAnimationSpec,
-} from "./cardAnimations";
+import { ANIMATION_OPTIONS, buildCardDesignPrompt, normalizeCardDesign } from "./cardAnimations";
 import {
 	BUILTIN_TRACKS,
 	type CardAudio,
@@ -294,6 +289,24 @@ export function IntroStudioModal({
 											/>
 										</>
 									) : null}
+									<SliderRow
+										label="Glow"
+										valueLabel={`${Math.round(side.background.glow * 100)}%`}
+										min={0}
+										max={1}
+										step={0.02}
+										value={side.background.glow}
+										onValueChange={(glow) => setBackground({ glow })}
+									/>
+									<SliderRow
+										label="Vignette"
+										valueLabel={`${Math.round(side.background.vignette * 100)}%`}
+										min={0}
+										max={1}
+										step={0.02}
+										value={side.background.vignette}
+										onValueChange={(vignette) => setBackground({ vignette })}
+									/>
 								</Section>
 								<Section title="Timing & size">
 									<SliderRow
@@ -550,15 +563,13 @@ function AISection({
 	const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 	const [copied, setCopied] = useState(false);
 
-	const currentSpec = side.customAnimation ?? getCardAnimation(side.preset);
-
 	const hasUploadedAudio = side.audio.mode === "upload" && Boolean(side.audio.dataUrl);
 
 	const copyPrompt = async () => {
 		const audio = hasUploadedAudio
 			? await analyzeAudio(side.audio.dataUrl, cardDurationMs(side))
 			: null;
-		const text = buildAnimationPrompt(currentSpec, audio);
+		const text = buildCardDesignPrompt(side, audio);
 		try {
 			if (window.electronAPI?.writeClipboard) {
 				await window.electronAPI.writeClipboard(text);
@@ -573,13 +584,13 @@ function AISection({
 	};
 
 	const apply = () => {
-		const spec = normalizeAnimationSpec(paste);
-		if (!spec) {
+		const patch = normalizeCardDesign(paste);
+		if (!patch) {
 			setStatus({ ok: false, msg: "Couldn't read that — paste the JSON the AI returned." });
 			return;
 		}
-		setSide({ customAnimation: spec });
-		setStatus({ ok: true, msg: "Custom animation applied." });
+		setSide(patch);
+		setStatus({ ok: true, msg: "Design applied." });
 		setPaste("");
 	};
 
@@ -633,7 +644,7 @@ function AISection({
 					disabled={!paste.trim()}
 					className="rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#2563EB]/90 disabled:opacity-40"
 				>
-					Apply pasted animation
+					Apply pasted design
 				</button>
 				{status ? (
 					<span
