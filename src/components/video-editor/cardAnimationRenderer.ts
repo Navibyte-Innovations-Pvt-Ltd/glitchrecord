@@ -1,18 +1,16 @@
 import type { IntroOutroPosition, IntroOutroSideConfig } from "./introOutroTypes";
 
 /**
- * Canvas renderer for intro/outro logo cards — a close JS approximation of the
- * FFmpeg filters in electron/ipc/export/introOutro.ts, used for the editor
- * PREVIEW (button + inline player overlay). The export still renders via FFmpeg;
- * this only needs to look visually equivalent, not be pixel-identical.
+ * Canvas renderer for intro/outro cards — the single source of truth for both the
+ * editor PREVIEW and (later) the export. Draws a gradient/solid background, an
+ * optional styled logo container, the logo, and brand name/tagline text, laid out
+ * per `layout` and animated per `preset`.
  */
 
 export interface CardRenderInput {
 	ctx: CanvasRenderingContext2D;
-	/** Canvas pixel dimensions to draw into. */
 	width: number;
 	height: number;
-	/** Decoded logo, or null to draw just the background. */
 	logo: HTMLImageElement | null;
 	side: IntroOutroSideConfig;
 	/** Playback position within the card, 0 → 1 across its full duration. */
@@ -28,138 +26,290 @@ function easeOutCubic(t: number): number {
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
-	if (edge1 <= edge0) {
-		return x < edge0 ? 0 : 1;
-	}
+	if (edge1 <= edge0) return x < edge0 ? 0 : 1;
 	const t = clamp01((x - edge0) / (edge1 - edge0));
 	return t * t * (3 - 2 * t);
 }
 
-/** Static placement (top-left px) for a logo of size w×h. Margins are 15%. */
-function placement(
+function roundRectPath(
+	ctx: CanvasRenderingContext2D,
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+	r: number,
+): void {
+	const radius = Math.min(r, w / 2, h / 2);
+	ctx.beginPath();
+	ctx.moveTo(x + radius, y);
+	ctx.arcTo(x + w, y, x + w, y + h, radius);
+	ctx.arcTo(x + w, y + h, x, y + h, radius);
+	ctx.arcTo(x, y + h, x, y, radius);
+	ctx.arcTo(x, y, x + w, y, radius);
+	ctx.closePath();
+}
+
+function paintBackground(
+	ctx: CanvasRenderingContext2D,
+	W: number,
+	H: number,
+	side: IntroOutroSideConfig,
+): void {
+	const bg = side.background;
+	if (bg.type === "gradient") {
+		const rad = (bg.angle * Math.PI) / 180;
+		// Direction vector → endpoints across the frame.
+		const cx = W / 2;
+		const cy = H / 2;
+		const len = (Math.abs(Math.cos(rad)) * W + Math.abs(Math.sin(rad)) * H) / 2;
+		const dx = Math.cos(rad) * len;
+		const dy = Math.sin(rad) * len;
+		const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+		grad.addColorStop(0, bg.color1);
+		grad.addColorStop(1, bg.color2);
+		ctx.fillStyle = grad;
+	} else {
+		ctx.fillStyle = bg.color1;
+	}
+	ctx.fillRect(0, 0, W, H);
+}
+
+interface GroupMetrics {
+	width: number;
+	height: number;
+	logoW: number;
+	logoH: number;
+	nameSize: number;
+	taglineSize: number;
+	hasLogo: boolean;
+	hasName: boolean;
+	hasTagline: boolean;
+}
+
+function measureGroup(
+	ctx: CanvasRenderingContext2D,
+	H: number,
+	side: IntroOutroSideConfig,
+	logo: HTMLImageElement | null,
+): GroupMetrics {
+	const showLogo = side.layout !== "text-only" && !!logo && logo.naturalWidth > 0;
+	const logoH = showLogo ? Math.max(2, Math.round(H * clamp01(side.size))) : 0;
+	const logoW = showLogo ? Math.round(logoH * (logo.naturalWidth / logo.naturalHeight)) : 0;
+
+	const hasName = Boolean(side.text.brandName.trim());
+	const hasTagline = Boolean(side.text.tagline.trim());
+	const showText = side.layout !== "logo-only";
+	const nameSize = showText && hasName ? Math.round(H * 0.085) : 0;
+	const taglineSize = showText && hasTagline ? Math.round(H * 0.045) : 0;
+
+	let nameW = 0;
+	let taglineW = 0;
+	if (nameSize) {
+		ctx.font = `700 ${nameSize}px Inter, system-ui, sans-serif`;
+		nameW = ctx.measureText(side.text.brandName).width;
+	}
+	if (taglineSize) {
+		ctx.font = `400 ${taglineSize}px Inter, system-ui, sans-serif`;
+		taglineW = ctx.measureText(side.text.tagline).width;
+	}
+
+	const gap = Math.round(H * 0.035);
+	const textBlockH = (nameSize ? nameSize : 0) + (taglineSize ? taglineSize + gap * 0.4 : 0);
+	const textBlockW = Math.max(nameW, taglineW);
+
+	let width = 0;
+	let height = 0;
+	if (side.layout === "logo-left") {
+		width = logoW + (textBlockW ? gap + textBlockW : 0);
+		height = Math.max(logoH, textBlockH);
+	} else {
+		// logo-only / logo-top / text-only stack vertically.
+		width = Math.max(logoW, textBlockW);
+		height = logoH + (logoH && textBlockH ? gap : 0) + textBlockH;
+	}
+
+	return {
+		width,
+		height,
+		logoW,
+		logoH,
+		nameSize,
+		taglineSize,
+		hasLogo: showLogo,
+		hasName: hasName && nameSize > 0,
+		hasTagline: hasTagline && taglineSize > 0,
+	};
+}
+
+/** Top-left origin of the content group, honoring placement (15% margins). */
+function groupOrigin(
 	position: IntroOutroPosition,
 	W: number,
 	H: number,
+	gw: number,
+	gh: number,
+): { x: number; y: number } {
+	let x = (W - gw) / 2;
+	let y = (H - gh) / 2;
+	if (position === "top") y = H * 0.15;
+	else if (position === "bottom") y = H * 0.85 - gh;
+	else if (position === "left") x = W * 0.15;
+	else if (position === "right") x = W * 0.85 - gw;
+	return { x, y };
+}
+
+function drawLogoWithContainer(
+	ctx: CanvasRenderingContext2D,
+	logo: HTMLImageElement,
+	x: number,
+	y: number,
 	w: number,
 	h: number,
-): { x: number; y: number } {
-	switch (position) {
-		case "top":
-			return { x: (W - w) / 2, y: H * 0.15 };
-		case "bottom":
-			return { x: (W - w) / 2, y: H * 0.85 - h };
-		case "left":
-			return { x: W * 0.15, y: (H - h) / 2 };
-		case "right":
-			return { x: W * 0.85 - w, y: (H - h) / 2 };
-		default:
-			return { x: (W - w) / 2, y: (H - h) / 2 };
+	style: IntroOutroSideConfig["logoContainer"],
+): void {
+	if (style === "panel") {
+		// Filled rounded card behind the logo — makes white-bg / busy logos look
+		// intentional. Padding scales with logo size.
+		const pad = Math.round(Math.min(w, h) * 0.16);
+		const radius = Math.round(Math.min(w, h) * 0.14) + pad;
+		ctx.save();
+		ctx.shadowColor = "rgba(0,0,0,0.35)";
+		ctx.shadowBlur = Math.round(h * 0.12);
+		ctx.shadowOffsetY = Math.round(h * 0.04);
+		ctx.fillStyle = "#FFFFFF";
+		roundRectPath(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, radius);
+		ctx.fill();
+		ctx.restore();
+		ctx.drawImage(logo, x, y, w, h);
+		return;
+	}
+	if (style === "rounded") {
+		ctx.save();
+		roundRectPath(ctx, x, y, w, h, Math.round(Math.min(w, h) * 0.16));
+		ctx.clip();
+		ctx.drawImage(logo, x, y, w, h);
+		ctx.restore();
+		return;
+	}
+	ctx.drawImage(logo, x, y, w, h);
+}
+
+function drawGroup(
+	ctx: CanvasRenderingContext2D,
+	logo: HTMLImageElement | null,
+	side: IntroOutroSideConfig,
+	m: GroupMetrics,
+	ox: number,
+	oy: number,
+): void {
+	const gap =
+		Math.round((m.logoH || m.nameSize || 40) * 0.0) + Math.round(ctx.canvas.height * 0.035);
+	ctx.textAlign = side.layout === "logo-left" ? "left" : "center";
+	ctx.textBaseline = "top";
+
+	if (side.layout === "logo-left") {
+		const logoY = oy + (m.height - m.logoH) / 2;
+		if (m.hasLogo && logo) {
+			drawLogoWithContainer(ctx, logo, ox, logoY, m.logoW, m.logoH, side.logoContainer);
+		}
+		const textX = ox + (m.hasLogo ? m.logoW + gap : 0);
+		const textBlockH =
+			(m.hasName ? m.nameSize : 0) + (m.hasTagline ? m.taglineSize + gap * 0.4 : 0);
+		let ty = oy + (m.height - textBlockH) / 2;
+		if (m.hasName) {
+			ctx.fillStyle = side.text.color;
+			ctx.font = `700 ${m.nameSize}px Inter, system-ui, sans-serif`;
+			ctx.fillText(side.text.brandName, textX, ty);
+			ty += m.nameSize + gap * 0.4;
+		}
+		if (m.hasTagline) {
+			ctx.fillStyle = side.text.color;
+			ctx.globalAlpha *= 0.8;
+			ctx.font = `400 ${m.taglineSize}px Inter, system-ui, sans-serif`;
+			ctx.fillText(side.text.tagline, textX, ty);
+			ctx.globalAlpha /= 0.8;
+		}
+		return;
+	}
+
+	// vertical stack (logo-only / logo-top / text-only)
+	const cx = ox + m.width / 2;
+	let y = oy;
+	if (m.hasLogo && logo) {
+		drawLogoWithContainer(ctx, logo, cx - m.logoW / 2, y, m.logoW, m.logoH, side.logoContainer);
+		y += m.logoH + gap;
+	}
+	if (m.hasName) {
+		ctx.fillStyle = side.text.color;
+		ctx.font = `700 ${m.nameSize}px Inter, system-ui, sans-serif`;
+		ctx.fillText(side.text.brandName, cx, y);
+		y += m.nameSize + gap * 0.4;
+	}
+	if (m.hasTagline) {
+		ctx.fillStyle = side.text.color;
+		ctx.globalAlpha *= 0.8;
+		ctx.font = `400 ${m.taglineSize}px Inter, system-ui, sans-serif`;
+		ctx.fillText(side.text.tagline, cx, y);
+		ctx.globalAlpha /= 0.8;
 	}
 }
 
-/** Off-screen slide-in start position for the placement edge. */
-function slideStart(
-	position: IntroOutroPosition,
-	end: { x: number; y: number },
-	W: number,
-	H: number,
-	w: number,
-	h: number,
-): { x: number; y: number } {
-	switch (position) {
-		case "top":
-			return { x: end.x, y: -h };
-		case "bottom":
-			return { x: end.x, y: H };
-		case "right":
-			return { x: W, y: end.y };
-		default:
-			// center + left slide in from the left.
-			return { x: -w, y: end.y };
-	}
-}
-
-function normalizeBg(color: string): string {
-	if (/^#?[0-9a-fA-F]{6}$/.test(color.trim())) {
-		const hex = color.trim().replace(/^#/, "");
-		return `#${hex}`;
-	}
-	return "#0B1020";
-}
-
-/**
- * Draw one frame of an intro/outro card. Mirrors the FFmpeg preset timing:
- * fade window = min(0.5s, dur*0.4); scale-pop/slide ease windows match the
- * generator. `progress` is the position across the whole card duration.
- */
+/** Draw one frame of an intro/outro card. */
 export function drawCard({ ctx, width, height, logo, side, progress }: CardRenderInput): void {
 	const W = width;
 	const H = height;
 	const t = clamp01(progress);
 
 	ctx.clearRect(0, 0, W, H);
-	ctx.fillStyle = normalizeBg(side.backgroundColor);
-	ctx.fillRect(0, 0, W, H);
+	paintBackground(ctx, W, H, side);
 
-	if (!logo || !logo.complete || logo.naturalWidth === 0) {
-		return;
-	}
+	const m = measureGroup(ctx, H, side, logo);
+	if (m.width <= 0 || m.height <= 0) return;
 
-	const durSec = Math.min(5, Math.max(0.5, side.durationMs / 1000));
+	const durSec = Math.min(8, Math.max(0.5, side.durationMs / 1000));
 	const fadeSec = Math.min(0.5, durSec * 0.4);
 	const fadeInEnd = fadeSec / durSec;
 	const fadeOutStart = (durSec - fadeSec) / durSec;
 	const tSec = t * durSec;
 
-	// Base logo size from the size fraction, preserving aspect.
-	const logoH = Math.max(2, Math.round(H * Math.min(0.8, Math.max(0.1, side.size))));
-	const logoW = Math.round(logoH * (logo.naturalWidth / logo.naturalHeight));
-
-	// scale-pop centers (matching the generator's zoompan-on-composite).
-	const isPop = side.preset === "scale-pop";
-	const base = placement(isPop ? "center" : side.position, W, H, logoW, logoH);
-
-	let drawX = base.x;
-	let drawY = base.y;
+	const origin = groupOrigin(side.position, W, H, m.width, m.height);
+	let drawX = origin.x;
+	let drawY = origin.y;
 	let scale = 1;
-	// fade is symmetric in/out for every preset except slide, which only fades out.
 	let opacity =
 		side.preset === "slide"
 			? 1 - smoothstep(fadeOutStart, 1, t)
 			: smoothstep(0, fadeInEnd, t) * (1 - smoothstep(fadeOutStart, 1, t));
 
-	if (isPop) {
+	if (side.preset === "scale-pop") {
 		const popFrac = Math.min(0.5, durSec) / durSec;
-		const p = clamp01(t / popFrac);
-		scale = 0.6 + 0.4 * easeOutCubic(p);
+		scale = 0.6 + 0.4 * easeOutCubic(clamp01(t / popFrac));
 	} else if (side.preset === "slide") {
-		const slideSec = Math.min(0.6, durSec * 0.5);
-		const slideFrac = slideSec / durSec;
-		const start = slideStart(side.position, base, W, H, logoW, logoH);
+		const slideFrac = Math.min(0.6, durSec * 0.5) / durSec;
 		const p = easeOutCubic(clamp01(t / slideFrac));
-		drawX = start.x + (base.x - start.x) * p;
-		drawY = start.y + (base.y - start.y) * p;
+		const startX = side.position === "right" ? W : -m.width;
+		drawX = startX + (origin.x - startX) * p;
 	} else if (side.preset === "glitch") {
 		const shakeSec = Math.min(0.4, durSec * 0.35);
 		if (tSec < shakeSec) {
-			drawX = base.x + 18 * Math.sin(tSec * 90) * ((shakeSec - tSec) / shakeSec);
+			drawX = origin.x + 18 * Math.sin(tSec * 90) * ((shakeSec - tSec) / shakeSec);
 		}
 	}
 
 	ctx.save();
 	ctx.globalAlpha = clamp01(opacity);
 	if (scale !== 1) {
-		const cx = drawX + logoW / 2;
-		const cy = drawY + logoH / 2;
+		const cx = drawX + m.width / 2;
+		const cy = drawY + m.height / 2;
 		ctx.translate(cx, cy);
 		ctx.scale(scale, scale);
 		ctx.translate(-cx, -cy);
 	}
-	ctx.drawImage(logo, drawX, drawY, logoW, logoH);
+	drawGroup(ctx, logo, side, m, drawX, drawY);
 	ctx.restore();
 }
 
 /** Total card duration in ms, clamped to the supported range. */
 export function cardDurationMs(side: IntroOutroSideConfig): number {
-	return Math.min(5000, Math.max(500, side.durationMs));
+	return Math.min(8000, Math.max(500, side.durationMs));
 }
