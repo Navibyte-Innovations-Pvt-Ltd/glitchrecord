@@ -372,7 +372,16 @@ export function useAudioPreviewSync({
 
       if (isPlaying && isInRegion) {
         enablePitchPreservingPlayback(audio);
-        const audioOffset = (currentTimeMs - startMs) / 1000;
+        // Background-music bed loops to fill the whole region. Let the element
+        // loop natively (gapless) and seek to the offset modulo the file length
+        // so a region longer than the file still plays. Preview is approximate —
+        // the export mixer adds the equal-power crossfade at each seam.
+        audio.loop = track.loop === true;
+        const rawOffsetSec = (currentTimeMs - startMs) / 1000;
+        const audioOffset =
+          audio.loop && Number.isFinite(audio.duration) && audio.duration > 0
+            ? rawOffsetSec % audio.duration
+            : rawOffsetSec;
         if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
           audio.currentTime = audioOffset;
         }
