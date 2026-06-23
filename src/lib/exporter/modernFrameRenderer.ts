@@ -3221,8 +3221,12 @@ export class FrameRenderer {
 			await this.syncBackgroundFrame(Math.max(0, backgroundTimelineTimestamp / 1_000_000));
 		}
 
+		// The avatar is a timeline-anchored talking head — sync it to the OUTPUT/timeline
+		// time (backgroundTimelineTimestamp), NOT the source time (this.currentVideoTime).
+		// Source time is warped by speed edits, which would wrongly speed up the avatar.
+		const avatarTimelineSec = Math.max(0, backgroundTimelineTimestamp / 1_000_000);
 		if (this.avatarForwardFrameSource) {
-			await this.syncAvatarFrame(Math.max(0, this.currentVideoTime));
+			await this.syncAvatarFrame(avatarTimelineSec);
 		}
 
 		const timeMs = this.currentVideoTime * 1000;
@@ -3267,7 +3271,7 @@ export class FrameRenderer {
 			this.updateCaptionLayer(timeMs);
 		}
 		this.updateWebcamOverlay(webcamRenderTimeSeconds);
-		this.updateAvatarOverlay(webcamRenderTimeSeconds);
+		this.updateAvatarOverlay(avatarTimelineSec);
 
 		const annotationContainerVisible = this.annotationContainer?.visible ?? true;
 		const captionContainerVisible = this.captionContainer?.visible ?? true;
@@ -3475,8 +3479,12 @@ export class FrameRenderer {
 			await this.syncBackgroundFrame(Math.max(0, backgroundTimelineTimestamp / 1_000_000));
 		}
 
+		// The avatar is a timeline-anchored talking head — sync it to the OUTPUT/timeline
+		// time (backgroundTimelineTimestamp), NOT the source time (this.currentVideoTime).
+		// Source time is warped by speed edits, which would wrongly speed up the avatar.
+		const avatarTimelineSec = Math.max(0, backgroundTimelineTimestamp / 1_000_000);
 		if (this.avatarForwardFrameSource) {
-			await this.syncAvatarFrame(Math.max(0, this.currentVideoTime));
+			await this.syncAvatarFrame(avatarTimelineSec);
 		}
 
 		const timeMs = this.currentVideoTime * 1000;
@@ -3519,7 +3527,7 @@ export class FrameRenderer {
 		this.updateAnnotationLayer(timeMs);
 		this.updateCaptionLayer(timeMs);
 		this.updateWebcamOverlay();
-		this.updateAvatarOverlay();
+		this.updateAvatarOverlay(avatarTimelineSec);
 
 		if (this.hasActiveBlurAnnotations(timeMs)) {
 			const annotationContainerVisible = this.annotationContainer?.visible ?? true;
