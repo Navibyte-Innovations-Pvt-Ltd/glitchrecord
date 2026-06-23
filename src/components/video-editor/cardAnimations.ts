@@ -394,20 +394,32 @@ function clampValue(p: AnimatableProperty, v: number): number {
 }
 
 /**
+ * Tolerant JSON-object parse for AI output: accepts an object, or a string that
+ * may include markdown ```fences```, prose, or extra whitespace — extracts the
+ * outermost {…} and parses it. Returns null if no valid object is found.
+ */
+function coerceJsonObject(raw: unknown): Record<string, unknown> | null {
+	if (raw && typeof raw === "object") return raw as Record<string, unknown>;
+	if (typeof raw !== "string") return null;
+	const start = raw.indexOf("{");
+	const end = raw.lastIndexOf("}");
+	if (start < 0 || end <= start) return null;
+	try {
+		const parsed = JSON.parse(raw.slice(start, end + 1));
+		return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Validate + sanitize an animation spec (e.g. JSON pasted back from an AI).
  * Returns a clean AnimationSpec or null if it isn't usable. Lenient: drops bad
  * tracks/keyframes rather than rejecting the whole thing.
  */
 export function normalizeAnimationSpec(raw: unknown): AnimationSpec | null {
-	let obj: unknown = raw;
-	if (typeof raw === "string") {
-		try {
-			obj = JSON.parse(raw);
-		} catch {
-			return null;
-		}
-	}
-	if (!obj || typeof obj !== "object") return null;
+	const obj = coerceJsonObject(raw);
+	if (!obj) return null;
 	const r = obj as { label?: unknown; tracks?: unknown };
 	if (!Array.isArray(r.tracks)) return null;
 
@@ -534,16 +546,8 @@ export function sideToDesign(side: IntroOutroSideConfig): CardDesign {
 
 /** Validate a pasted design → a Partial side patch (or null if unusable). */
 export function normalizeCardDesign(raw: unknown): Partial<IntroOutroSideConfig> | null {
-	let obj: unknown = raw;
-	if (typeof raw === "string") {
-		try {
-			obj = JSON.parse(raw);
-		} catch {
-			return null;
-		}
-	}
-	if (!obj || typeof obj !== "object") return null;
-	const r = obj as Record<string, unknown>;
+	const r = coerceJsonObject(raw);
+	if (!r) return null;
 	const patch: Partial<IntroOutroSideConfig> = {};
 
 	if (r.background && typeof r.background === "object") {
