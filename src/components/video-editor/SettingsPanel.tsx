@@ -45,6 +45,7 @@ import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
+import { BackgroundMusicSettings } from "./BackgroundMusicSettings";
 import {
 	CURSOR_MOTION_PRESETS,
 	type CursorMotionPresetId,
@@ -58,6 +59,7 @@ import type {
 	AnnotationType,
 	AutoCaptionAnimation,
 	AutoCaptionSettings,
+	BackgroundMusicConfig,
 	CaptionCue,
 	CropRegion,
 	CursorClickEffectStyle,
@@ -177,9 +179,10 @@ function isHexWallpaper(value: string): boolean {
 
 function hexToRgba(hex: string, alpha: number) {
 	const normalized = isHexWallpaper(hex) ? hex : DEFAULT_CURSOR_CLICK_EFFECT_COLOR;
-	const value = normalized.length === 4
-		? `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
-		: normalized;
+	const value =
+		normalized.length === 4
+			? `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
+			: normalized;
 	const color = Number.parseInt(value.slice(1), 16);
 	const red = (color >> 16) & 255;
 	const green = (color >> 8) & 255;
@@ -527,8 +530,23 @@ function CursorClickEffectPreview({
 					viewBox="0 0 40 40"
 					aria-hidden="true"
 				>
-					<circle cx="20" cy="20" r="11.5" fill="none" stroke="currentColor" strokeWidth="1.8" opacity="0.75" />
-					<path d="M12.5 27.5 27.5 12.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" opacity="0.92" />
+					<circle
+						cx="20"
+						cy="20"
+						r="11.5"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.8"
+						opacity="0.75"
+					/>
+					<path
+						d="M12.5 27.5 27.5 12.5"
+						fill="none"
+						stroke="currentColor"
+						strokeLinecap="round"
+						strokeWidth="2.2"
+						opacity="0.92"
+					/>
 				</svg>
 			) : null}
 			{effect === "ripple" ? (
@@ -569,13 +587,17 @@ function CursorClickEffectPreview({
 					viewBox="0 0 48 48"
 					aria-hidden="true"
 				>
-					<g
-						fill="none"
-						stroke="currentColor"
-					>
+					<g fill="none" stroke="currentColor">
 						<circle cx="24" cy="24" r="9" strokeWidth="1.8" opacity="0.72" />
 						<circle cx="24" cy="24" r="14.5" strokeWidth="1.5" opacity="0.4" />
-						<circle cx="24" cy="24" r="4.25" fill="currentColor" opacity="0.22" stroke="none" />
+						<circle
+							cx="24"
+							cy="24"
+							r="4.25"
+							fill="currentColor"
+							opacity="0.22"
+							stroke="none"
+						/>
 					</g>
 				</svg>
 			) : null}
@@ -658,7 +680,10 @@ function CursorClickEffectCards({
 						>
 							<div className="flex h-full flex-col items-center justify-between gap-3">
 								<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[8px] px-2 py-1.5">
-									<CursorClickEffectPreview effect={effect.id} color={effectColor} />
+									<CursorClickEffectPreview
+										effect={effect.id}
+										color={effectColor}
+									/>
 								</div>
 							</div>
 						</ToggleGroupItem>
@@ -699,6 +724,10 @@ interface SettingsPanelProps {
 	onAudioVolumeChange?: (volume: number) => void;
 	onAudioNormalizeChange?: (normalize: boolean) => void;
 	onAudioDelete?: (id: string) => void;
+	backgroundMusic?: BackgroundMusicConfig | null;
+	onPickBackgroundMusic?: () => void;
+	onBackgroundMusicVolumeChange?: (volume: number) => void;
+	onRemoveBackgroundMusic?: () => void;
 	shadowIntensity?: number;
 	onShadowChange?: (intensity: number) => void;
 	backgroundBlur?: number;
@@ -1151,6 +1180,10 @@ export function SettingsPanel({
 	selectedAudioVolume,
 	selectedAudioNormalize,
 	onAudioVolumeChange,
+	backgroundMusic,
+	onPickBackgroundMusic,
+	onBackgroundMusicVolumeChange,
+	onRemoveBackgroundMusic,
 	onAudioNormalizeChange,
 	onAudioDelete,
 	shadowIntensity = 0.67,
@@ -3394,6 +3427,18 @@ export function SettingsPanel({
 			</section>
 		);
 
+		const musicSectionContent = (
+			<section className="flex flex-col gap-2">
+				<SectionLabel>{tSettings("sections.music", "Music")}</SectionLabel>
+				<BackgroundMusicSettings
+					config={backgroundMusic}
+					onPick={() => onPickBackgroundMusic?.()}
+					onVolumeChange={(v) => onBackgroundMusicVolumeChange?.(v)}
+					onRemove={() => onRemoveBackgroundMusic?.()}
+				/>
+			</section>
+		);
+
 		const clipSectionContent = (
 			<section className="flex flex-col gap-2">
 				<div className="flex items-center justify-between gap-3">
@@ -3560,6 +3605,8 @@ export function SettingsPanel({
 				return clipSectionContent;
 			case "audio":
 				return audioSectionContent;
+			case "music":
+				return musicSectionContent;
 			case "frame":
 				return sceneSectionContent;
 			case "crop":
@@ -3704,12 +3751,15 @@ export function SettingsPanel({
 										<div className="flex flex-wrap gap-1.5">
 											{CLICK_EFFECT_COLOR_OPTIONS.map((color) => {
 												const isSelected =
-													cursorClickEffectColor.toLowerCase() === color.toLowerCase();
+													cursorClickEffectColor.toLowerCase() ===
+													color.toLowerCase();
 												return (
 													<button
 														key={color}
 														type="button"
-														onClick={() => onCursorClickEffectColorChange?.(color)}
+														onClick={() =>
+															onCursorClickEffectColorChange?.(color)
+														}
 														className={cn(
 															"h-6 w-6 rounded-[8px] border transition-transform hover:scale-[1.04]",
 															isSelected
@@ -3723,7 +3773,9 @@ export function SettingsPanel({
 											})}
 											<button
 												type="button"
-												onClick={() => cursorClickEffectColorInputRef.current?.click()}
+												onClick={() =>
+													cursorClickEffectColorInputRef.current?.click()
+												}
 												className="relative h-6 w-10 overflow-hidden rounded-[8px] border border-foreground/10 text-[8px] font-semibold uppercase tracking-[0.18em] text-foreground"
 												style={{
 													background: `linear-gradient(135deg, ${cursorClickEffectColor} 0%, ${cursorClickEffectColor} 58%, rgba(255,255,255,0.92) 58%, rgba(255,255,255,0.92) 100%)`,
