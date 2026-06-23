@@ -182,10 +182,6 @@ function normalizeHexColor(value: unknown, fallback: string): string {
 	return fallback;
 }
 
-function normalizeString(value: unknown, max = 120): string {
-	return typeof value === "string" ? value.slice(0, max) : "";
-}
-
 /** Collapse whitespace runs (incl. those introduced by repairing wrapped JSON). */
 function normalizeDisplayText(value: unknown, max = 120): string {
 	return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
