@@ -39,7 +39,7 @@ export function CardOverlay({ side, logoDataUrl, progress }: CardOverlayProps) {
 		};
 	}, [logoDataUrl]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: side fields + logoReady drive the paint
+	// biome-ignore lint/correctness/useExhaustiveDependencies: paint reads current side
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		const ctx = canvas?.getContext("2d");
@@ -49,15 +49,7 @@ export function CardOverlay({ side, logoDataUrl, progress }: CardOverlayProps) {
 		if (canvas.width !== w) canvas.width = w;
 		if (canvas.height !== h) canvas.height = h;
 		drawCard({ ctx, width: w, height: h, logo: logoRef.current, side, progress });
-	}, [
-		progress,
-		logoReady,
-		side.preset,
-		side.position,
-		side.size,
-		side.backgroundColor,
-		side.durationMs,
-	]);
+	}, [progress, logoReady, side]);
 
 	return (
 		<div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
