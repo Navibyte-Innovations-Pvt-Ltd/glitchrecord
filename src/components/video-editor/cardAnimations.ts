@@ -40,7 +40,8 @@ export interface AnimationTrack {
 }
 
 export interface AnimationSpec {
-	id: IntroOutroPreset;
+	/** Library id, or "custom" for AI/hand-authored specs. */
+	id: string;
 	label: string;
 	tracks: AnimationTrack[];
 }
@@ -81,11 +82,17 @@ function applyEasing(easing: Easing | undefined, t: number): number {
 		case "easeOutBounce": {
 			const n1 = 7.5625;
 			const d1 = 2.75;
-			let u = x;
-			if (u < 1 / d1) return n1 * u * u;
-			if (u < 2 / d1) return n1 * (u -= 1.5 / d1) * u + 0.75;
-			if (u < 2.5 / d1) return n1 * (u -= 2.25 / d1) * u + 0.9375;
-			return n1 * (u -= 2.625 / d1) * u + 0.984375;
+			if (x < 1 / d1) return n1 * x * x;
+			if (x < 2 / d1) {
+				const u = x - 1.5 / d1;
+				return n1 * u * u + 0.75;
+			}
+			if (x < 2.5 / d1) {
+				const u = x - 2.25 / d1;
+				return n1 * u * u + 0.9375;
+			}
+			const u = x - 2.625 / d1;
+			return n1 * u * u + 0.984375;
 		}
 		default:
 			return x;
@@ -341,3 +348,118 @@ export function getCardAnimation(id: IntroOutroPreset): AnimationSpec {
 /** {value,label} list for animation pickers, in declaration order. */
 export const ANIMATION_OPTIONS: { value: IntroOutroPreset; label: string }[] =
 	CARD_ANIMATION_IDS.map((id) => ({ value: id, label: CARD_ANIMATIONS[id].label }));
+
+// ── Animation "language": validate + round-trip with any external AI ─────────
+
+const EASINGS: Easing[] = [
+	"linear",
+	"easeIn",
+	"easeOut",
+	"easeInOut",
+	"easeOutCubic",
+	"easeOutBack",
+	"easeOutExpo",
+	"easeOutBounce",
+];
+const PROPS: AnimatableProperty[] = ["opacity", "scale", "x", "y", "rotate", "blur"];
+
+function clampValue(p: AnimatableProperty, v: number): number {
+	const ranges: Record<AnimatableProperty, [number, number]> = {
+		opacity: [0, 1],
+		scale: [0, 4],
+		x: [-2, 2],
+		y: [-2, 2],
+		rotate: [-720, 720],
+		blur: [0, 40],
+	};
+	const [min, max] = ranges[p];
+	return Math.min(max, Math.max(min, v));
+}
+
+/**
+ * Validate + sanitize an animation spec (e.g. JSON pasted back from an AI).
+ * Returns a clean AnimationSpec or null if it isn't usable. Lenient: drops bad
+ * tracks/keyframes rather than rejecting the whole thing.
+ */
+export function normalizeAnimationSpec(raw: unknown): AnimationSpec | null {
+	let obj: unknown = raw;
+	if (typeof raw === "string") {
+		try {
+			obj = JSON.parse(raw);
+		} catch {
+			return null;
+		}
+	}
+	if (!obj || typeof obj !== "object") return null;
+	const r = obj as { label?: unknown; tracks?: unknown };
+	if (!Array.isArray(r.tracks)) return null;
+
+	const tracks: AnimationTrack[] = [];
+	for (const t of r.tracks as unknown[]) {
+		if (!t || typeof t !== "object") continue;
+		const tr = t as { property?: unknown; keyframes?: unknown };
+		const property = tr.property as AnimatableProperty;
+		if (!PROPS.includes(property)) continue;
+		const kfRaw = Array.isArray(tr.keyframes) ? (tr.keyframes as unknown[]) : [];
+		const keyframes: Keyframe[] = kfRaw
+			.map((k) => k as { t?: unknown; value?: unknown; easing?: unknown })
+			.filter((k) => Number.isFinite(k.t as number) && Number.isFinite(k.value as number))
+			.map((k) => ({
+				t: Math.min(1, Math.max(0, k.t as number)),
+				value: clampValue(property, k.value as number),
+				easing: EASINGS.includes(k.easing as Easing) ? (k.easing as Easing) : undefined,
+			}))
+			.sort((a, b) => a.t - b.t);
+		if (keyframes.length > 0) tracks.push({ property, keyframes });
+	}
+	if (tracks.length === 0) return null;
+	return {
+		id: "custom",
+		label: typeof r.label === "string" && r.label.trim() ? r.label.slice(0, 40) : "Custom",
+		tracks,
+	};
+}
+
+/** Shallow check used on project load (already-validated specs). */
+export function isAnimationSpecLike(value: unknown): value is AnimationSpec {
+	return (
+		!!value &&
+		typeof value === "object" &&
+		Array.isArray((value as { tracks?: unknown }).tracks)
+	);
+}
+
+/** The schema documentation an external AI needs to read + edit an animation. */
+export const ANIMATION_LANGUAGE_DOC = `You are editing a GlitchGrab intro/outro card animation.
+
+An animation is a JSON object: { "label": string, "tracks": Track[] }.
+A Track animates ONE property over the card's lifetime: { "property": Property, "keyframes": Keyframe[] }.
+A Keyframe: { "t": 0..1, "value": number, "easing"?: Easing } where t is normalized time (0 = card start, 1 = card end) and easing applies on the segment leading INTO this keyframe.
+
+Property (resting/identity state in parentheses):
+- "opacity" (1): 0..1
+- "scale" (1): multiplier, 1 = natural size
+- "x" (0): horizontal offset as a FRACTION of frame width (-1 = one full frame left, off-screen)
+- "y" (0): vertical offset as a FRACTION of frame height (-1 = one frame up)
+- "rotate" (0): degrees
+- "blur" (0): pixels
+
+Easing: "linear" | "easeIn" | "easeOut" | "easeInOut" | "easeOutCubic" | "easeOutBack" | "easeOutExpo" | "easeOutBounce".
+
+Rules:
+- Always end with the card fully visible then fading out near t=1 (e.g. opacity keyframes [{t:0,value:0},{t:0.2,value:1},{t:0.85,value:1},{t:1,value:0}]) unless told otherwise.
+- Only include tracks you actually animate; omitted properties stay at their resting value.
+- Keep it smooth and tasteful for a brand logo card.
+- Return ONLY the JSON object, no prose, no markdown fences.`;
+
+/** Build the full prompt for the user to paste into any AI. */
+export function buildAnimationPrompt(spec: AnimationSpec): string {
+	return `${ANIMATION_LANGUAGE_DOC}
+
+Here is the current animation:
+${JSON.stringify({ label: spec.label, tracks: spec.tracks }, null, 2)}
+
+Now apply this change: <describe what you want, e.g. "make the logo bounce in harder and spin slightly">
+
+Return the full updated JSON object only.`;
+}
