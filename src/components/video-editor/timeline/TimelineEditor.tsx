@@ -3,6 +3,7 @@ import {
 	MagnifyingGlassPlus,
 	PencilSimple,
 	Plus,
+	X,
 } from "@phosphor-icons/react";
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
@@ -42,10 +43,20 @@ import { TIMELINE_AXIS_HEIGHT_PX, TIMELINE_ROW_MAX_HEIGHT_PX } from "./timelineL
 export interface TimelineEndcap {
 	label: string;
 	active: boolean;
-	/** Primary click — preview the card in the player (or open setup if empty). */
+	/** Primary click (no drag) — preview the card in the player (or open setup if empty). */
 	onClick: () => void;
 	/** Pencil button — open the studio to edit this side (active only). */
 	onEdit?: () => void;
+	/** Card length in ms — drives the playhead sweep + scrub mapping. */
+	durationMs?: number;
+	/** True while THIS side's card is playing — sweeps a mini-playhead across the block. */
+	playing?: boolean;
+	/** Drag across the block — fraction 0..1 — to scrub a frozen card frame in the preview. */
+	onScrub?: (progress: number) => void;
+	/** Pointer released after a scrub drag. */
+	onScrubEnd?: () => void;
+	/** × button — remove this side (active only). */
+	onDelete?: () => void;
 }
 
 export interface TimelineEditorProps {
@@ -475,38 +486,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					</span>
 				</div>
 				<div className="flex flex-1 min-h-0">
-					{endcaps?.intro ? (
-						<div className="relative shrink-0" style={{ width: 104 }}>
-							<button
-								type="button"
-								onClick={endcaps.intro.onClick}
-								className={endcapClass(endcaps.intro.active)}
-								style={{
-									position: "absolute",
-									top: TIMELINE_AXIS_HEIGHT_PX,
-									left: 4,
-									right: 2,
-									height: TIMELINE_ROW_MAX_HEIGHT_PX,
-								}}
-							>
-								▶ {endcaps.intro.label}
-							</button>
-							{endcaps.intro.onEdit ? (
-								<button
-									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
-										endcaps.intro?.onEdit?.();
-									}}
-									aria-label="Edit intro"
-									className="absolute z-10 rounded bg-black/55 p-0.5 text-white/80 hover:text-white"
-									style={{ top: TIMELINE_AXIS_HEIGHT_PX + 3, right: 6 }}
-								>
-									<PencilSimple className="h-3 w-3" weight="bold" />
-								</button>
-							) : null}
-						</div>
-					) : null}
+					{endcaps?.intro ? <EndcapGutter endcap={endcaps.intro} side="intro" /> : null}
 					<div
 						ref={timelineContainerRef}
 						// Scroll stays functional; the scrollbar is hidden (a visible bar looked
@@ -599,43 +579,131 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							/>
 						</TimelineWrapper>
 					</div>
-					{endcaps?.outro ? (
-						<div className="relative shrink-0" style={{ width: 104 }}>
-							<button
-								type="button"
-								onClick={endcaps.outro.onClick}
-								className={endcapClass(endcaps.outro.active)}
-								style={{
-									position: "absolute",
-									top: TIMELINE_AXIS_HEIGHT_PX,
-									left: 2,
-									right: 4,
-									height: TIMELINE_ROW_MAX_HEIGHT_PX,
-								}}
-							>
-								{endcaps.outro.label} ◀
-							</button>
-							{endcaps.outro.onEdit ? (
-								<button
-									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
-										endcaps.outro?.onEdit?.();
-									}}
-									aria-label="Edit outro"
-									className="absolute z-10 rounded bg-black/55 p-0.5 text-white/80 hover:text-white"
-									style={{ top: TIMELINE_AXIS_HEIGHT_PX + 3, right: 6 }}
-								>
-									<PencilSimple className="h-3 w-3" weight="bold" />
-								</button>
-							) : null}
-						</div>
-					) : null}
+					{endcaps?.outro ? <EndcapGutter endcap={endcaps.outro} side="outro" /> : null}
 				</div>
 			</div>
 		);
 	},
 );
+
+/**
+ * One intro/outro bookend in a fixed side gutter. The block is a unified
+ * scrub/play surface: a click previews the card, a drag scrubs a frozen frame
+ * into the preview, a mini-playhead sweeps across it during playback, and the
+ * pencil/× edit and remove the side.
+ */
+function EndcapGutter({ endcap, side }: { endcap: TimelineEndcap; side: "intro" | "outro" }) {
+	const blockRef = useRef<HTMLDivElement | null>(null);
+	const sweepRef = useRef<HTMLDivElement | null>(null);
+	const dragRef = useRef<{ startX: number; moved: boolean } | null>(null);
+	const scrubbable = endcap.active && !!endcap.onScrub;
+
+	// Sweep a mini-playhead 0→100% over the card duration via WAAPI (no per-frame
+	// React state, no CSS keyframe injection).
+	useEffect(() => {
+		const el = sweepRef.current;
+		if (!el) return;
+		if (!endcap.playing || !endcap.durationMs) {
+			el.style.opacity = "0";
+			el.style.left = "0%";
+			return;
+		}
+		el.style.opacity = "1";
+		const anim = el.animate([{ left: "0%" }, { left: "100%" }], {
+			duration: endcap.durationMs,
+			easing: "linear",
+			fill: "forwards",
+		});
+		return () => anim.cancel();
+	}, [endcap.playing, endcap.durationMs]);
+
+	const fractionAt = (clientX: number) => {
+		const rect = blockRef.current?.getBoundingClientRect();
+		if (!rect || rect.width === 0) return 0;
+		return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+	};
+
+	return (
+		<div className="relative shrink-0" style={{ width: 104 }}>
+			<div
+				ref={blockRef}
+				role="button"
+				tabIndex={0}
+				onPointerDown={(e) => {
+					if (!scrubbable) return;
+					dragRef.current = { startX: e.clientX, moved: false };
+					blockRef.current?.setPointerCapture(e.pointerId);
+				}}
+				onPointerMove={(e) => {
+					const d = dragRef.current;
+					if (!d) return;
+					if (!d.moved && Math.abs(e.clientX - d.startX) < 4) return;
+					d.moved = true;
+					endcap.onScrub?.(fractionAt(e.clientX));
+				}}
+				onPointerUp={(e) => {
+					const d = dragRef.current;
+					dragRef.current = null;
+					blockRef.current?.releasePointerCapture?.(e.pointerId);
+					if (d?.moved) endcap.onScrubEnd?.();
+					else endcap.onClick();
+				}}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						endcap.onClick();
+					}
+				}}
+				className={endcapClass(endcap.active)}
+				style={{
+					position: "absolute",
+					top: TIMELINE_AXIS_HEIGHT_PX,
+					left: side === "intro" ? 4 : 2,
+					right: side === "intro" ? 2 : 4,
+					height: TIMELINE_ROW_MAX_HEIGHT_PX,
+					cursor: scrubbable ? "ew-resize" : "pointer",
+					overflow: "hidden",
+					touchAction: "none",
+				}}
+			>
+				{side === "intro" ? `▶ ${endcap.label}` : `${endcap.label} ◀`}
+				<div
+					ref={sweepRef}
+					className="pointer-events-none absolute top-0 bottom-0 w-px bg-white/90 shadow-[0_0_4px_rgba(255,255,255,0.85)]"
+					style={{ opacity: 0, left: "0%" }}
+				/>
+			</div>
+			{endcap.onEdit ? (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						endcap.onEdit?.();
+					}}
+					aria-label={`Edit ${side}`}
+					className="absolute z-10 rounded bg-black/55 p-0.5 text-white/80 hover:text-white"
+					style={{ top: TIMELINE_AXIS_HEIGHT_PX + 3, right: 6 }}
+				>
+					<PencilSimple className="h-3 w-3" weight="bold" />
+				</button>
+			) : null}
+			{endcap.active && endcap.onDelete ? (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						endcap.onDelete?.();
+					}}
+					aria-label={`Delete ${side}`}
+					className="absolute z-10 rounded bg-black/55 p-0.5 text-white/80 hover:text-red-400"
+					style={{ top: TIMELINE_AXIS_HEIGHT_PX + 3, left: side === "intro" ? 8 : 6 }}
+				>
+					<X className="h-3 w-3" weight="bold" />
+				</button>
+			) : null}
+		</div>
+	);
+}
 
 function endcapClass(active: boolean): string {
 	return [
