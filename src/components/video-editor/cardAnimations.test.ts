@@ -40,6 +40,15 @@ describe("normalizeCardDesign — tolerant parse", () => {
 		expect(patch?.background?.glow).toBe(1); // clamped
 	});
 
+	it("repairs a raw newline inside a string value (wrapped paste)", () => {
+		const broken =
+			'{ "text": { "brandName": "Acme", "tagline": "discover, compare, and book study\n  rooms & libraries", "color": "#ffffff" }, "layout": "logo-top" }';
+		const patch = normalizeCardDesign(broken);
+		expect(patch).not.toBeNull();
+		expect(patch?.layout).toBe("logo-top");
+		expect(patch?.text?.tagline).toContain("rooms & libraries");
+	});
+
 	it("returns null for non-JSON", () => {
 		expect(normalizeCardDesign("not json at all")).toBeNull();
 		expect(normalizeCardDesign("")).toBeNull();
