@@ -567,21 +567,37 @@ function drawGroup(
 	}
 }
 
-/** Draw one frame of an intro/outro card. */
-export function drawCard({ ctx, width, height, logo, side, progress }: CardRenderInput): void {
+/**
+ * The STATIC background (gradient + glow + vignette). Cheap to cache: it only
+ * changes with size/background config, not per frame — the inline overlay
+ * pre-renders this once and blits it each frame instead of recreating gradients.
+ */
+export function drawCardBackground(
+	ctx: CanvasRenderingContext2D,
+	width: number,
+	height: number,
+	side: IntroOutroSideConfig,
+): void {
+	paintBackground(ctx, width, height, side);
+}
+
+/** The animated FOREGROUND (logo + text + effects) at progress t. */
+export function drawCardForeground(
+	ctx: CanvasRenderingContext2D,
+	width: number,
+	height: number,
+	logo: HTMLImageElement | null,
+	side: IntroOutroSideConfig,
+	progress: number,
+): void {
 	const W = width;
 	const H = height;
 	const t = clamp01(progress);
-
-	ctx.clearRect(0, 0, W, H);
-	paintBackground(ctx, W, H, side);
 
 	const m = measureGroup(ctx, H, side, logo);
 	if (m.width <= 0 || m.height <= 0) return;
 
 	const origin = groupOrigin(side.position, W, H, m.width, m.height);
-	// Group-level transform from the spec, applied about the content center; the
-	// resting position comes from `origin`, x/y are frame-fraction offsets.
 	const spec = side.customAnimation ?? getCardAnimation(side.preset);
 	const anim = resolveAnimation(spec, t);
 	const cx = origin.x + m.width / 2;
@@ -596,6 +612,13 @@ export function drawCard({ ctx, width, height, logo, side, progress }: CardRende
 	ctx.translate(-cx, -cy);
 	drawGroup(ctx, logo, side, m, origin.x, origin.y, spec, t);
 	ctx.restore();
+}
+
+/** Draw one full frame of an intro/outro card (background + foreground). */
+export function drawCard({ ctx, width, height, logo, side, progress }: CardRenderInput): void {
+	ctx.clearRect(0, 0, width, height);
+	drawCardBackground(ctx, width, height, side);
+	drawCardForeground(ctx, width, height, logo, side, progress);
 }
 
 /** Total card duration in ms, clamped to the supported range. */
