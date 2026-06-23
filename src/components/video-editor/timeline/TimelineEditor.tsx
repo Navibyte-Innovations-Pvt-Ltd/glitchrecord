@@ -23,7 +23,6 @@ import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
 import { calculateTimelineScale } from "./core/time";
 import { computeZoomedRange, spanToFraction } from "./core/timelineZoom";
-import zoomStyles from "./TimelineZoom.module.css";
 import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
@@ -31,12 +30,22 @@ import {
 	buildSourceSidecarPathCandidates,
 	buildTimelineSourceAudioTracks,
 } from "./sourceAudioTracks";
+import zoomStyles from "./TimelineZoom.module.css";
+
+/** Clickable intro/outro bookend shown pinned at a track edge. */
+export interface TimelineEndcap {
+	label: string;
+	active: boolean;
+	onClick: () => void;
+}
 
 export interface TimelineEditorProps {
 	videoDuration: number;
 	currentTime: number;
 	playheadTime?: number;
 	onSeek?: (time: number) => void;
+	/** Intro/outro blocks pinned to the left/right edges of the track. */
+	endcaps?: { intro?: TimelineEndcap; outro?: TimelineEndcap };
 	cursorTelemetry?: CursorTelemetryPoint[];
 	autoSuggestZoomsTrigger?: number;
 	onAutoSuggestZoomsConsumed?: () => void;
@@ -120,6 +129,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			currentTime,
 			playheadTime,
 			onSeek,
+			endcaps,
 			cursorTelemetry = [],
 			autoSuggestZoomsTrigger = 0,
 			onAutoSuggestZoomsConsumed,
@@ -455,100 +465,140 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						{(visibleSpanMs / 1000).toFixed(visibleSpanMs < 10_000 ? 1 : 0)}s
 					</span>
 				</div>
-				<div
-					ref={timelineContainerRef}
-					// Scroll stays functional; the scrollbar is hidden (a visible bar looked
-					// unpolished). Hides in Chromium/Electron (::-webkit-scrollbar) + Firefox.
-					className="flex-1 min-h-0 overflow-auto bg-editor-bg relative [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-					tabIndex={0}
-					onFocus={() => {
-						isTimelineFocusedRef.current = true;
-					}}
-					onBlur={() => {
-						isTimelineFocusedRef.current = false;
-					}}
-					onMouseDown={() => {
-						timelineContainerRef.current?.focus();
-						isTimelineFocusedRef.current = true;
-					}}
-					onClick={() => {
-						setSelectedKeyframeId(null);
-						setSelectAllBlocksActive(false);
-					}}
-				>
-					<TimelineWrapper
-						range={clampedRange}
-						videoDuration={videoDuration}
-						hasOverlap={hasOverlap}
-						onRangeChange={setRange}
-						minItemDurationMs={timelineScale.minItemDurationMs}
-						minVisibleRangeMs={timelineScale.minVisibleRangeMs}
-						onItemSpanChange={handleItemSpanChange}
-						resolveTargetRowId={getResolvedDropRowId}
-						allRegionSpans={allRegionSpans}
-						onLiveSpanPreviewChange={(id, span) => {
-							setLiveSpanPreviewById((prev) => {
-								if (!span) {
-									if (!(id in prev)) return prev;
-									const next = { ...prev };
-									delete next[id];
-									return next;
-								}
-								const current = prev[id];
-								if (
-									current &&
-									current.start === span.start &&
-									current.end === span.end
-								) {
-									return prev;
-								}
-								return { ...prev, [id]: span };
-							});
+				<div className="relative flex flex-1 min-h-0 flex-col">
+					<div
+						ref={timelineContainerRef}
+						// Scroll stays functional; the scrollbar is hidden (a visible bar looked
+						// unpolished). Hides in Chromium/Electron (::-webkit-scrollbar) + Firefox.
+						className="flex-1 min-h-0 overflow-auto bg-editor-bg relative [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+						tabIndex={0}
+						onFocus={() => {
+							isTimelineFocusedRef.current = true;
+						}}
+						onBlur={() => {
+							isTimelineFocusedRef.current = false;
+						}}
+						onMouseDown={() => {
+							timelineContainerRef.current?.focus();
+							isTimelineFocusedRef.current = true;
+						}}
+						onClick={() => {
+							setSelectedKeyframeId(null);
+							setSelectAllBlocksActive(false);
 						}}
 					>
-						<KeyframeMarkers
-							keyframes={keyframes}
-							selectedKeyframeId={selectedKeyframeId}
-							setSelectedKeyframeId={setSelectedKeyframeId}
-							onKeyframeMove={handleKeyframeMove}
-							videoDurationMs={totalMs}
-							timelineRef={timelineContainerRef}
-						/>
-						<TimelineCanvas
-							items={timelineItems}
-							videoDurationMs={totalMs}
-							currentTimeMs={currentTimeMs}
-							onSeek={onSeek}
-							onShiftMarker={onShiftMarker}
-							pendingMarkerMs={pendingMarkerMs}
-							onAddZoomAtMs={addZoomAtMs}
-							canPlaceZoomAtMs={canPlaceZoomAtMs}
-							onSelectZoom={handleSelectZoom}
-							onSelectSpeed={onSelectSpeed}
-							onSelectClip={handleSelectClip}
-							onSelectAnnotation={handleSelectAnnotation}
-							onSelectAudio={handleSelectAudio}
-							selectedZoomId={selectedZoomId}
-							selectedSpeedId={selectedSpeedId}
-							selectedClipId={selectedClipId}
-							selectedAnnotationId={selectedAnnotationId}
-							selectedAudioId={selectedAudioId}
-							selectAllBlocksActive={selectAllBlocksActive}
-							onClearBlockSelection={clearSelectedBlocks}
-							keyframes={keyframes}
-							sourceAudioTracks={sourceAudioTracks}
-							getSourceAudioTrackSettingsForClip={getSourceAudioTrackSettingsForClip}
-							showSourceAudioTrack={showSourceAudioTrack}
-							liveSpanPreviewById={liveZoomPreview.previewSpans}
-							liveHiddenItemIds={Array.from(liveZoomPreview.hiddenZoomIds)}
-							isLoading={isLoading}
-						/>
-					</TimelineWrapper>
+						<TimelineWrapper
+							range={clampedRange}
+							videoDuration={videoDuration}
+							hasOverlap={hasOverlap}
+							onRangeChange={setRange}
+							minItemDurationMs={timelineScale.minItemDurationMs}
+							minVisibleRangeMs={timelineScale.minVisibleRangeMs}
+							onItemSpanChange={handleItemSpanChange}
+							resolveTargetRowId={getResolvedDropRowId}
+							allRegionSpans={allRegionSpans}
+							onLiveSpanPreviewChange={(id, span) => {
+								setLiveSpanPreviewById((prev) => {
+									if (!span) {
+										if (!(id in prev)) return prev;
+										const next = { ...prev };
+										delete next[id];
+										return next;
+									}
+									const current = prev[id];
+									if (
+										current &&
+										current.start === span.start &&
+										current.end === span.end
+									) {
+										return prev;
+									}
+									return { ...prev, [id]: span };
+								});
+							}}
+						>
+							<KeyframeMarkers
+								keyframes={keyframes}
+								selectedKeyframeId={selectedKeyframeId}
+								setSelectedKeyframeId={setSelectedKeyframeId}
+								onKeyframeMove={handleKeyframeMove}
+								videoDurationMs={totalMs}
+								timelineRef={timelineContainerRef}
+							/>
+							<TimelineCanvas
+								items={timelineItems}
+								videoDurationMs={totalMs}
+								currentTimeMs={currentTimeMs}
+								onSeek={onSeek}
+								onShiftMarker={onShiftMarker}
+								pendingMarkerMs={pendingMarkerMs}
+								onAddZoomAtMs={addZoomAtMs}
+								canPlaceZoomAtMs={canPlaceZoomAtMs}
+								onSelectZoom={handleSelectZoom}
+								onSelectSpeed={onSelectSpeed}
+								onSelectClip={handleSelectClip}
+								onSelectAnnotation={handleSelectAnnotation}
+								onSelectAudio={handleSelectAudio}
+								selectedZoomId={selectedZoomId}
+								selectedSpeedId={selectedSpeedId}
+								selectedClipId={selectedClipId}
+								selectedAnnotationId={selectedAnnotationId}
+								selectedAudioId={selectedAudioId}
+								selectAllBlocksActive={selectAllBlocksActive}
+								onClearBlockSelection={clearSelectedBlocks}
+								keyframes={keyframes}
+								sourceAudioTracks={sourceAudioTracks}
+								getSourceAudioTrackSettingsForClip={
+									getSourceAudioTrackSettingsForClip
+								}
+								showSourceAudioTrack={showSourceAudioTrack}
+								liveSpanPreviewById={liveZoomPreview.previewSpans}
+								liveHiddenItemIds={Array.from(liveZoomPreview.hiddenZoomIds)}
+								isLoading={isLoading}
+							/>
+						</TimelineWrapper>
+					</div>
+					{/* Intro / outro bookends pinned at the track edges (non-scrolling). */}
+					{endcaps?.intro || endcaps?.outro ? (
+						<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-between px-1">
+							{endcaps?.intro ? (
+								<button
+									type="button"
+									onClick={endcaps.intro.onClick}
+									className={endcapClass(endcaps.intro.active)}
+								>
+									▶ {endcaps.intro.label}
+								</button>
+							) : (
+								<span />
+							)}
+							{endcaps?.outro ? (
+								<button
+									type="button"
+									onClick={endcaps.outro.onClick}
+									className={endcapClass(endcaps.outro.active)}
+								>
+									{endcaps.outro.label} ◀
+								</button>
+							) : (
+								<span />
+							)}
+						</div>
+					) : null}
 				</div>
 			</div>
 		);
 	},
 );
+
+function endcapClass(active: boolean): string {
+	return [
+		"pointer-events-auto shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold shadow-lg backdrop-blur-sm transition-colors",
+		active
+			? "border border-[#2563EB]/50 bg-[#2563EB]/30 text-white hover:bg-[#2563EB]/45"
+			: "border border-dashed border-white/20 bg-black/40 text-white/60 hover:bg-black/60",
+	].join(" ");
+}
 
 TimelineEditor.displayName = "TimelineEditor";
 
