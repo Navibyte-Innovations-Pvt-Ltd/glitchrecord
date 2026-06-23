@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { CardPreview } from "./CardPreview";
 import {
 	INTRO_OUTRO_MAX_DURATION_MS,
 	INTRO_OUTRO_MAX_SIZE,
@@ -135,6 +136,7 @@ export function IntroOutroSettings({ config, onChange }: IntroOutroSettingsProps
 				title="Intro"
 				side={config.intro}
 				disabled={!hasLogo}
+				logoDataUrl={config.logoDataUrl}
 				onChange={(patch) => updateSide("intro", patch)}
 			/>
 			<div className="h-2" />
@@ -142,6 +144,7 @@ export function IntroOutroSettings({ config, onChange }: IntroOutroSettingsProps
 				title="Outro"
 				side={config.outro}
 				disabled={!hasLogo}
+				logoDataUrl={config.logoDataUrl}
 				onChange={(patch) => updateSide("outro", patch)}
 			/>
 		</div>
@@ -152,10 +155,11 @@ interface SideEditorProps {
 	title: string;
 	side: IntroOutroSideConfig;
 	disabled: boolean;
+	logoDataUrl: string;
 	onChange: (patch: Partial<IntroOutroSideConfig>) => void;
 }
 
-function SideEditor({ title, side, disabled, onChange }: SideEditorProps) {
+function SideEditor({ title, side, disabled, logoDataUrl, onChange }: SideEditorProps) {
 	return (
 		<div className="rounded-lg border border-foreground/10 bg-background/40 p-2.5">
 			<div className="flex items-center justify-between">
@@ -171,6 +175,7 @@ function SideEditor({ title, side, disabled, onChange }: SideEditorProps) {
 
 			{side.enabled && !disabled ? (
 				<div className="mt-2.5 space-y-2.5">
+					<CardPreview side={side} logoDataUrl={logoDataUrl} />
 					<ChipRow
 						label="Animation"
 						options={PRESET_OPTIONS}
