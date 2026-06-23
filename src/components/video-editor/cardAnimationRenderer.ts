@@ -1,3 +1,4 @@
+import { getCardAnimation, resolveAnimation } from "./cardAnimations";
 import type { IntroOutroPosition, IntroOutroSideConfig } from "./introOutroTypes";
 
 /**
@@ -19,16 +20,6 @@ export interface CardRenderInput {
 
 function clamp01(value: number): number {
 	return Math.min(1, Math.max(0, value));
-}
-
-function easeOutCubic(t: number): number {
-	return 1 - (1 - t) ** 3;
-}
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-	if (edge1 <= edge0) return x < edge0 ? 0 : 1;
-	const t = clamp01((x - edge0) / (edge1 - edge0));
-	return t * t * (3 - 2 * t);
 }
 
 function roundRectPath(
@@ -266,46 +257,22 @@ export function drawCard({ ctx, width, height, logo, side, progress }: CardRende
 	const m = measureGroup(ctx, H, side, logo);
 	if (m.width <= 0 || m.height <= 0) return;
 
-	const durSec = Math.min(8, Math.max(0.5, side.durationMs / 1000));
-	const fadeSec = Math.min(0.5, durSec * 0.4);
-	const fadeInEnd = fadeSec / durSec;
-	const fadeOutStart = (durSec - fadeSec) / durSec;
-	const tSec = t * durSec;
-
 	const origin = groupOrigin(side.position, W, H, m.width, m.height);
-	let drawX = origin.x;
-	let drawY = origin.y;
-	let scale = 1;
-	let opacity =
-		side.preset === "slide"
-			? 1 - smoothstep(fadeOutStart, 1, t)
-			: smoothstep(0, fadeInEnd, t) * (1 - smoothstep(fadeOutStart, 1, t));
-
-	if (side.preset === "scale-pop") {
-		const popFrac = Math.min(0.5, durSec) / durSec;
-		scale = 0.6 + 0.4 * easeOutCubic(clamp01(t / popFrac));
-	} else if (side.preset === "slide") {
-		const slideFrac = Math.min(0.6, durSec * 0.5) / durSec;
-		const p = easeOutCubic(clamp01(t / slideFrac));
-		const startX = side.position === "right" ? W : -m.width;
-		drawX = startX + (origin.x - startX) * p;
-	} else if (side.preset === "glitch") {
-		const shakeSec = Math.min(0.4, durSec * 0.35);
-		if (tSec < shakeSec) {
-			drawX = origin.x + 18 * Math.sin(tSec * 90) * ((shakeSec - tSec) / shakeSec);
-		}
-	}
+	// The animation is a declarative spec sampled at t (see cardAnimations.ts).
+	// Its transform is applied to the whole content group about its center; the
+	// resting position comes from `origin`, x/y are frame-fraction offsets.
+	const anim = resolveAnimation(getCardAnimation(side.preset), t);
+	const cx = origin.x + m.width / 2;
+	const cy = origin.y + m.height / 2;
 
 	ctx.save();
-	ctx.globalAlpha = clamp01(opacity);
-	if (scale !== 1) {
-		const cx = drawX + m.width / 2;
-		const cy = drawY + m.height / 2;
-		ctx.translate(cx, cy);
-		ctx.scale(scale, scale);
-		ctx.translate(-cx, -cy);
-	}
-	drawGroup(ctx, logo, side, m, drawX, drawY);
+	ctx.globalAlpha = clamp01(anim.opacity);
+	if (anim.blur > 0) ctx.filter = `blur(${anim.blur}px)`;
+	ctx.translate(cx + anim.x * W, cy + anim.y * H);
+	if (anim.scale !== 1) ctx.scale(anim.scale, anim.scale);
+	if (anim.rotate !== 0) ctx.rotate((anim.rotate * Math.PI) / 180);
+	ctx.translate(-cx, -cy);
+	drawGroup(ctx, logo, side, m, origin.x, origin.y);
 	ctx.restore();
 }
 
