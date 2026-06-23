@@ -413,7 +413,8 @@ function LogoRow({
 				) : null}
 			</div>
 			<p className="mt-1.5 text-[10px] text-muted-foreground/70">
-				Use a transparent PNG (no background) — a logo with its own white/solid box shows a hard edge against the card.
+				Use a transparent PNG (no background) — a logo with its own white/solid box shows a
+				hard edge against the card.
 			</p>
 		</Section>
 	);
