@@ -10,6 +10,7 @@ import {
 	Gauge,
 	Gear,
 	ListBullets,
+	MusicNotes,
 	Pause,
 	Camera as PhCameraRegular,
 	Play,
@@ -133,6 +134,9 @@ const PhListBullets = (props: { className?: string; weight?: "fill" | "regular" 
 );
 const PhAvatar = (props: { className?: string; weight?: "fill" | "regular" }) => (
 	<User weight={props.weight ?? "regular"} className={props.className} />
+);
+const PhMusic = (props: { className?: string; weight?: "fill" | "regular" }) => (
+	<MusicNotes weight={props.weight ?? "regular"} className={props.className} />
 );
 
 // Stable empty audio-regions reference. MUST be module-level: when the avatar plays
@@ -1857,6 +1861,11 @@ export default function VideoEditor() {
 				id: "captions" as const,
 				label: t("settings.sections.captions", "Captions"),
 				icon: PhCaptions,
+			},
+			{
+				id: "music" as const,
+				label: t("settings.sections.music", "Music"),
+				icon: PhMusic,
 			},
 			{
 				id: "glitchgrab" as const,
@@ -7006,6 +7015,10 @@ export default function VideoEditor() {
 								onAudioVolumeChange={handleAudioVolumeChange}
 								onAudioNormalizeChange={handleAudioNormalizeChange}
 								onAudioDelete={handleAudioDelete}
+								backgroundMusic={backgroundMusic}
+								onPickBackgroundMusic={handlePickBackgroundMusic}
+								onBackgroundMusicVolumeChange={handleBackgroundMusicVolumeChange}
+								onRemoveBackgroundMusic={handleRemoveBackgroundMusic}
 								shadowIntensity={shadowIntensity}
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}
