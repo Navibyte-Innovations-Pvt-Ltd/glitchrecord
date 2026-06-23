@@ -1015,6 +1015,19 @@ export class AudioProcessor {
 		chunkOutputStartSec: number,
 		chunkDurationSec: number,
 	): void {
+		// Looping overlays (the background-music bed) fill the whole region by
+		// repeating the buffer with an equal-power crossfade at each seam.
+		if (region.loop) {
+			this.scheduleLoopedRegionForChunk(
+				ctx,
+				buffer,
+				region,
+				chunkOutputStartSec,
+				chunkDurationSec,
+			);
+			return;
+		}
+
 		// Overlay regions are already in OUTPUT/timeline time — place them directly.
 		// sourceTimeToOutputTime is only for source-time buffers; remapping an
 		// overlay here clamps/distorts it when speed/trim/clip-deletion make the
@@ -1051,6 +1064,102 @@ export class AudioProcessor {
 		source.buffer = buffer;
 		source.connect(gainNode);
 		source.start(localStartSec, bufferOffsetSec, duration);
+	}
+
+	// Schedule a LOOPING overlay (background-music bed) inside one chunk window.
+	// The buffer repeats to fill [startMs, endMs] (OUTPUT time). Each repeat fades
+	// in over the first `crossfade` seconds and fades out over its last `crossfade`
+	// seconds with an equal-power (sin/cos) curve; consecutive repeats overlap by
+	// exactly `crossfade`, so sin²+cos² = 1 keeps the loudness constant across the
+	// seam — seamless, not a hard cut. A matching fade-out is applied at the very
+	// end of the region so the music doesn't clip abruptly before the outro card.
+	private scheduleLoopedRegionForChunk(
+		ctx: OfflineAudioContext,
+		buffer: AudioBuffer,
+		region: AudioRegion,
+		chunkOutputStartSec: number,
+		chunkDurationSec: number,
+	): void {
+		const bufferDur = buffer.duration;
+		if (bufferDur <= 0.01) return;
+
+		const regionStartSec = region.startMs / 1000;
+		const regionEndSec = region.endMs / 1000;
+		const chunkStart = chunkOutputStartSec;
+		const chunkEnd = chunkOutputStartSec + chunkDurationSec;
+
+		// The slice of the music region that overlaps this chunk.
+		const winStart = Math.max(regionStartSec, chunkStart);
+		const winEnd = Math.min(regionEndSec, chunkEnd);
+		if (winEnd - winStart <= 0.001) return;
+
+		const normalizeGain = region.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
+		const baseGain = Math.max(0, Math.min(1, region.volume * normalizeGain));
+		if (baseGain <= 0) return;
+
+		// Crossfade can't exceed half the buffer (else fade-in and fade-out overlap
+		// nonsensically). 0 → gapless hard-cut loop.
+		const crossfade = Math.min(
+			Math.max((region.loopCrossfadeMs ?? 0) / 1000, 0),
+			bufferDur / 2,
+		);
+		// Each repeat advances by (bufferDur - crossfade) so its tail overlaps the
+		// next repeat's head by exactly `crossfade`.
+		const period = Math.max(0.001, bufferDur - crossfade);
+
+		const firstK = Math.max(0, Math.floor((winStart - regionStartSec - bufferDur) / period));
+		const lastK = Math.floor((winEnd - regionStartSec) / period);
+
+		for (let k = firstK; k <= lastK; k++) {
+			const iterStart = regionStartSec + k * period;
+			if (iterStart >= regionEndSec) break;
+			const iterEnd = iterStart + bufferDur;
+
+			// Portion of this repeat that lands inside the chunk window.
+			const segStart = Math.max(iterStart, winStart);
+			const segEnd = Math.min(iterEnd, winEnd);
+			if (segEnd - segStart <= 0.001) continue;
+
+			const bufferOffsetSec = segStart - iterStart;
+			if (bufferOffsetSec >= bufferDur) continue;
+			const playDur = Math.min(segEnd - segStart, bufferDur - bufferOffsetSec);
+			if (playDur <= 0.001) continue;
+
+			const gainNode = ctx.createGain();
+			gainNode.connect(ctx.destination);
+
+			const localStartSec = segStart - chunkStart;
+
+			if (crossfade > 0) {
+				// Sample the envelope across the played segment (absolute output time).
+				const points = Math.max(2, Math.min(8192, Math.ceil(playDur * 200)));
+				const curve = new Float32Array(points);
+				for (let i = 0; i < points; i++) {
+					const u = segStart + (playDur * i) / (points - 1);
+					const into = u - iterStart; // 0..bufferDur within this repeat
+					let g = 1;
+					if (into < crossfade) {
+						g *= Math.sin((Math.PI / 2) * (into / crossfade));
+					}
+					if (into > bufferDur - crossfade) {
+						g *= Math.cos((Math.PI / 2) * ((into - (bufferDur - crossfade)) / crossfade));
+					}
+					// Soft fade-out at the very end of the whole region.
+					if (u > regionEndSec - crossfade) {
+						g *= Math.cos((Math.PI / 2) * ((u - (regionEndSec - crossfade)) / crossfade));
+					}
+					curve[i] = baseGain * Math.max(0, g);
+				}
+				gainNode.gain.setValueCurveAtTime(curve, localStartSec, playDur);
+			} else {
+				gainNode.gain.value = baseGain;
+			}
+
+			const source = ctx.createBufferSource();
+			source.buffer = buffer;
+			source.connect(gainNode);
+			source.start(localStartSec, bufferOffsetSec, playDur);
+		}
 	}
 
 	// Feed a rendered AudioBuffer chunk to an AudioEncoder with a timestamp offset.
