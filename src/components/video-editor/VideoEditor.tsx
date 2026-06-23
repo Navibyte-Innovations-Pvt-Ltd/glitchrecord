@@ -832,11 +832,9 @@ export default function VideoEditor() {
 	// Inline preview: the card currently painting over the player (intro pre-roll
 	// on play-from-start, outro post-roll at content end), or null. Additive — when
 	// no card is active the player behaves exactly as before.
-	const [activeCard, setActiveCard] = useState<{
-		side: IntroOutroSideConfig;
-		progress: number;
-	} | null>(null);
-	const cardRafRef = useRef<number | null>(null);
+	// Which card is showing (the overlay self-animates; we don't track progress
+	// in React state — that re-rendered the whole editor every frame and lagged).
+	const [activeCard, setActiveCard] = useState<{ side: IntroOutroSideConfig } | null>(null);
 	const introPlayedForRunRef = useRef(false);
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
@@ -1621,10 +1619,6 @@ export default function VideoEditor() {
 		return () => {
 			exporterRef.current?.cancel();
 			exporterRef.current = null;
-			if (cardRafRef.current !== null) {
-				cancelAnimationFrame(cardRafRef.current);
-				cardRafRef.current = null;
-			}
 			cardAudioRef.current?.pause();
 			cardAudioRef.current = null;
 			const pending = pendingExportSaveRef.current;
@@ -3743,6 +3737,8 @@ export default function VideoEditor() {
 	// `ended` event; card mode resolves when its rAF reaches progress 1).
 	const cardOnDoneRef = useRef<(() => void) | null>(null);
 	const cardAudioRef = useRef<HTMLAudioElement | null>(null);
+	// True while a card is showing — guards the outro trigger from re-firing.
+	const cardActiveRef = useRef(false);
 
 	// The card's uploaded audio plays alongside the inline card (built-in stings
 	// are main-process-only, so can't play in the renderer here).
@@ -3764,58 +3760,31 @@ export default function VideoEditor() {
 		[stopCardAudio],
 	);
 
-	// Plays one intro/outro card over the preview. Card mode advances `progress`
-	// 0→1 across its duration; video mode shows the clip and waits for its `ended`.
-	// The main <video> stays parked. Then clears and calls `onDone`.
+	// Shows one intro/outro card. The CardOverlay self-animates (its own rAF) and
+	// calls back via handleCardVideoEnded when it finishes — we only set state once
+	// here, so the editor doesn't re-render per frame. Card-mode uploaded audio
+	// starts here (one-shot); video mode plays the clip's own audio.
 	const playCard = useCallback(
 		(side: IntroOutroSideConfig, onDone?: () => void) => {
-			if (cardRafRef.current !== null) {
-				cancelAnimationFrame(cardRafRef.current);
-				cardRafRef.current = null;
-			}
 			cardOnDoneRef.current = onDone ?? null;
-			setActiveCard({ side, progress: 0 });
-
-			if (side.mode === "video" && side.videoPath) {
-				return; // CardOverlay <video> drives completion via onEnded (+ its own audio).
-			}
-
-			startCardAudio(side);
-
-			const durationMs = cardDurationMs(side);
-			const startedAt = performance.now();
-			const tick = (now: number) => {
-				const progress = (now - startedAt) / durationMs;
-				if (progress >= 1) {
-					cardRafRef.current = null;
-					stopCardAudio();
-					setActiveCard(null);
-					const done = cardOnDoneRef.current;
-					cardOnDoneRef.current = null;
-					done?.();
-					return;
-				}
-				setActiveCard({ side, progress });
-				cardRafRef.current = requestAnimationFrame(tick);
-			};
-			cardRafRef.current = requestAnimationFrame(tick);
+			cardActiveRef.current = true;
+			if (side.mode === "card") startCardAudio(side);
+			setActiveCard({ side });
 		},
-		[startCardAudio, stopCardAudio],
+		[startCardAudio],
 	);
 
 	const stopCard = useCallback(() => {
-		if (cardRafRef.current !== null) {
-			cancelAnimationFrame(cardRafRef.current);
-			cardRafRef.current = null;
-		}
 		stopCardAudio();
+		cardActiveRef.current = false;
 		cardOnDoneRef.current = null;
 		setActiveCard(null);
 	}, [stopCardAudio]);
 
-	// Video-mode card finished → clear overlay and resume the flow.
+	// A card (canvas or video) finished → clear overlay and resume the flow.
 	const handleCardVideoEnded = useCallback(() => {
 		stopCardAudio();
+		cardActiveRef.current = false;
 		setActiveCard(null);
 		const done = cardOnDoneRef.current;
 		cardOnDoneRef.current = null;
@@ -4087,9 +4056,9 @@ export default function VideoEditor() {
 			const endMs = playbackEndSourceMsRef.current;
 			const atEnd = endMs > 0 && currentTimeRef.current * 1000 >= endMs - 150;
 			setIsPlaying(false);
-			if (outroCard && atEnd && cardRafRef.current === null) {
-				// Roll the outro card (own rAF) after content; isPlaying stays false
-				// so audio doesn't restart under the card.
+			if (outroCard && atEnd && !cardActiveRef.current) {
+				// Roll the outro card after content; isPlaying stays false so audio
+				// doesn't restart under the card.
 				playCard(outroCard);
 			}
 		},
@@ -7190,7 +7159,7 @@ export default function VideoEditor() {
 												<CardOverlay
 													side={activeCard.side}
 													logoDataUrl={introOutro.logoDataUrl}
-													progress={activeCard.progress}
+													durationMs={cardDurationMs(activeCard.side)}
 													onEnded={handleCardVideoEnded}
 												/>
 											) : null}
