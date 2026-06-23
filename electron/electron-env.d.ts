@@ -561,6 +561,7 @@ interface Window {
 			introOutro?:
 				| import("../src/components/video-editor/introOutroTypes").IntroOutroConfig
 				| null;
+			introOutroFrameDirs?: { intro?: string | null; outro?: string | null } | null;
 		}) => Promise<{
 			success: boolean;
 			path?: string;
@@ -568,6 +569,9 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		stageIntroOutroFrames: (
+			framesBase64: string[],
+		) => Promise<{ success: boolean; dir?: string; error?: string }>;
 		discardExportedTemp: (tempPath: string) => Promise<{ success: boolean; error?: string }>;
 		getVideoAudioFallbackPaths: (videoPath: string) => Promise<{
 			success: boolean;
