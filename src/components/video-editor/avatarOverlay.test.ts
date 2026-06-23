@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildExportAudioRegions,
 	getAvatarBubbleLayout,
 	getAvatarFullFrameLayout,
 	getAvatarObjectPosition,
@@ -8,6 +9,7 @@ import {
 	lerpAvatarLayout,
 	panAvatarFraming,
 } from "./avatarOverlay";
+import type { AudioRegion } from "./types";
 import { DEFAULT_AVATAR_OVERLAY } from "./types";
 
 const base = { ...DEFAULT_AVATAR_OVERLAY, enabled: true };
@@ -226,5 +228,56 @@ describe("getAvatarBubbleLayout", () => {
 		if (!layout) return;
 		expect(layout.x).toBeGreaterThan(1280 / 2);
 		expect(layout.y).toBeGreaterThan(720 / 2);
+	});
+});
+
+describe("buildExportAudioRegions (avatar voice in export)", () => {
+	const narration: AudioRegion[] = [
+		{ id: "n1", audioPath: "/narration.wav", startMs: 0, endMs: 5_000, volume: 1 },
+	];
+
+	it("appends the avatar clip's audio when the avatar is UNMUTED (so export isn't silent)", () => {
+		const avatar = {
+			...DEFAULT_AVATAR_OVERLAY,
+			enabled: true,
+			muted: false,
+			sourcePath: "/avatars/avatar-x.mp4",
+		};
+		const out = buildExportAudioRegions([], avatar, 180);
+		expect(out).toHaveLength(1);
+		expect(out[0]).toMatchObject({
+			audioPath: "/avatars/avatar-x.mp4",
+			startMs: 0,
+			endMs: 180_000, // timeline seconds → ms
+			volume: 1,
+		});
+	});
+
+	it("keeps existing narration AND adds the avatar voice", () => {
+		const avatar = {
+			...DEFAULT_AVATAR_OVERLAY,
+			enabled: true,
+			muted: false,
+			sourcePath: "/avatars/a.mp4",
+		};
+		const out = buildExportAudioRegions(narration, avatar, 10);
+		expect(out).toHaveLength(2);
+		expect(out[0].id).toBe("n1");
+		expect(out[1].audioPath).toBe("/avatars/a.mp4");
+	});
+
+	it("does NOT add avatar audio when muted (narration carries the voice)", () => {
+		const avatar = {
+			...DEFAULT_AVATAR_OVERLAY,
+			enabled: true,
+			muted: true,
+			sourcePath: "/avatars/a.mp4",
+		};
+		expect(buildExportAudioRegions(narration, avatar, 10)).toBe(narration);
+	});
+
+	it("does NOT add avatar audio when there is no generated clip", () => {
+		const avatar = { ...DEFAULT_AVATAR_OVERLAY, enabled: true, muted: false, sourcePath: null };
+		expect(buildExportAudioRegions(narration, avatar, 10)).toBe(narration);
 	});
 });
