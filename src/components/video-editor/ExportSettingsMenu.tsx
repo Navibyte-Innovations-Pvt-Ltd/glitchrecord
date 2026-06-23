@@ -14,10 +14,8 @@ import type {
 } from "@/lib/exporter";
 import { GIF_FRAME_RATES, GIF_SIZE_PRESETS, MP4_FRAME_RATES } from "@/lib/exporter";
 import { cn } from "@/lib/utils";
-import { BackgroundMusicSettings } from "./BackgroundMusicSettings";
 import { IntroOutroSettings } from "./IntroOutroSettings";
 import type { IntroOutroConfig } from "./introOutroTypes";
-import type { BackgroundMusicConfig } from "./types";
 
 interface ExportSettingsMenuProps {
 	exportFormat: ExportFormat;
@@ -43,10 +41,6 @@ interface ExportSettingsMenuProps {
 	gifOutputDimensions: { width: number; height: number };
 	introOutro?: IntroOutroConfig;
 	onIntroOutroChange?: (config: IntroOutroConfig) => void;
-	backgroundMusic?: BackgroundMusicConfig | null;
-	onPickBackgroundMusic?: () => void;
-	onBackgroundMusicVolumeChange?: (volume: number) => void;
-	onRemoveBackgroundMusic?: () => void;
 	onExport?: () => void;
 	className?: string;
 }
@@ -75,10 +69,6 @@ export function ExportSettingsMenu({
 	gifOutputDimensions,
 	introOutro,
 	onIntroOutroChange,
-	backgroundMusic,
-	onPickBackgroundMusic,
-	onBackgroundMusicVolumeChange,
-	onRemoveBackgroundMusic,
 	onExport,
 	className,
 }: ExportSettingsMenuProps) {
@@ -385,16 +375,6 @@ export function ExportSettingsMenu({
 					) : null}
 					{introOutro && onIntroOutroChange ? (
 						<IntroOutroSettings config={introOutro} onChange={onIntroOutroChange} />
-					) : null}
-					{onPickBackgroundMusic &&
-					onBackgroundMusicVolumeChange &&
-					onRemoveBackgroundMusic ? (
-						<BackgroundMusicSettings
-							config={backgroundMusic}
-							onPick={onPickBackgroundMusic}
-							onVolumeChange={onBackgroundMusicVolumeChange}
-							onRemove={onRemoveBackgroundMusic}
-						/>
 					) : null}
 				</LayoutGroup>
 			) : (
