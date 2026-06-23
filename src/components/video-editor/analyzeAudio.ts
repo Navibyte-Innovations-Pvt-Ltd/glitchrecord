@@ -12,9 +12,11 @@ export interface AudioAnalysis {
 	beats: number[];
 	/** Seconds of audio covered (min of clip length and card duration). */
 	durationSec: number;
+	/** Plain-language structure summary for the AI to reason about. */
+	summary: string;
 }
 
-const BUCKETS = 24;
+const BUCKETS = 32;
 
 export async function analyzeAudio(
 	dataUrl: string,
@@ -64,8 +66,42 @@ export async function analyzeAudio(
 			}
 		}
 
-		return { points, beats, durationSec: Number(cardSec.toFixed(2)) };
+		const summary = describeStructure(rms, beats.length);
+		return { points, beats, durationSec: Number(cardSec.toFixed(2)), summary };
 	} catch {
 		return null;
 	}
+}
+
+/** Heuristic plain-language description of the energy structure. */
+function describeStructure(rms: number[], peakCount: number): string {
+	const n = rms.length;
+	if (n < 3) return "very short clip";
+	const avg = (a: number, b: number) => {
+		let s = 0;
+		for (let i = a; i < b; i++) s += rms[i];
+		return s / Math.max(1, b - a);
+	};
+	const third = Math.floor(n / 3);
+	const startE = avg(0, third);
+	const midE = avg(third, 2 * third);
+	const endE = avg(2 * third, n);
+	let maxIdx = 0;
+	for (let i = 1; i < n; i++) if (rms[i] > rms[maxIdx]) maxIdx = i;
+	const maxT = (maxIdx / (n - 1)).toFixed(2);
+
+	const parts: string[] = [];
+	if (endE > startE * 1.4 && endE >= midE) {
+		parts.push(`steadily builds and is loudest near the end (climax ~t=${maxT})`);
+	} else if (startE > endE * 1.4) {
+		parts.push("starts strong then fades out");
+	} else if (midE > startE * 1.3 && midE > endE * 1.3) {
+		parts.push(`swells in the middle (peak ~t=${maxT}) then eases`);
+	} else {
+		parts.push("fairly steady energy throughout");
+	}
+	const quietStart = startE < 0.15;
+	if (quietStart) parts.push("near-silent intro");
+	parts.push(`${peakCount} accent hit${peakCount === 1 ? "" : "s"}`);
+	return parts.join("; ");
 }
