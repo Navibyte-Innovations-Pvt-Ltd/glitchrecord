@@ -147,7 +147,9 @@ import { extensionHost } from "@/lib/extensions";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { buildExportAudioRegions } from "./avatarOverlay";
+import { CardOverlay } from "./CardOverlay";
 import { CropControl } from "./CropControl";
+import { cardDurationMs } from "./cardAnimationRenderer";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
 import {
@@ -168,7 +170,12 @@ import {
 	serializeEditorPresetSnapshot,
 } from "./editorPreferences";
 import { GlitchgrabLogPanel } from "./GlitchgrabLogPanel";
-import { DEFAULT_INTRO_OUTRO, type IntroOutroConfig, introOutroIsActive } from "./introOutroTypes";
+import {
+	DEFAULT_INTRO_OUTRO,
+	type IntroOutroConfig,
+	type IntroOutroSideConfig,
+	introOutroIsActive,
+} from "./introOutroTypes";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import { hasUnsavedProjectChanges } from "./projectDirtyState";
 import {
@@ -820,6 +827,15 @@ export default function VideoEditor() {
 	// Latest config for export-save callbacks whose deps must stay stable.
 	const introOutroRef = useRef(introOutro);
 	introOutroRef.current = introOutro;
+	// Inline preview: the card currently painting over the player (intro pre-roll
+	// on play-from-start, outro post-roll at content end), or null. Additive — when
+	// no card is active the player behaves exactly as before.
+	const [activeCard, setActiveCard] = useState<{
+		side: IntroOutroSideConfig;
+		progress: number;
+	} | null>(null);
+	const cardRafRef = useRef<number | null>(null);
+	const introPlayedForRunRef = useRef(false);
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<EditorProjectData | null>(null);
@@ -1580,9 +1596,7 @@ export default function VideoEditor() {
 				// The in-memory fallback path does not route through the main-process
 				// concat step, so intro/outro cards are skipped here. Rare: only hit
 				// when the streaming export API is unavailable.
-				console.warn(
-					"[export] Intro/outro cards skipped on in-memory fallback save path",
-				);
+				console.warn("[export] Intro/outro cards skipped on in-memory fallback save path");
 			}
 			const arrayBuffer = await blob.arrayBuffer();
 			return {
@@ -1602,6 +1616,10 @@ export default function VideoEditor() {
 		return () => {
 			exporterRef.current?.cancel();
 			exporterRef.current = null;
+			if (cardRafRef.current !== null) {
+				cancelAnimationFrame(cardRafRef.current);
+				cardRafRef.current = null;
+			}
 			const pending = pendingExportSaveRef.current;
 			pendingExportSaveRef.current = null;
 			if (pending?.tempFilePath && typeof window !== "undefined") {
@@ -3651,6 +3669,52 @@ export default function VideoEditor() {
 		[clipRegions, duration],
 	);
 
+	// Refs mirroring playback state so the intro/outro card scheduler (stable
+	// callbacks) can read fresh values without re-creating on every frame.
+	const currentTimeRef = useRef(0);
+	const playbackEndSourceMsRef = useRef(0);
+	const timelinePlayheadRef = useRef(0);
+	useEffect(() => {
+		currentTimeRef.current = currentTime;
+	}, [currentTime]);
+	useEffect(() => {
+		playbackEndSourceMsRef.current = playbackEndSourceMs;
+	}, [playbackEndSourceMs]);
+	useEffect(() => {
+		timelinePlayheadRef.current = timelinePlayheadTime;
+	}, [timelinePlayheadTime]);
+
+	// Plays one intro/outro card over the preview, advancing `progress` 0→1 across
+	// its duration, then clears and calls `onDone`. The <video> stays parked.
+	const playCard = useCallback((side: IntroOutroSideConfig, onDone: () => void) => {
+		if (cardRafRef.current !== null) {
+			cancelAnimationFrame(cardRafRef.current);
+		}
+		const durationMs = cardDurationMs(side);
+		const startedAt = performance.now();
+		setActiveCard({ side, progress: 0 });
+		const tick = (now: number) => {
+			const progress = (now - startedAt) / durationMs;
+			if (progress >= 1) {
+				cardRafRef.current = null;
+				setActiveCard(null);
+				onDone();
+				return;
+			}
+			setActiveCard({ side, progress });
+			cardRafRef.current = requestAnimationFrame(tick);
+		};
+		cardRafRef.current = requestAnimationFrame(tick);
+	}, []);
+
+	const stopCard = useCallback(() => {
+		if (cardRafRef.current !== null) {
+			cancelAnimationFrame(cardRafRef.current);
+			cardRafRef.current = null;
+		}
+		setActiveCard(null);
+	}, []);
+
 	// Speed = per-clip speed (carve). Derived from clipRegions only; the old
 	// overlay speedRegions state is no longer used so it can't apply invisibly.
 	const effectiveSpeedRegions = useMemo<SpeedRegion[]>(
@@ -3713,14 +3777,37 @@ export default function VideoEditor() {
 		const video = playback?.video;
 		if (!playback || !video) return;
 
-		audio.playSourceAudioPreview();
-		playback.play().catch((err) => console.error("Video play failed:", err));
-	}, [audio.playSourceAudioPreview, getActivePlayback]);
+		const playContent = () => {
+			audio.playSourceAudioPreview();
+			playback.play().catch((err) => console.error("Video play failed:", err));
+		};
+
+		// Intro pre-roll: only when starting from the very beginning of the
+		// timeline and not already shown for this play run. Otherwise normal play.
+		const io = introOutroRef.current;
+		const introCard = introOutroIsActive(io) && io.intro.enabled ? io.intro : null;
+		const atStart = timelinePlayheadRef.current <= 0.05;
+		if (introCard && atStart && !introPlayedForRunRef.current) {
+			introPlayedForRunRef.current = true;
+			setIsPlaying(true);
+			playCard(introCard, playContent);
+			return;
+		}
+
+		playContent();
+	}, [audio.playSourceAudioPreview, getActivePlayback, playCard]);
 
 	function togglePlayPause() {
 		const playback = getActivePlayback();
 		const video = playback?.video;
 		if (!playback || !video) return;
+
+		// Pausing while an intro/outro card is playing just stops the card.
+		if (activeCard) {
+			stopCard();
+			setIsPlaying(false);
+			return;
+		}
 
 		if (!video.paused && !video.ended) {
 			playback.pause();
@@ -3759,13 +3846,16 @@ export default function VideoEditor() {
 			const video = playback?.video;
 			if (!video) return;
 
+			// Seeking navigates away from any intro/outro card in progress.
+			stopCard();
+
 			if (options.pause && !video.paused) {
 				playback?.pause();
 			}
 
 			video.currentTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
 		},
-		[getActivePlayback, mapTimelineTimeToSourceTime],
+		[getActivePlayback, mapTimelineTimeToSourceTime, stopCard],
 	);
 
 	// Grab a still frame from the RAW recording at a given recording-time (ms).
@@ -3871,10 +3961,31 @@ export default function VideoEditor() {
 		},
 		[mapSourceTimeToTimelineTime],
 	);
-	const handlePlaybackPlayStateChange = useCallback((p: boolean) => {
-		setIsPlaying(p);
-		narrationPlaybackRef.current.isPlaying = p;
-	}, []);
+	const handlePlaybackPlayStateChange = useCallback(
+		(p: boolean) => {
+			narrationPlaybackRef.current.isPlaying = p;
+			if (p) {
+				setIsPlaying(true);
+				return;
+			}
+
+			// Video stopped. Reset the intro guard so a later play-from-start
+			// replays the intro. If it stopped because content reached the end,
+			// roll the outro card before settling to paused.
+			introPlayedForRunRef.current = false;
+			const io = introOutroRef.current;
+			const outroCard = introOutroIsActive(io) && io.outro.enabled ? io.outro : null;
+			const endMs = playbackEndSourceMsRef.current;
+			const atEnd = endMs > 0 && currentTimeRef.current * 1000 >= endMs - 150;
+			if (outroCard && atEnd && cardRafRef.current === null) {
+				setIsPlaying(true);
+				playCard(outroCard, () => setIsPlaying(false));
+				return;
+			}
+			setIsPlaying(false);
+		},
+		[playCard],
+	);
 
 	const handleTimelineSeek = useCallback(
 		(time: number) => {
@@ -6958,6 +7069,13 @@ export default function VideoEditor() {
 												shouldSuspendPreviewRendering,
 												"inline",
 											)}
+											{activeCard ? (
+												<CardOverlay
+													side={activeCard.side}
+													logoDataUrl={introOutro.logoDataUrl}
+													progress={activeCard.progress}
+												/>
+											) : null}
 										</div>
 									</div>
 								</div>
