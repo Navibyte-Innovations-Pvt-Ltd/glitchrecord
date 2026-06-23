@@ -69,6 +69,10 @@ export interface CardBackground {
 	color2: string;
 	/** Gradient direction in degrees (0 = left→right). */
 	angle: number;
+	/** Soft radial accent glow behind the content, 0 (off) → 1. */
+	glow: number;
+	/** Edge darkening for depth, 0 (off) → 1. */
+	vignette: number;
 }
 
 export interface CardText {
@@ -121,6 +125,8 @@ export const DEFAULT_CARD_BACKGROUND: CardBackground = {
 	color1: "#0b1020",
 	color2: "#1e293b",
 	angle: 135,
+	glow: 0.18,
+	vignette: 0.28,
 };
 
 export const DEFAULT_CARD_TEXT: CardText = {
@@ -192,6 +198,8 @@ function normalizeBackground(value: unknown, legacyColor?: unknown): CardBackgro
 		color1: normalizeHexColor(bg.color1, fallback1),
 		color2: normalizeHexColor(bg.color2, DEFAULT_CARD_BACKGROUND.color2),
 		angle: clampNumber(bg.angle, 0, 360, DEFAULT_CARD_BACKGROUND.angle),
+		glow: clampNumber(bg.glow, 0, 1, DEFAULT_CARD_BACKGROUND.glow),
+		vignette: clampNumber(bg.vignette, 0, 1, DEFAULT_CARD_BACKGROUND.vignette),
 	};
 }
 
