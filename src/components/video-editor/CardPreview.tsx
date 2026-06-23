@@ -25,8 +25,27 @@ export function CardPreview({
 	const logoRef = useRef<HTMLImageElement | null>(null);
 	const rafRef = useRef<number | null>(null);
 	const startRef = useRef<number>(0);
+	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [logoReady, setLogoReady] = useState(false);
+
+	// Uploaded audio plays alongside the preview (built-in stings live in the main
+	// process, so they can't be previewed in the renderer). Synced to play start.
+	const startAudio = () => {
+		stopAudio();
+		if (side.audio.mode !== "upload" || !side.audio.dataUrl) return;
+		const el = new Audio(side.audio.dataUrl);
+		el.volume = Math.min(1, Math.max(0, side.audio.volume));
+		audioRef.current = el;
+		el.play().catch(() => undefined);
+	};
+	const stopAudio = () => {
+		if (audioRef.current) {
+			audioRef.current.pause();
+			audioRef.current.currentTime = 0;
+			audioRef.current = null;
+		}
+	};
 
 	// Load the logo into an Image whenever the data URL changes.
 	useEffect(() => {
@@ -76,6 +95,7 @@ export function CardPreview({
 			if (rafRef.current !== null) {
 				cancelAnimationFrame(rafRef.current);
 			}
+			stopAudio();
 		};
 	}, []);
 
@@ -84,6 +104,7 @@ export function CardPreview({
 			cancelAnimationFrame(rafRef.current);
 			rafRef.current = null;
 		}
+		stopAudio();
 		setIsPlaying(false);
 		paint(IDLE_PROGRESS);
 	};
@@ -93,12 +114,14 @@ export function CardPreview({
 		const duration = cardDurationMs(side);
 		startRef.current = performance.now();
 		setIsPlaying(true);
+		startAudio();
 		const tick = (now: number) => {
 			const elapsed = now - startRef.current;
 			const progress = elapsed / duration;
 			if (progress >= 1) {
 				paint(1);
 				rafRef.current = null;
+				stopAudio();
 				setIsPlaying(false);
 				paint(IDLE_PROGRESS);
 				return;
