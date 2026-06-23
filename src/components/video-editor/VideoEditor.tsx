@@ -3686,7 +3686,7 @@ export default function VideoEditor() {
 
 	// Plays one intro/outro card over the preview, advancing `progress` 0→1 across
 	// its duration, then clears and calls `onDone`. The <video> stays parked.
-	const playCard = useCallback((side: IntroOutroSideConfig, onDone: () => void) => {
+	const playCard = useCallback((side: IntroOutroSideConfig, onDone?: () => void) => {
 		if (cardRafRef.current !== null) {
 			cancelAnimationFrame(cardRafRef.current);
 		}
@@ -3698,7 +3698,7 @@ export default function VideoEditor() {
 			if (progress >= 1) {
 				cardRafRef.current = null;
 				setActiveCard(null);
-				onDone();
+				onDone?.();
 				return;
 			}
 			setActiveCard({ side, progress });
@@ -3788,8 +3788,10 @@ export default function VideoEditor() {
 		const introCard = introOutroIsActive(io) && io.intro.enabled ? io.intro : null;
 		const atStart = timelinePlayheadRef.current <= 0.05;
 		if (introCard && atStart && !introPlayedForRunRef.current) {
+			// Keep isPlaying false while the card plays so the audio hook / source
+			// preview don't start early (the card runs on its own rAF). Audio + video
+			// kick in together at handoff in playContent().
 			introPlayedForRunRef.current = true;
-			setIsPlaying(true);
 			playCard(introCard, playContent);
 			return;
 		}
@@ -3977,12 +3979,12 @@ export default function VideoEditor() {
 			const outroCard = introOutroIsActive(io) && io.outro.enabled ? io.outro : null;
 			const endMs = playbackEndSourceMsRef.current;
 			const atEnd = endMs > 0 && currentTimeRef.current * 1000 >= endMs - 150;
-			if (outroCard && atEnd && cardRafRef.current === null) {
-				setIsPlaying(true);
-				playCard(outroCard, () => setIsPlaying(false));
-				return;
-			}
 			setIsPlaying(false);
+			if (outroCard && atEnd && cardRafRef.current === null) {
+				// Roll the outro card (own rAF) after content; isPlaying stays false
+				// so audio doesn't restart under the card.
+				playCard(outroCard);
+			}
 		},
 		[playCard],
 	);
