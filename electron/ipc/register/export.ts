@@ -13,6 +13,7 @@ import {
 	releaseOwnedExportPath,
 	writeToExportStream,
 } from "../export/exportStream";
+import { applyIntroOutro, type IntroOutroConfig } from "../export/introOutro";
 import {
 	enqueueNativeVideoExportFrameWrite,
 	enqueueNativeVideoExportFrameWrites,
@@ -69,12 +70,7 @@ export async function moveExportedTempFile(tempPath: string, destinationPath: st
 		return;
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
-		if (
-			code !== "EXDEV" &&
-			code !== "EPERM" &&
-			code !== "ENOTEMPTY" &&
-			code !== "EEXIST"
-		) {
+		if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTEMPTY" && code !== "EEXIST") {
 			throw error;
 		}
 		// Cross-device or Windows permission quirks — fall back to copy + unlink so
@@ -107,9 +103,7 @@ export async function moveExportedTempFile(tempPath: string, destinationPath: st
 				await fs.rename(partialDestinationPath, destinationPath);
 			} catch (replaceError) {
 				if (movedExistingDestination) {
-					await fs
-						.rename(backupDestinationPath, destinationPath)
-						.catch(() => undefined);
+					await fs.rename(backupDestinationPath, destinationPath).catch(() => undefined);
 				}
 				throw replaceError;
 			}
@@ -929,6 +923,7 @@ export function registerExportHandlers() {
 				tempPath: string;
 				fileName: string;
 				outputPath?: string | null;
+				introOutro?: IntroOutroConfig | null;
 			},
 		) => {
 			const tempPath = payload?.tempPath;
@@ -953,12 +948,27 @@ export function registerExportHandlers() {
 				};
 			}
 
+			// Bolt on logo intro/outro cards (concat -c copy; main never
+			// re-encoded) only once a destination is committed, so a cancelled
+			// save dialog never leaves a stitched temp behind. Returns `tempPath`
+			// unchanged if nothing applies or on any failure, so a card-rendering
+			// hiccup never blocks the export.
+			const finalizeTo = async (destination: string) => {
+				const sourcePath = await applyIntroOutro(tempPath, payload.introOutro);
+				await moveExportedTempFile(sourcePath, destination);
+				releaseOwnedExportPath(tempPath);
+				if (sourcePath !== tempPath) {
+					await fs.unlink(tempPath).catch(() => {
+						// best-effort: original export temp superseded by stitched file
+					});
+				}
+				approveUserPath(destination);
+			};
+
 			try {
 				if (payload.outputPath) {
 					const resolvedPath = path.resolve(payload.outputPath);
-					await moveExportedTempFile(tempPath, resolvedPath);
-					releaseOwnedExportPath(tempPath);
-					approveUserPath(resolvedPath);
+					await finalizeTo(resolvedPath);
 					return {
 						success: true,
 						path: resolvedPath,
@@ -993,9 +1003,7 @@ export function registerExportHandlers() {
 					};
 				}
 
-				await moveExportedTempFile(tempPath, result.filePath);
-				releaseOwnedExportPath(tempPath);
-				approveUserPath(result.filePath);
+				await finalizeTo(result.filePath);
 
 				return {
 					success: true,
