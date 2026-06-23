@@ -10,7 +10,9 @@ import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { analyzeAudio } from "./analyzeAudio";
 import { CardPreview } from "./CardPreview";
+import { cardDurationMs } from "./cardAnimationRenderer";
 import {
 	ANIMATION_OPTIONS,
 	buildAnimationPrompt,
@@ -550,8 +552,13 @@ function AISection({
 
 	const currentSpec = side.customAnimation ?? getCardAnimation(side.preset);
 
+	const hasUploadedAudio = side.audio.mode === "upload" && Boolean(side.audio.dataUrl);
+
 	const copyPrompt = async () => {
-		const text = buildAnimationPrompt(currentSpec);
+		const audio = hasUploadedAudio
+			? await analyzeAudio(side.audio.dataUrl, cardDurationMs(side))
+			: null;
+		const text = buildAnimationPrompt(currentSpec, audio);
 		try {
 			if (window.electronAPI?.writeClipboard) {
 				await window.electronAPI.writeClipboard(text);
@@ -582,6 +589,12 @@ function AISection({
 				Copy the prompt, paste it into any AI with your change (e.g. "logo bounces in then
 				spins"), then paste the returned JSON back.
 			</p>
+			{hasUploadedAudio ? (
+				<p className="mb-2 text-[11px] text-emerald-400">
+					Your uploaded audio's rhythm will be analyzed and included in the prompt — ask
+					the AI to "sync the logo to the music".
+				</p>
+			) : null}
 			<div className="mb-2 flex items-center gap-2">
 				<button
 					type="button"
