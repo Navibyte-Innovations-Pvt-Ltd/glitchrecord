@@ -805,6 +805,7 @@ Animation capabilities (use what fits):
 Premium guidance:
 - Tasteful, brand-appropriate. Subtle gradients + a little glow/vignette read as professional.
 - Keep brandName/tagline if present unless asked to change copy. Ensure text color contrasts the background.
+- CONTRAST IS MANDATORY: the logo and text must clearly stand out from the background. Never use a background in the same color family as the logo; if needed, use logoContainer "panel" for a guaranteed contrast plate.
 - Animation should end visible then fade out near t=1 unless told otherwise.
 - IMPORTANT: t=0..1 spans the WHOLE card (durationMs). If you set durationMs longer, the same keyframes stretch over more time.
 - Return ONLY the JSON object, no prose, no markdown fences.`;
@@ -816,7 +817,11 @@ export function buildCardDesignPrompt(
 	logoColor?: string | null,
 ): string {
 	const logoBlock = logoColor
-		? `\n\nThe logo's dominant color is ${logoColor}. Choose a background gradient, glow color and text color that COMPLEMENT it (good contrast, on-brand) — e.g. a deep complementary/neutral background so the logo pops, glow tinted near ${logoColor}.`
+		? `\n\nThe logo's dominant color is ${logoColor}.
+CRITICAL — the logo MUST be clearly visible. Do NOT put it on a background of the same color family (a ${logoColor} logo on a dark-${logoColor} background disappears).
+- Pick a background that strongly CONTRASTS the logo in brightness AND hue.
+- If the logo is dark or close to your background, EITHER use a light/neutral background OR set "logoContainer": "panel" (a white plate behind the logo so it pops).
+- You may tint the GLOW near ${logoColor} for cohesion, but keep the background contrasting.`
 		: "";
 	let audioBlock = "";
 	if (audio && audio.points.length > 0) {
