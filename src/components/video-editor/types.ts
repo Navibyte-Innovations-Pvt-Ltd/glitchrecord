@@ -111,7 +111,6 @@ export type EditorEffectSection =
 	| "extensions"
 	| "clip"
 	| "audio"
-	| "music"
 	| "glitchgrab"
 	| "avatar"
 	| `ext:${string}`;
