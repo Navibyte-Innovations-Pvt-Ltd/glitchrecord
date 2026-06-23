@@ -145,8 +145,8 @@ const EMPTY_AUDIO_REGIONS: AudioRegion[] = [];
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { extensionHost } from "@/lib/extensions";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
-import { buildExportAudioRegions } from "./avatarOverlay";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
+import { buildExportAudioRegions } from "./avatarOverlay";
 import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
@@ -168,6 +168,7 @@ import {
 	serializeEditorPresetSnapshot,
 } from "./editorPreferences";
 import { GlitchgrabLogPanel } from "./GlitchgrabLogPanel";
+import { DEFAULT_INTRO_OUTRO, type IntroOutroConfig, introOutroIsActive } from "./introOutroTypes";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import { hasUnsavedProjectChanges } from "./projectDirtyState";
 import {
@@ -814,6 +815,11 @@ export default function VideoEditor() {
 	const [gifSizePreset, setGifSizePreset] = useState<GifSizePreset>(
 		initialEditorPreferences.gifSizePreset,
 	);
+	// Per-project intro/outro; seeded to default, replaced on project load.
+	const [introOutro, setIntroOutro] = useState<IntroOutroConfig>(DEFAULT_INTRO_OUTRO);
+	// Latest config for export-save callbacks whose deps must stay stable.
+	const introOutroRef = useRef(introOutro);
+	introOutroRef.current = introOutro;
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<EditorProjectData | null>(null);
@@ -1527,6 +1533,10 @@ export default function VideoEditor() {
 							tempPath: tempFilePath,
 							fileName,
 							outputPath,
+							introOutro:
+								extension === "mp4" && introOutroIsActive(introOutroRef.current)
+									? introOutroRef.current
+									: null,
 						}),
 						pendingSave: {
 							fileName,
@@ -1566,6 +1576,14 @@ export default function VideoEditor() {
 				extension,
 				hasExportStreamApi,
 			});
+			if (extension === "mp4" && introOutroIsActive(introOutroRef.current)) {
+				// The in-memory fallback path does not route through the main-process
+				// concat step, so intro/outro cards are skipped here. Rare: only hit
+				// when the streaming export API is unavailable.
+				console.warn(
+					"[export] Intro/outro cards skipped on in-memory fallback save path",
+				);
+			}
 			const arrayBuffer = await blob.arrayBuffer();
 			return {
 				saveResult: outputPath
@@ -1877,6 +1895,7 @@ export default function VideoEditor() {
 				gifFrameRate: GifFrameRate;
 				gifLoop: boolean;
 				gifSizePreset: GifSizePreset;
+				introOutro: IntroOutroConfig;
 				sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
 				defaultSourceAudioTrackSettings: SourceAudioTrackSettings;
 			}>,
@@ -1987,6 +2006,7 @@ export default function VideoEditor() {
 				gifFrameRate,
 				gifLoop,
 				gifSizePreset,
+				introOutro,
 				sourceAudioTrackSettingsByClip,
 				defaultSourceAudioTrackSettings,
 			}),
@@ -2053,6 +2073,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			introOutro,
 			frame,
 			sourceAudioTrackSettingsByClip,
 			defaultSourceAudioTrackSettings,
@@ -2225,6 +2246,7 @@ export default function VideoEditor() {
 			setFrame(normalizedEditor.frame);
 			setCropRegion(normalizedEditor.cropRegion);
 			setWebcam(normalizedEditor.webcam);
+			setIntroOutro(normalizedEditor.introOutro);
 			setZoomRegions(normalizedEditor.zoomRegions);
 			setTrimRegions(normalizedEditor.trimRegions);
 			setClipRegions(normalizedEditor.clipRegions);
@@ -5300,6 +5322,11 @@ export default function VideoEditor() {
 									smokeExportConfig.enabled && smokeExportConfig.outputPath
 										? smokeExportConfig.outputPath
 										: null,
+								introOutro:
+									fileName.toLowerCase().endsWith(".mp4") &&
+									introOutroIsActive(introOutroRef.current)
+										? introOutroRef.current
+										: null,
 							});
 							pendingOnCancel = { fileName, tempFilePath: result.tempFilePath };
 						} else if (result.blob) {
@@ -5746,6 +5773,11 @@ export default function VideoEditor() {
 				tempPath: pendingSave.tempFilePath,
 				fileName: pendingSave.fileName,
 				outputPath: null,
+				introOutro:
+					pendingSave.fileName.toLowerCase().endsWith(".mp4") &&
+					introOutroIsActive(introOutroRef.current)
+						? introOutroRef.current
+						: null,
 			});
 		} else if (pendingSave.arrayBuffer) {
 			saveResult = await window.electronAPI.saveExportedVideo(
@@ -6518,6 +6550,8 @@ export default function VideoEditor() {
 									onGifSizePresetChange={setGifSizePreset}
 									mp4OutputDimensions={mp4OutputDimensions}
 									gifOutputDimensions={gifOutputDimensions}
+									introOutro={introOutro}
+									onIntroOutroChange={setIntroOutro}
 									onExport={handleStartExportFromDropdown}
 									className="shadow-2xl"
 								/>
