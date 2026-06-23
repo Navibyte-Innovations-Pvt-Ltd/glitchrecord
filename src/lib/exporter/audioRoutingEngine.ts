@@ -17,6 +17,8 @@ export interface ResolvedAudioTrack {
 		startMs: number;
 		endMs: number;
 	};
+	/** Loop the source to fill the binding (background-music bed). Preview only. */
+	loop?: boolean;
 }
 
 export interface ResolvedAudioPlan {
@@ -82,6 +84,7 @@ export function buildResolvedAudioPlan(input: {
 			startMs: Math.max(0, region.startMs),
 			endMs: Math.max(0, region.endMs),
 		},
+		loop: region.loop === true,
 	}));
 
 	for (const audioPath of playbackPaths) {
