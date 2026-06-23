@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { drawCard } from "./cardAnimationRenderer";
+import { drawCardBackground, drawCardForeground } from "./cardAnimationRenderer";
 import type { IntroOutroSideConfig } from "./introOutroTypes";
 
 /**
@@ -101,34 +101,54 @@ function CardCanvasOverlay({ side, logoDataUrl, durationMs, onEnded }: CardOverl
 		return () => ro.disconnect();
 	}, []);
 
-	// Self-driven animation loop — imperative draw, no React state per frame.
+	// Offscreen cache of the STATIC background — recreating 3 gradients per frame
+	// was the main cost. Rebuilt only when size or background config changes.
+	const bgRef = useRef<HTMLCanvasElement | null>(null);
+	const bgKeyRef = useRef("");
+
+	// Self-driven loop — imperative draw, capped to ~30fps (60fps doubled GPU/CPU
+	// for no visible gain). Blits the cached background, then draws the foreground.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: draws current side; restarts on side/duration change
 	useEffect(() => {
 		let raf = 0;
 		const startedAt = performance.now();
+		let lastDraw = -1;
+		const frameMs = 1000 / 30;
 		const loop = (now: number) => {
+			raf = requestAnimationFrame(loop);
 			const canvas = canvasRef.current;
 			const ctx = canvas?.getContext("2d");
-			if (canvas && ctx) {
-				const p = Math.min(1, (now - startedAt) / Math.max(1, durationMs));
-				drawCard({
-					ctx,
-					width: canvas.width,
-					height: canvas.height,
-					logo: logoRef.current,
-					side,
-					progress: p,
-				});
-				// Crossfade the whole overlay (bg included) against the video at the
-				// card edges → smooth intro→video and video→outro handoff.
-				const edge = Math.min(smoothstep(0, 0.12, p), 1 - smoothstep(0.88, 1, p));
-				if (wrapRef.current) wrapRef.current.style.opacity = String(edge);
-				if (p >= 1) {
-					onEndedRef.current?.();
-					return;
-				}
+			if (!canvas || !ctx) return;
+			const p = Math.min(1, (now - startedAt) / Math.max(1, durationMs));
+			const done = p >= 1;
+			if (!done && lastDraw >= 0 && now - lastDraw < frameMs) return;
+			lastDraw = now;
+
+			const w = canvas.width;
+			const h = canvas.height;
+			// Rebuild the cached background if size/bg changed.
+			const bg = side.background;
+			const key = `${w}x${h}|${bg.type}|${bg.color1}|${bg.color2}|${bg.angle}|${bg.glow}|${bg.vignette}`;
+			if (key !== bgKeyRef.current || !bgRef.current) {
+				const bgCanvas = bgRef.current ?? document.createElement("canvas");
+				bgCanvas.width = w;
+				bgCanvas.height = h;
+				const bgCtx = bgCanvas.getContext("2d");
+				if (bgCtx) drawCardBackground(bgCtx, w, h, side);
+				bgRef.current = bgCanvas;
+				bgKeyRef.current = key;
 			}
-			raf = requestAnimationFrame(loop);
+
+			ctx.clearRect(0, 0, w, h);
+			if (bgRef.current) ctx.drawImage(bgRef.current, 0, 0);
+			drawCardForeground(ctx, w, h, logoRef.current, side, p);
+
+			const edge = Math.min(smoothstep(0, 0.12, p), 1 - smoothstep(0.88, 1, p));
+			if (wrapRef.current) wrapRef.current.style.opacity = String(edge);
+			if (done) {
+				cancelAnimationFrame(raf);
+				onEndedRef.current?.();
+			}
 		};
 		raf = requestAnimationFrame(loop);
 		return () => cancelAnimationFrame(raf);
