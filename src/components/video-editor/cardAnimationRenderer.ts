@@ -261,7 +261,7 @@ export function drawCard({ ctx, width, height, logo, side, progress }: CardRende
 	// The animation is a declarative spec sampled at t (see cardAnimations.ts).
 	// Its transform is applied to the whole content group about its center; the
 	// resting position comes from `origin`, x/y are frame-fraction offsets.
-	const anim = resolveAnimation(getCardAnimation(side.preset), t);
+	const anim = resolveAnimation(side.customAnimation ?? getCardAnimation(side.preset), t);
 	const cx = origin.x + m.width / 2;
 	const cy = origin.y + m.height / 2;
 
