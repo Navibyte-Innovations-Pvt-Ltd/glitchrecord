@@ -1,16 +1,20 @@
 /**
- * Per-project intro/outro logo cards. Renderer-side mirror of the main-process
- * config in electron/ipc/export/introOutro.ts (the two communicate over the
- * `finalize-exported-video` IPC). The logo travels as a base64 data URL embedded
- * in the project JSON, so projects stay portable when moved/shared.
+ * Per-project intro/outro cards. Renderer-side mirror of the main-process config
+ * in electron/ipc/export/introOutro.ts (communicate over `finalize-exported-video`).
+ * The logo travels as a base64 data URL in the project JSON so projects stay
+ * portable; uploaded videos are referenced by path (too big to embed).
  */
 
+export type IntroOutroMode = "card" | "video";
 export type IntroOutroPreset = "fade" | "scale-pop" | "slide" | "glitch";
-
 export type IntroOutroPosition = "center" | "top" | "bottom" | "left" | "right";
+export type CardLayout = "logo-only" | "logo-top" | "logo-left" | "text-only";
+export type BackgroundType = "solid" | "gradient";
+/** Styled container behind the logo — `panel` fixes white-bg / busy logos. */
+export type LogoContainerStyle = "none" | "rounded" | "panel";
+export type CardAudioMode = "none" | "builtin" | "upload";
 
 export const INTRO_OUTRO_PRESETS: IntroOutroPreset[] = ["fade", "scale-pop", "slide", "glitch"];
-
 export const INTRO_OUTRO_POSITIONS: IntroOutroPosition[] = [
 	"center",
 	"top",
@@ -18,45 +22,116 @@ export const INTRO_OUTRO_POSITIONS: IntroOutroPosition[] = [
 	"left",
 	"right",
 ];
+export const CARD_LAYOUTS: CardLayout[] = ["logo-only", "logo-top", "logo-left", "text-only"];
+export const LOGO_CONTAINER_STYLES: LogoContainerStyle[] = ["none", "rounded", "panel"];
 
 export const INTRO_OUTRO_MIN_DURATION_MS = 500;
-export const INTRO_OUTRO_MAX_DURATION_MS = 5000;
+export const INTRO_OUTRO_MAX_DURATION_MS = 8000;
 export const INTRO_OUTRO_MIN_SIZE = 0.1;
 export const INTRO_OUTRO_MAX_SIZE = 0.8;
 
+/** Bundled music stings (assets wired in a later phase). */
+export interface BuiltinTrack {
+	id: string;
+	label: string;
+}
+export const BUILTIN_TRACKS: BuiltinTrack[] = [
+	{ id: "whoosh", label: "Whoosh" },
+	{ id: "riser", label: "Riser" },
+	{ id: "chime", label: "Chime" },
+	{ id: "pulse", label: "Pulse" },
+];
+
+export interface CardBackground {
+	type: BackgroundType;
+	color1: string;
+	color2: string;
+	/** Gradient direction in degrees (0 = left→right). */
+	angle: number;
+}
+
+export interface CardText {
+	brandName: string;
+	tagline: string;
+	color: string;
+}
+
+export interface CardAudio {
+	mode: CardAudioMode;
+	/** Built-in track id (when mode = "builtin"). */
+	trackId: string;
+	/** Uploaded audio as a data URL (when mode = "upload"). */
+	dataUrl: string;
+	/** 0 → 1. */
+	volume: number;
+}
+
 export interface IntroOutroSideConfig {
 	enabled: boolean;
+	mode: IntroOutroMode;
+	// --- card mode ---
 	preset: IntroOutroPreset;
-	/** Card duration in milliseconds (clamped 500–5000). */
-	durationMs: number;
-	/** Background hex color, e.g. "#0B1020". */
-	backgroundColor: string;
-	/** Logo placement for static presets; slide enters from this edge. */
 	position: IntroOutroPosition;
-	/** Logo height as a fraction of frame height (clamped 0.1–0.8). */
+	durationMs: number;
+	/** Logo height as a fraction of frame height (0.1–0.8). */
 	size: number;
+	layout: CardLayout;
+	background: CardBackground;
+	logoContainer: LogoContainerStyle;
+	text: CardText;
+	// --- video mode ---
+	/** Absolute path to a user-supplied intro/outro clip (not portable). */
+	videoPath: string;
+	// --- both modes ---
+	audio: CardAudio;
 }
 
 export interface IntroOutroConfig {
-	/** "data:image/png;base64,..." — the user's transparent logo, or "" if none. */
+	/** "data:image/png;base64,..." — the user's logo, or "" if none. */
 	logoDataUrl: string;
 	intro: IntroOutroSideConfig;
 	outro: IntroOutroSideConfig;
 }
 
+export const DEFAULT_CARD_BACKGROUND: CardBackground = {
+	type: "gradient",
+	color1: "#0b1020",
+	color2: "#1e293b",
+	angle: 135,
+};
+
+export const DEFAULT_CARD_TEXT: CardText = {
+	brandName: "",
+	tagline: "",
+	color: "#ffffff",
+};
+
+export const DEFAULT_CARD_AUDIO: CardAudio = {
+	mode: "none",
+	trackId: "whoosh",
+	dataUrl: "",
+	volume: 0.7,
+};
+
 export const DEFAULT_INTRO_OUTRO_SIDE: IntroOutroSideConfig = {
 	enabled: false,
+	mode: "card",
 	preset: "fade",
-	durationMs: 1500,
-	backgroundColor: "#0B1020",
 	position: "center",
+	durationMs: 2000,
 	size: 0.25,
+	layout: "logo-top",
+	background: { ...DEFAULT_CARD_BACKGROUND },
+	logoContainer: "panel",
+	text: { ...DEFAULT_CARD_TEXT },
+	videoPath: "",
+	audio: { ...DEFAULT_CARD_AUDIO },
 };
 
 export const DEFAULT_INTRO_OUTRO: IntroOutroConfig = {
 	logoDataUrl: "",
-	intro: { ...DEFAULT_INTRO_OUTRO_SIDE },
-	outro: { ...DEFAULT_INTRO_OUTRO_SIDE },
+	intro: { ...DEFAULT_INTRO_OUTRO_SIDE, background: { ...DEFAULT_CARD_BACKGROUND } },
+	outro: { ...DEFAULT_INTRO_OUTRO_SIDE, background: { ...DEFAULT_CARD_BACKGROUND } },
 };
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
@@ -66,45 +141,88 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 	return fallback;
 }
 
-function normalizePreset(value: unknown): IntroOutroPreset {
-	return INTRO_OUTRO_PRESETS.includes(value as IntroOutroPreset)
-		? (value as IntroOutroPreset)
-		: DEFAULT_INTRO_OUTRO_SIDE.preset;
+function pick<T extends string>(value: unknown, allowed: T[], fallback: T): T {
+	return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
-function normalizePosition(value: unknown): IntroOutroPosition {
-	return INTRO_OUTRO_POSITIONS.includes(value as IntroOutroPosition)
-		? (value as IntroOutroPosition)
-		: DEFAULT_INTRO_OUTRO_SIDE.position;
-}
-
-function normalizeHexColor(value: unknown): string {
+function normalizeHexColor(value: unknown, fallback: string): string {
 	if (typeof value === "string" && /^#?[0-9a-fA-F]{6}$/.test(value.trim())) {
-		const hex = value.trim().replace(/^#/, "");
-		return `#${hex.toLowerCase()}`;
+		return `#${value.trim().replace(/^#/, "").toLowerCase()}`;
 	}
-	return DEFAULT_INTRO_OUTRO_SIDE.backgroundColor;
+	return fallback;
+}
+
+function normalizeString(value: unknown, max = 120): string {
+	return typeof value === "string" ? value.slice(0, max) : "";
+}
+
+function normalizeBackground(value: unknown, legacyColor?: unknown): CardBackground {
+	const bg = (value ?? {}) as Partial<CardBackground>;
+	// Migrate the legacy flat `backgroundColor` into color1 when no nested bg.
+	const fallback1 =
+		value === undefined && legacyColor !== undefined
+			? normalizeHexColor(legacyColor, DEFAULT_CARD_BACKGROUND.color1)
+			: DEFAULT_CARD_BACKGROUND.color1;
+	return {
+		type: pick(bg.type, ["solid", "gradient"], DEFAULT_CARD_BACKGROUND.type),
+		color1: normalizeHexColor(bg.color1, fallback1),
+		color2: normalizeHexColor(bg.color2, DEFAULT_CARD_BACKGROUND.color2),
+		angle: clampNumber(bg.angle, 0, 360, DEFAULT_CARD_BACKGROUND.angle),
+	};
+}
+
+function normalizeText(value: unknown): CardText {
+	const text = (value ?? {}) as Partial<CardText>;
+	return {
+		brandName: normalizeString(text.brandName),
+		tagline: normalizeString(text.tagline),
+		color: normalizeHexColor(text.color, DEFAULT_CARD_TEXT.color),
+	};
+}
+
+function normalizeAudio(value: unknown): CardAudio {
+	const audio = (value ?? {}) as Partial<CardAudio>;
+	const dataUrl =
+		typeof audio.dataUrl === "string" && /^data:audio\//i.test(audio.dataUrl)
+			? audio.dataUrl
+			: "";
+	return {
+		mode: pick(audio.mode, ["none", "builtin", "upload"], DEFAULT_CARD_AUDIO.mode),
+		trackId: typeof audio.trackId === "string" ? audio.trackId : DEFAULT_CARD_AUDIO.trackId,
+		dataUrl,
+		volume: clampNumber(audio.volume, 0, 1, DEFAULT_CARD_AUDIO.volume),
+	};
 }
 
 function normalizeSide(value: unknown): IntroOutroSideConfig {
-	const side = (value ?? {}) as Partial<IntroOutroSideConfig>;
+	const side = (value ?? {}) as Partial<IntroOutroSideConfig> & { backgroundColor?: unknown };
 	return {
 		enabled: side.enabled === true,
-		preset: normalizePreset(side.preset),
+		mode: pick(side.mode, ["card", "video"], DEFAULT_INTRO_OUTRO_SIDE.mode),
+		preset: pick(side.preset, INTRO_OUTRO_PRESETS, DEFAULT_INTRO_OUTRO_SIDE.preset),
+		position: pick(side.position, INTRO_OUTRO_POSITIONS, DEFAULT_INTRO_OUTRO_SIDE.position),
 		durationMs: clampNumber(
 			side.durationMs,
 			INTRO_OUTRO_MIN_DURATION_MS,
 			INTRO_OUTRO_MAX_DURATION_MS,
 			DEFAULT_INTRO_OUTRO_SIDE.durationMs,
 		),
-		backgroundColor: normalizeHexColor(side.backgroundColor),
-		position: normalizePosition(side.position),
 		size: clampNumber(
 			side.size,
 			INTRO_OUTRO_MIN_SIZE,
 			INTRO_OUTRO_MAX_SIZE,
 			DEFAULT_INTRO_OUTRO_SIDE.size,
 		),
+		layout: pick(side.layout, CARD_LAYOUTS, DEFAULT_INTRO_OUTRO_SIDE.layout),
+		background: normalizeBackground(side.background, side.backgroundColor),
+		logoContainer: pick(
+			side.logoContainer,
+			LOGO_CONTAINER_STYLES,
+			DEFAULT_INTRO_OUTRO_SIDE.logoContainer,
+		),
+		text: normalizeText(side.text),
+		videoPath: typeof side.videoPath === "string" ? side.videoPath : "",
+		audio: normalizeAudio(side.audio),
 	};
 }
 
@@ -124,10 +242,22 @@ export function normalizeIntroOutro(value: unknown): IntroOutroConfig {
 	};
 }
 
-/** True when at least one side is enabled and a logo is present. */
+/** A side contributes something to the export/preview. */
+export function sideIsRenderable(
+	side: IntroOutroSideConfig | undefined,
+	logoDataUrl: string,
+): boolean {
+	if (!side?.enabled) return false;
+	if (side.mode === "video") return Boolean(side.videoPath);
+	// Card mode needs at least a logo or brand text.
+	return Boolean(logoDataUrl) || Boolean(side.text.brandName) || Boolean(side.text.tagline);
+}
+
+/** True when at least one side is enabled and renderable. */
 export function introOutroIsActive(config: IntroOutroConfig | null | undefined): boolean {
-	if (!config || !config.logoDataUrl) {
-		return false;
-	}
-	return config.intro.enabled || config.outro.enabled;
+	if (!config) return false;
+	return (
+		sideIsRenderable(config.intro, config.logoDataUrl) ||
+		sideIsRenderable(config.outro, config.logoDataUrl)
+	);
 }
