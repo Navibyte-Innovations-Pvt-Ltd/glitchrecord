@@ -45,7 +45,6 @@ import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
-import { BackgroundMusicSettings } from "./BackgroundMusicSettings";
 import {
 	CURSOR_MOTION_PRESETS,
 	type CursorMotionPresetId,
@@ -59,7 +58,6 @@ import type {
 	AnnotationType,
 	AutoCaptionAnimation,
 	AutoCaptionSettings,
-	BackgroundMusicConfig,
 	CaptionCue,
 	CropRegion,
 	CursorClickEffectStyle,
@@ -724,10 +722,6 @@ interface SettingsPanelProps {
 	onAudioVolumeChange?: (volume: number) => void;
 	onAudioNormalizeChange?: (normalize: boolean) => void;
 	onAudioDelete?: (id: string) => void;
-	backgroundMusic?: BackgroundMusicConfig | null;
-	onPickBackgroundMusic?: () => void;
-	onBackgroundMusicVolumeChange?: (volume: number) => void;
-	onRemoveBackgroundMusic?: () => void;
 	shadowIntensity?: number;
 	onShadowChange?: (intensity: number) => void;
 	backgroundBlur?: number;
@@ -1180,10 +1174,6 @@ export function SettingsPanel({
 	selectedAudioVolume,
 	selectedAudioNormalize,
 	onAudioVolumeChange,
-	backgroundMusic,
-	onPickBackgroundMusic,
-	onBackgroundMusicVolumeChange,
-	onRemoveBackgroundMusic,
 	onAudioNormalizeChange,
 	onAudioDelete,
 	shadowIntensity = 0.67,
@@ -3427,18 +3417,6 @@ export function SettingsPanel({
 			</section>
 		);
 
-		const musicSectionContent = (
-			<section className="flex flex-col gap-2">
-				<SectionLabel>{tSettings("sections.music", "Music")}</SectionLabel>
-				<BackgroundMusicSettings
-					config={backgroundMusic}
-					onPick={() => onPickBackgroundMusic?.()}
-					onVolumeChange={(v) => onBackgroundMusicVolumeChange?.(v)}
-					onRemove={() => onRemoveBackgroundMusic?.()}
-				/>
-			</section>
-		);
-
 		const clipSectionContent = (
 			<section className="flex flex-col gap-2">
 				<div className="flex items-center justify-between gap-3">
@@ -3605,8 +3583,6 @@ export function SettingsPanel({
 				return clipSectionContent;
 			case "audio":
 				return audioSectionContent;
-			case "music":
-				return musicSectionContent;
 			case "frame":
 				return sceneSectionContent;
 			case "crop":
