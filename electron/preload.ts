@@ -524,8 +524,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		fileName: string;
 		outputPath?: string | null;
 		introOutro?: IntroOutroConfig | null;
+		introOutroFrameDirs?: { intro?: string | null; outro?: string | null } | null;
 	}) => {
 		return ipcRenderer.invoke("finalize-exported-video", payload);
+	},
+	stageIntroOutroFrames: (framesBase64: string[]) => {
+		return ipcRenderer.invoke("stage-intro-outro-frames", framesBase64) as Promise<{
+			success: boolean;
+			dir?: string;
+			error?: string;
+		}>;
 	},
 	discardExportedTemp: (tempPath: string) => {
 		return ipcRenderer.invoke("discard-exported-temp", tempPath);
