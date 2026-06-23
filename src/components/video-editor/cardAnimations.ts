@@ -404,18 +404,48 @@ function coerceJsonObject(raw: unknown): Record<string, unknown> | null {
 	const start = raw.indexOf("{");
 	const end = raw.lastIndexOf("}");
 	if (start < 0 || end <= start) return null;
-	const slice = raw
+	const normalized = raw
 		.slice(start, end + 1)
 		// Normalize smart quotes / non-breaking spaces that sneak in via copy-paste.
 		.replace(/[“”]/g, '"')
 		.replace(/[‘’]/g, "'")
 		.replace(/ /g, " ");
+	const slice = collapseInStringWhitespace(normalized);
 	try {
 		const parsed = JSON.parse(slice);
 		return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
 	} catch {
 		return null;
 	}
+}
+
+function collapseInStringWhitespace(s: string): string {
+	let out = "";
+	let inString = false;
+	let escaped = false;
+	for (const ch of s) {
+		if (escaped) {
+			out += ch;
+			escaped = false;
+			continue;
+		}
+		if (ch === "\\") {
+			out += ch;
+			escaped = true;
+			continue;
+		}
+		if (ch === '"') {
+			inString = !inString;
+			out += ch;
+			continue;
+		}
+		if (inString && (ch === "\n" || ch === "\r" || ch === "\t")) {
+			out += " ";
+			continue;
+		}
+		out += ch;
+	}
+	return out;
 }
 
 /**
