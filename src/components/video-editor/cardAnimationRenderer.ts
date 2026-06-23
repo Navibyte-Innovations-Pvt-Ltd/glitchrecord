@@ -63,6 +63,25 @@ function paintBackground(
 		ctx.fillStyle = bg.color1;
 	}
 	ctx.fillRect(0, 0, W, H);
+
+	// Soft radial accent glow behind the content for depth (minimal-premium).
+	if (bg.glow > 0) {
+		const r = Math.max(W, H) * 0.62;
+		const glow = ctx.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H * 0.42, r);
+		glow.addColorStop(0, `rgba(150,170,255,${(bg.glow * 0.5).toFixed(3)})`);
+		glow.addColorStop(1, "rgba(150,170,255,0)");
+		ctx.fillStyle = glow;
+		ctx.fillRect(0, 0, W, H);
+	}
+	// Edge vignette.
+	if (bg.vignette > 0) {
+		const r = Math.hypot(W, H) / 2;
+		const vig = ctx.createRadialGradient(W / 2, H / 2, r * 0.55, W / 2, H / 2, r);
+		vig.addColorStop(0, "rgba(0,0,0,0)");
+		vig.addColorStop(1, `rgba(0,0,0,${bg.vignette.toFixed(3)})`);
+		ctx.fillStyle = vig;
+		ctx.fillRect(0, 0, W, H);
+	}
 }
 
 interface GroupMetrics {
@@ -105,7 +124,7 @@ function measureGroup(
 	}
 
 	const gap = Math.round(H * 0.035);
-	const textBlockH = (nameSize ? nameSize : 0) + (taglineSize ? taglineSize + gap * 0.4 : 0);
+	const textBlockH = (nameSize ? nameSize : 0) + (taglineSize ? taglineSize + gap * 0.45 : 0);
 	const textBlockW = Math.max(nameW, taglineW);
 
 	let width = 0;
@@ -159,17 +178,23 @@ function drawLogoWithContainer(
 	style: IntroOutroSideConfig["logoContainer"],
 ): void {
 	if (style === "panel") {
-		// Filled rounded card behind the logo — makes white-bg / busy logos look
-		// intentional. Padding scales with logo size.
-		const pad = Math.round(Math.min(w, h) * 0.16);
-		const radius = Math.round(Math.min(w, h) * 0.14) + pad;
+		// Filled rounded card behind the logo with a soft shadow + hairline ring —
+		// makes white-bg / busy logos look intentional and premium.
+		const pad = Math.round(Math.min(w, h) * 0.18);
+		const radius = Math.round(Math.min(w, h) * 0.18) + pad;
 		ctx.save();
-		ctx.shadowColor = "rgba(0,0,0,0.35)";
-		ctx.shadowBlur = Math.round(h * 0.12);
-		ctx.shadowOffsetY = Math.round(h * 0.04);
+		ctx.shadowColor = "rgba(0,0,0,0.45)";
+		ctx.shadowBlur = Math.round(h * 0.22);
+		ctx.shadowOffsetY = Math.round(h * 0.06);
 		ctx.fillStyle = "#FFFFFF";
 		roundRectPath(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, radius);
 		ctx.fill();
+		ctx.restore();
+		ctx.save();
+		roundRectPath(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, radius);
+		ctx.lineWidth = Math.max(1, Math.round(h * 0.012));
+		ctx.strokeStyle = "rgba(255,255,255,0.14)";
+		ctx.stroke();
 		ctx.restore();
 		ctx.drawImage(logo, x, y, w, h);
 		return;
@@ -185,6 +210,41 @@ function drawLogoWithContainer(
 	ctx.drawImage(logo, x, y, w, h);
 }
 
+type CtxWithLetterSpacing = CanvasRenderingContext2D & { letterSpacing?: string };
+
+function setLetterSpacing(ctx: CanvasRenderingContext2D, px: number): void {
+	(ctx as CtxWithLetterSpacing).letterSpacing = `${px}px`;
+}
+
+function drawName(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string): void {
+	ctx.fillStyle = color;
+	ctx.font = `800 ${size}px Inter, system-ui, sans-serif`;
+	setLetterSpacing(ctx, -size * 0.02);
+	ctx.fillText(text, x, y);
+	setLetterSpacing(ctx, 0);
+}
+
+function drawTagline(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string): void {
+	ctx.fillStyle = color;
+	ctx.font = `400 ${size}px Inter, system-ui, sans-serif`;
+	setLetterSpacing(ctx, size * 0.01);
+	const prev = ctx.globalAlpha;
+	ctx.globalAlpha = prev * 0.72;
+	ctx.fillText(text, x, y);
+	ctx.globalAlpha = prev;
+	setLetterSpacing(ctx, 0);
+}
+
+/** Short accent divider centered at (cx) on baseline y. */
+function drawDivider(ctx: CanvasRenderingContext2D, cx: number, y: number, width: number, color: string): void {
+	const prev = ctx.globalAlpha;
+	ctx.globalAlpha = prev * 0.4;
+	ctx.fillStyle = color;
+	roundRectPath(ctx, cx - width / 2, y, width, Math.max(2, width * 0.03), 2);
+	ctx.fill();
+	ctx.globalAlpha = prev;
+}
+
 function drawGroup(
 	ctx: CanvasRenderingContext2D,
 	logo: HTMLImageElement | null,
@@ -193,8 +253,8 @@ function drawGroup(
 	ox: number,
 	oy: number,
 ): void {
-	const gap =
-		Math.round((m.logoH || m.nameSize || 40) * 0.0) + Math.round(ctx.canvas.height * 0.035);
+	const gap = Math.round(ctx.canvas.height * 0.035);
+	const textGap = gap * 0.45;
 	ctx.textAlign = side.layout === "logo-left" ? "left" : "center";
 	ctx.textBaseline = "top";
 
@@ -205,20 +265,17 @@ function drawGroup(
 		}
 		const textX = ox + (m.hasLogo ? m.logoW + gap : 0);
 		const textBlockH =
-			(m.hasName ? m.nameSize : 0) + (m.hasTagline ? m.taglineSize + gap * 0.4 : 0);
+			(m.hasName ? m.nameSize : 0) + (m.hasTagline ? m.taglineSize + textGap : 0);
 		let ty = oy + (m.height - textBlockH) / 2;
 		if (m.hasName) {
-			ctx.fillStyle = side.text.color;
-			ctx.font = `700 ${m.nameSize}px Inter, system-ui, sans-serif`;
-			ctx.fillText(side.text.brandName, textX, ty);
-			ty += m.nameSize + gap * 0.4;
+			drawName(ctx, side.text.brandName, textX, ty, m.nameSize, side.text.color);
+			if (m.hasTagline) {
+				drawDivider(ctx, textX + m.nameSize * 0.7, ty + m.nameSize + textGap * 0.35, m.nameSize * 1.2, side.text.color);
+			}
+			ty += m.nameSize + textGap;
 		}
 		if (m.hasTagline) {
-			ctx.fillStyle = side.text.color;
-			ctx.globalAlpha *= 0.8;
-			ctx.font = `400 ${m.taglineSize}px Inter, system-ui, sans-serif`;
-			ctx.fillText(side.text.tagline, textX, ty);
-			ctx.globalAlpha /= 0.8;
+			drawTagline(ctx, side.text.tagline, textX, ty, m.taglineSize, side.text.color);
 		}
 		return;
 	}
@@ -231,17 +288,14 @@ function drawGroup(
 		y += m.logoH + gap;
 	}
 	if (m.hasName) {
-		ctx.fillStyle = side.text.color;
-		ctx.font = `700 ${m.nameSize}px Inter, system-ui, sans-serif`;
-		ctx.fillText(side.text.brandName, cx, y);
-		y += m.nameSize + gap * 0.4;
+		drawName(ctx, side.text.brandName, cx, y, m.nameSize, side.text.color);
+		if (m.hasTagline) {
+			drawDivider(ctx, cx, y + m.nameSize + textGap * 0.3, m.nameSize * 1.3, side.text.color);
+		}
+		y += m.nameSize + textGap;
 	}
 	if (m.hasTagline) {
-		ctx.fillStyle = side.text.color;
-		ctx.globalAlpha *= 0.8;
-		ctx.font = `400 ${m.taglineSize}px Inter, system-ui, sans-serif`;
-		ctx.fillText(side.text.tagline, cx, y);
-		ctx.globalAlpha /= 0.8;
+		drawTagline(ctx, side.text.tagline, cx, y, m.taglineSize, side.text.color);
 	}
 }
 
