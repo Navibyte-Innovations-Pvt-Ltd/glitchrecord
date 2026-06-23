@@ -466,7 +466,25 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						{(visibleSpanMs / 1000).toFixed(visibleSpanMs < 10_000 ? 1 : 0)}s
 					</span>
 				</div>
-				<div className="relative flex flex-1 min-h-0 flex-col">
+				<div className="flex flex-1 min-h-0">
+					{endcaps?.intro ? (
+						<div className="relative shrink-0" style={{ width: 104 }}>
+							<button
+								type="button"
+								onClick={endcaps.intro.onClick}
+								className={endcapClass(endcaps.intro.active)}
+								style={{
+									position: "absolute",
+									top: TIMELINE_AXIS_HEIGHT_PX,
+									left: 4,
+									right: 2,
+									height: TIMELINE_ROW_MAX_HEIGHT_PX,
+								}}
+							>
+								▶ {endcaps.intro.label}
+							</button>
+						</div>
+					) : null}
 					<div
 						ref={timelineContainerRef}
 						// Scroll stays functional; the scrollbar is hidden (a visible bar looked
@@ -559,37 +577,22 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							/>
 						</TimelineWrapper>
 					</div>
-					{/* Intro / outro bookends pinned at the clip-lane edges (non-scrolling). */}
-					{endcaps?.intro || endcaps?.outro ? (
-						<div
-							className="pointer-events-none absolute inset-x-0 z-30 flex items-center justify-between px-1"
-							style={{
-								top: TIMELINE_AXIS_HEIGHT_PX,
-								height: TIMELINE_ROW_MAX_HEIGHT_PX,
-							}}
-						>
-							{endcaps?.intro ? (
-								<button
-									type="button"
-									onClick={endcaps.intro.onClick}
-									className={endcapClass(endcaps.intro.active)}
-								>
-									▶ {endcaps.intro.label}
-								</button>
-							) : (
-								<span />
-							)}
-							{endcaps?.outro ? (
-								<button
-									type="button"
-									onClick={endcaps.outro.onClick}
-									className={endcapClass(endcaps.outro.active)}
-								>
-									{endcaps.outro.label} ◀
-								</button>
-							) : (
-								<span />
-							)}
+					{endcaps?.outro ? (
+						<div className="relative shrink-0" style={{ width: 104 }}>
+							<button
+								type="button"
+								onClick={endcaps.outro.onClick}
+								className={endcapClass(endcaps.outro.active)}
+								style={{
+									position: "absolute",
+									top: TIMELINE_AXIS_HEIGHT_PX,
+									left: 2,
+									right: 4,
+									height: TIMELINE_ROW_MAX_HEIGHT_PX,
+								}}
+							>
+								{endcaps.outro.label} ◀
+							</button>
 						</div>
 					) : null}
 				</div>
@@ -600,7 +603,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 function endcapClass(active: boolean): string {
 	return [
-		"pointer-events-auto shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold shadow-lg backdrop-blur-sm transition-colors",
+		"flex items-center justify-center gap-1 rounded-md px-1 text-[10px] font-semibold transition-colors",
 		active
 			? "border border-[#2563EB]/50 bg-[#2563EB]/30 text-white hover:bg-[#2563EB]/45"
 			: "border border-dashed border-white/20 bg-black/40 text-white/60 hover:bg-black/60",
