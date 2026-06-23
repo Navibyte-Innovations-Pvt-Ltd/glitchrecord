@@ -1,5 +1,21 @@
 import type { AudioAnalysis } from "./analyzeAudio";
-import { CARD_ANIMATION_IDS, type IntroOutroPreset } from "./introOutroTypes";
+import {
+	CARD_ANIMATION_IDS,
+	CARD_LAYOUTS,
+	type CardBackground,
+	type CardLayout,
+	type CardText,
+	DEFAULT_CARD_BACKGROUND,
+	DEFAULT_CARD_TEXT,
+	INTRO_OUTRO_MAX_SIZE,
+	INTRO_OUTRO_MIN_SIZE,
+	INTRO_OUTRO_POSITIONS,
+	type IntroOutroPosition,
+	type IntroOutroPreset,
+	type IntroOutroSideConfig,
+	LOGO_CONTAINER_STYLES,
+	type LogoContainerStyle,
+} from "./introOutroTypes";
 
 /**
  * Standardized declarative animation system for intro/outro cards.
@@ -478,4 +494,134 @@ ${JSON.stringify({ label: spec.label, tracks: spec.tracks }, null, 2)}${audioBlo
 Now apply this change: <describe what you want, e.g. "make the logo bounce in harder and spin slightly"${audio ? '; or just "sync the logo motion to the music"' : ""}>
 
 Return the full updated JSON object only.`;
+}
+
+// ── Full card design round-trip (background + text + layout + animation) ─────
+
+function clampNum(v: unknown, min: number, max: number, fb: number): number {
+	return typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fb;
+}
+function hexOr(v: unknown, fb: string): string {
+	return typeof v === "string" && /^#?[0-9a-fA-F]{6}$/.test(v.trim())
+		? `#${v.trim().replace(/^#/, "").toLowerCase()}`
+		: fb;
+}
+
+/** The complete, JSON-editable card design (everything the AI can change). */
+export interface CardDesign {
+	background: CardBackground;
+	text: CardText;
+	layout: CardLayout;
+	logoContainer: LogoContainerStyle;
+	size: number;
+	position: IntroOutroPosition;
+	animation: { label?: string; tracks: AnimationTrack[] };
+}
+
+/** Snapshot the current side as an editable design object. */
+export function sideToDesign(side: IntroOutroSideConfig): CardDesign {
+	const anim = side.customAnimation ?? getCardAnimation(side.preset);
+	return {
+		background: side.background,
+		text: side.text,
+		layout: side.layout,
+		logoContainer: side.logoContainer,
+		size: side.size,
+		position: side.position,
+		animation: { label: anim.label, tracks: anim.tracks },
+	};
+}
+
+/** Validate a pasted design → a Partial side patch (or null if unusable). */
+export function normalizeCardDesign(raw: unknown): Partial<IntroOutroSideConfig> | null {
+	let obj: unknown = raw;
+	if (typeof raw === "string") {
+		try {
+			obj = JSON.parse(raw);
+		} catch {
+			return null;
+		}
+	}
+	if (!obj || typeof obj !== "object") return null;
+	const r = obj as Record<string, unknown>;
+	const patch: Partial<IntroOutroSideConfig> = {};
+
+	if (r.background && typeof r.background === "object") {
+		const b = r.background as Partial<CardBackground>;
+		patch.background = {
+			type: b.type === "solid" || b.type === "gradient" ? b.type : DEFAULT_CARD_BACKGROUND.type,
+			color1: hexOr(b.color1, DEFAULT_CARD_BACKGROUND.color1),
+			color2: hexOr(b.color2, DEFAULT_CARD_BACKGROUND.color2),
+			angle: clampNum(b.angle, 0, 360, DEFAULT_CARD_BACKGROUND.angle),
+			glow: clampNum(b.glow, 0, 1, DEFAULT_CARD_BACKGROUND.glow),
+			vignette: clampNum(b.vignette, 0, 1, DEFAULT_CARD_BACKGROUND.vignette),
+		};
+	}
+	if (r.text && typeof r.text === "object") {
+		const tx = r.text as Partial<CardText>;
+		patch.text = {
+			brandName: typeof tx.brandName === "string" ? tx.brandName.slice(0, 120) : "",
+			tagline: typeof tx.tagline === "string" ? tx.tagline.slice(0, 120) : "",
+			color: hexOr(tx.color, DEFAULT_CARD_TEXT.color),
+		};
+	}
+	if (CARD_LAYOUTS.includes(r.layout as CardLayout)) patch.layout = r.layout as CardLayout;
+	if (LOGO_CONTAINER_STYLES.includes(r.logoContainer as LogoContainerStyle)) {
+		patch.logoContainer = r.logoContainer as LogoContainerStyle;
+	}
+	if (INTRO_OUTRO_POSITIONS.includes(r.position as IntroOutroPosition)) {
+		patch.position = r.position as IntroOutroPosition;
+	}
+	if (Number.isFinite(r.size)) {
+		patch.size = clampNum(r.size, INTRO_OUTRO_MIN_SIZE, INTRO_OUTRO_MAX_SIZE, 0.25);
+	}
+	const anim = normalizeAnimationSpec(r.animation);
+	if (anim) patch.customAnimation = anim;
+
+	return Object.keys(patch).length > 0 ? patch : null;
+}
+
+const CARD_DESIGN_DOC = `You are designing a GlitchGrab intro/outro brand card. Return a JSON "design" object:
+{
+  "background": { "type": "gradient"|"solid", "color1": "#hex", "color2": "#hex", "angle": 0..360, "glow": 0..1, "vignette": 0..1 },
+  "text": { "brandName": string, "tagline": string, "color": "#hex" },
+  "layout": "logo-top"|"logo-left"|"logo-only"|"text-only",
+  "logoContainer": "panel"|"rounded"|"none",   // panel = white rounded card behind the logo
+  "size": 0.1..0.8,                              // logo height as a fraction of frame height
+  "position": "center"|"top"|"bottom"|"left"|"right",
+  "animation": { "label": string, "tracks": Track[] }
+}
+
+A Track animates ONE property over the card lifetime: { "property": Property, "keyframes": [{ "t": 0..1, "value": number, "easing"?: Easing }] }.
+t is normalized time (0 = start, 1 = end); easing applies INTO the keyframe.
+Property (resting value): "opacity"(1) 0..1 | "scale"(1) multiplier | "x"(0)/"y"(0) offset as FRACTION of frame (-1 = one frame off) | "rotate"(0) deg | "blur"(0) px.
+Easing: linear | easeIn | easeOut | easeInOut | easeOutCubic | easeOutBack | easeOutExpo | easeOutBounce.
+
+Premium guidance:
+- Tasteful, brand-appropriate. Subtle gradients + a little glow/vignette read as professional.
+- Keep brandName/tagline if present unless asked to change copy. Ensure text color contrasts the background.
+- Animation should end visible then fade out near t=1 unless told otherwise.
+- Return ONLY the JSON object, no prose, no markdown fences.`;
+
+/** Full prompt: the entire card design (not just animation) for any AI. */
+export function buildCardDesignPrompt(side: IntroOutroSideConfig, audio?: AudioAnalysis | null): string {
+	let audioBlock = "";
+	if (audio && audio.points.length > 0) {
+		const envelope = audio.points.map((p) => `${p.t}:${p.level}`).join("  ");
+		const beats = audio.beats.length ? audio.beats.join(", ") : "none detected";
+		audioBlock = `
+
+The card has background music (${audio.durationSec}s). Loudness over the card (t:level, both 0..1):
+${envelope}
+Energy peaks at t: ${beats}
+Make the animation EMPHASIZE the louder moments and accent the peaks.`;
+	}
+	return `${CARD_DESIGN_DOC}
+
+Current design:
+${JSON.stringify(sideToDesign(side), null, 2)}${audioBlock}
+
+Now apply this change: <describe what you want, e.g. "make it feel premium and cinematic with a deep blue gradient and a confident logo entrance"${audio ? '; or "design it around the music"' : ""}>
+
+Return the full updated design JSON only.`;
 }
