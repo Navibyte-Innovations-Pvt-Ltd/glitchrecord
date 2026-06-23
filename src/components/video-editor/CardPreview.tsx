@@ -3,17 +3,24 @@ import { useEffect, useRef, useState } from "react";
 import { cardDurationMs, drawCard } from "./cardAnimationRenderer";
 import type { IntroOutroSideConfig } from "./introOutroTypes";
 
-const PREVIEW_W = 248;
-const PREVIEW_H = 140;
+const DEFAULT_W = 248;
+const DEFAULT_H = 140;
 /** Idle frame position — settled state so the composition is visible when paused. */
 const IDLE_PROGRESS = 0.5;
 
 interface CardPreviewProps {
 	side: IntroOutroSideConfig;
 	logoDataUrl: string;
+	width?: number;
+	height?: number;
 }
 
-export function CardPreview({ side, logoDataUrl }: CardPreviewProps) {
+export function CardPreview({
+	side,
+	logoDataUrl,
+	width: PREVIEW_W = DEFAULT_W,
+	height: PREVIEW_H = DEFAULT_H,
+}: CardPreviewProps) {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const logoRef = useRef<HTMLImageElement | null>(null);
 	const rafRef = useRef<number | null>(null);
@@ -57,20 +64,12 @@ export function CardPreview({ side, logoDataUrl }: CardPreviewProps) {
 	};
 
 	// Redraw the idle frame when settings/logo change and not actively playing.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: side fields drive the redraw
+	// biome-ignore lint/correctness/useExhaustiveDependencies: paint reads current side
 	useEffect(() => {
 		if (!isPlaying) {
 			paint(IDLE_PROGRESS);
 		}
-	}, [
-		isPlaying,
-		logoReady,
-		side.preset,
-		side.position,
-		side.size,
-		side.backgroundColor,
-		side.durationMs,
-	]);
+	}, [isPlaying, logoReady, side]);
 
 	useEffect(() => {
 		return () => {
