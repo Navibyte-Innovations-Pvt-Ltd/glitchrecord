@@ -246,8 +246,8 @@ export const CARD_ANIMATIONS: Record<IntroOutroPreset, AnimationSpec> = {
 				{ t: 1, value: 0 },
 			],
 		},
-		reveal: { target: "name", mode: "word", start: 0.25, durationFrac: 0.45 },
-		shine: { target: "name", start: 0.62, durationFrac: 0.32, intensity: 0.6 },
+		reveal: { target: "name", mode: "word", start: 0.22, durationFrac: 0.4 },
+		shine: { target: "name", start: 0.72, durationFrac: 0.34, intensity: 0.55 },
 	},
 	"scale-pop": {
 		id: "scale-pop",
@@ -819,6 +819,7 @@ LAYER IT — a flat single-track fade looks cheap. A premium card combines layer
 - "shine" sweeps a light flare across the name shortly after it lands.
 - "glow" pulses a colored halo behind the logo; tint it near the logo color for cohesion and pulse it on the music peaks.
 Aim to use at least 2–3 of these together, not just one.
+- SMOOTH SEQUENCING: stagger the layers, don't fire them all at t=0. Bring the group/logo in first, let the name reveal, THEN sweep the shine — set shine.start ≥ reveal.start + reveal.durationFrac on the same target so the flare hits fully-formed text. Keep entrances eased (easeOut*/easeOutBack), not linear.
 
 TASTE RUBRIC:
 - CONTRAST IS MANDATORY. The logo and text must clearly stand out. Never put the logo on a background of its own color family. If the logo is dark/busy or close to the background, use logoContainer "panel" (white plate) — guaranteed pop.
@@ -828,7 +829,7 @@ TASTE RUBRIC:
 
 WORKED EXAMPLES (valid designs — match this depth, do not copy verbatim):
 Example A — deep-indigo, layered logo reveal:
-{ "background": { "type": "gradient", "color1": "#0b1020", "color2": "#3730a3", "angle": 135, "glow": 0.28, "vignette": 0.34 }, "text": { "brandName": "Acme", "tagline": "Ship faster", "color": "#ffffff" }, "layout": "logo-top", "logoContainer": "panel", "logoPadding": 0.12, "size": 0.27, "position": "center", "durationMs": 2600, "animation": { "label": "Indigo reveal", "tracks": [ { "property": "opacity", "keyframes": [ {"t":0,"value":0}, {"t":0.18,"value":1,"easing":"easeOut"}, {"t":0.82,"value":1}, {"t":1,"value":0,"easing":"easeIn"} ] } ], "elements": { "logo": [ { "property": "scale", "keyframes": [ {"t":0,"value":0.6}, {"t":0.5,"value":1,"easing":"easeOutBack"} ] }, { "property": "y", "keyframes": [ {"t":0,"value":0.06}, {"t":0.5,"value":0,"easing":"easeOut"} ] } ] }, "reveal": { "target": "name", "mode": "word", "start": 0.3, "durationFrac": 0.4 }, "shine": { "target": "name", "start": 0.66, "durationFrac": 0.3, "intensity": 0.6 }, "glow": { "color": "#7c83ff", "keyframes": [ {"t":0.05,"value":0}, {"t":0.45,"value":0.85,"easing":"easeOut"}, {"t":0.75,"value":0.3}, {"t":1,"value":0} ] } } }
+{ "background": { "type": "gradient", "color1": "#0b1020", "color2": "#3730a3", "angle": 135, "glow": 0.28, "vignette": 0.34 }, "text": { "brandName": "Acme", "tagline": "Ship faster", "color": "#ffffff" }, "layout": "logo-top", "logoContainer": "panel", "logoPadding": 0.12, "size": 0.27, "position": "center", "durationMs": 2600, "animation": { "label": "Indigo reveal", "tracks": [ { "property": "opacity", "keyframes": [ {"t":0,"value":0}, {"t":0.18,"value":1,"easing":"easeOut"}, {"t":0.82,"value":1}, {"t":1,"value":0,"easing":"easeIn"} ] } ], "elements": { "logo": [ { "property": "scale", "keyframes": [ {"t":0,"value":0.6}, {"t":0.5,"value":1,"easing":"easeOutBack"} ] }, { "property": "y", "keyframes": [ {"t":0,"value":0.06}, {"t":0.5,"value":0,"easing":"easeOut"} ] } ] }, "reveal": { "target": "name", "mode": "word", "start": 0.28, "durationFrac": 0.38 }, "shine": { "target": "name", "start": 0.72, "durationFrac": 0.3, "intensity": 0.55 }, "glow": { "color": "#7c83ff", "keyframes": [ {"t":0.05,"value":0}, {"t":0.45,"value":0.85,"easing":"easeOut"}, {"t":0.75,"value":0.3}, {"t":1,"value":0} ] } } }
 
 Example B — warm light card, dark text, logo slides beside name:
 { "background": { "type": "gradient", "color1": "#fff7ed", "color2": "#fed7aa", "angle": 120, "glow": 0, "vignette": 0.18 }, "text": { "brandName": "Lumen", "tagline": "Light up your day", "color": "#7c2d12" }, "layout": "logo-left", "logoContainer": "none", "logoPadding": 0.1, "size": 0.3, "position": "center", "durationMs": 2400, "animation": { "label": "Warm slide", "tracks": [ { "property": "opacity", "keyframes": [ {"t":0,"value":0}, {"t":0.2,"value":1,"easing":"easeOut"}, {"t":0.84,"value":1}, {"t":1,"value":0,"easing":"easeIn"} ] } ], "elements": { "logo": [ { "property": "x", "keyframes": [ {"t":0,"value":-0.12}, {"t":0.5,"value":0,"easing":"easeOutCubic"} ] } ], "name": [ { "property": "x", "keyframes": [ {"t":0,"value":0.08}, {"t":0.55,"value":0,"easing":"easeOutCubic"} ] } ] }, "reveal": { "target": "tagline", "mode": "word", "start": 0.4, "durationFrac": 0.4 }, "shine": { "target": "name", "start": 0.55, "durationFrac": 0.3, "intensity": 0.5 } } }
