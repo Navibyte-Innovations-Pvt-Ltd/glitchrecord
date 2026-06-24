@@ -373,9 +373,27 @@ function drawText(
 		grad.addColorStop(1, "rgba(255,255,255,0)");
 		const prevOp = ctx.globalCompositeOperation;
 		ctx.globalCompositeOperation = "lighter";
-		ctx.globalAlpha = prevAlpha;
 		ctx.fillStyle = grad;
-		ctx.fillText(text, leftX, topY);
+		if (reveal) {
+			// Gate the sweep by each unit's reveal progress so the bright band can
+			// never expose words the reveal hasn't shown yet (caused ghost text).
+			const units = reveal.mode === "char" ? Array.from(text) : text.split(" ");
+			const n = Math.max(1, units.length);
+			const spaceW = ctx.measureText(" ").width;
+			const window = Math.max(0.05, reveal.durationFrac);
+			const unitFade = Math.max(0.06, window / n + 0.06);
+			let penX = leftX;
+			for (let i = 0; i < n; i++) {
+				const startI = reveal.start + (i / n) * window;
+				const op = smoothstep01(startI, startI + unitFade, t);
+				ctx.globalAlpha = prevAlpha * op;
+				ctx.fillText(units[i], penX, topY);
+				penX += ctx.measureText(units[i]).width + (reveal.mode === "char" ? 0 : spaceW);
+			}
+		} else {
+			ctx.globalAlpha = prevAlpha;
+			ctx.fillText(text, leftX, topY);
+		}
 		ctx.globalCompositeOperation = prevOp;
 	}
 
