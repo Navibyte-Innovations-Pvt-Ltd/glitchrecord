@@ -77,6 +77,39 @@ export function cardProgressToCompositeMs(
 	return Math.max(0, leadInMs) + Math.max(0, recMs) + p * Math.max(0, tailMs);
 }
 
+export interface CompositePlayheadState {
+	/** Band of a currently-playing card (highest priority — the card owns the view). */
+	playingBand?: "intro" | "outro";
+	playingProgress?: number;
+	/** Band being scrubbed (frozen frame shown) when nothing is playing. */
+	scrubBand?: "intro" | "outro";
+	scrubProgress?: number;
+	/** Recording-time playhead ms (used when neither a card nor a scrub is active). */
+	recordingPlayheadMs: number;
+}
+
+/**
+ * The single composite-playhead position. Priority: a playing card sweeps its
+ * band → a scrub pins its band → otherwise track the recording. This keeps the
+ * marker in lock-step with what's actually on screen (card vs recording) — a
+ * stale scrub must be cleared by the caller so playback falls through to the
+ * recording branch instead of pinning the marker in the intro.
+ */
+export function resolveCompositePlayheadMs(
+	s: CompositePlayheadState,
+	leadInMs: number,
+	recMs: number,
+	tailMs: number,
+): number {
+	if (s.playingBand) {
+		return cardProgressToCompositeMs(s.playingBand, s.playingProgress ?? 0, leadInMs, recMs, tailMs);
+	}
+	if (s.scrubBand) {
+		return cardProgressToCompositeMs(s.scrubBand, s.scrubProgress ?? 0, leadInMs, recMs, tailMs);
+	}
+	return recordingToCompositeMs(s.recordingPlayheadMs, leadInMs);
+}
+
 /** Shift a region span from recording time into composite time (or back, if negative). */
 export function shiftSpan(span: Span, byMs: number): Span {
 	return { start: span.start + byMs, end: span.end + byMs };
