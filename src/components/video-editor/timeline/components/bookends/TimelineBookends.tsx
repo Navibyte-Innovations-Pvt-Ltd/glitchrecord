@@ -106,46 +106,56 @@ function BookendBlock({
 	top: number;
 	height: number;
 }) {
+	// The band itself is click-THROUGH (pointer-events-none) so the playhead can be
+	// dragged/clicked INTO it to scrub the card — only the control cluster captures
+	// pointer events. Without this the band swallowed seeks and you couldn't scrub
+	// the intro/outro.
 	return (
 		<div
-			className="pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded-md border border-[#2563EB]/50 bg-[#2563EB]/25 px-1.5 text-[10px] font-semibold text-white"
+			className="pointer-events-none absolute overflow-hidden rounded-md border border-[#2563EB]/50 bg-[#2563EB]/20 text-[10px] font-semibold text-white"
 			style={{ left, width: Math.max(0, width), top, height }}
 		>
-			<button
-				type="button"
-				onClick={side.onPlay}
-				className="flex min-w-0 flex-1 items-center gap-1 text-left"
-				title={`Play ${kind}`}
-			>
-				<Play className="h-3 w-3 shrink-0" weight="fill" />
-				<span className="truncate">{side.label}</span>
-			</button>
-			{side.onEdit ? (
+			<span className="absolute inset-y-0 left-5 flex items-center truncate pr-1 text-white/80">
+				{side.label}
+			</span>
+			{/* Compact controls pinned at the band's left edge (pointer-events-auto). */}
+			<div className="pointer-events-auto absolute left-0.5 top-0.5 flex items-center gap-0.5">
 				<button
 					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						side.onEdit?.();
-					}}
-					aria-label={`Edit ${kind}`}
-					className="shrink-0 rounded bg-black/40 p-0.5 text-white/80 hover:text-white"
+					onClick={side.onPlay}
+					aria-label={`Play ${kind}`}
+					title={`Play ${kind}`}
+					className="rounded bg-black/40 p-0.5 text-white hover:bg-black/60"
 				>
-					<PencilSimple className="h-3 w-3" weight="bold" />
+					<Play className="h-3 w-3" weight="fill" />
 				</button>
-			) : null}
-			{side.onDelete ? (
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						side.onDelete?.();
-					}}
-					aria-label={`Delete ${kind}`}
-					className="shrink-0 rounded bg-black/40 p-0.5 text-white/80 hover:text-red-400"
-				>
-					<X className="h-3 w-3" weight="bold" />
-				</button>
-			) : null}
+				{side.onEdit ? (
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							side.onEdit?.();
+						}}
+						aria-label={`Edit ${kind}`}
+						className="rounded bg-black/40 p-0.5 text-white/80 hover:text-white"
+					>
+						<PencilSimple className="h-3 w-3" weight="bold" />
+					</button>
+				) : null}
+				{side.onDelete ? (
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							side.onDelete?.();
+						}}
+						aria-label={`Delete ${kind}`}
+						className="rounded bg-black/40 p-0.5 text-white/80 hover:text-red-400"
+					>
+						<X className="h-3 w-3" weight="bold" />
+					</button>
+				) : null}
+			</div>
 		</div>
 	);
 }
