@@ -146,18 +146,22 @@ function measureGroup(
 	}
 
 	const gap = Math.round(H * 0.035);
+	// Logo↔text gap scales with the logo so a bigger logo never crowds the name
+	// (the fixed 3.5% gap looked cramped under large logos). Kept in sync with the
+	// identical `logoGap` in drawGroup.
+	const logoGap = Math.max(gap, Math.round(logoBoxH * 0.16));
 	const textBlockH = (nameSize ? nameSize : 0) + (taglineSize ? taglineSize + gap * 0.45 : 0);
 	const textBlockW = Math.max(nameW, taglineW);
 
 	let width = 0;
 	let height = 0;
 	if (side.layout === "logo-left") {
-		width = logoBoxW + (textBlockW ? gap + textBlockW : 0);
+		width = logoBoxW + (textBlockW ? logoGap + textBlockW : 0);
 		height = Math.max(logoBoxH, textBlockH);
 	} else {
 		// logo-only / logo-top / text-only stack vertically.
 		width = Math.max(logoBoxW, textBlockW);
-		height = logoBoxH + (logoBoxH && textBlockH ? gap : 0) + textBlockH;
+		height = logoBoxH + (logoBoxH && textBlockH ? logoGap : 0) + textBlockH;
 	}
 
 	return {
@@ -438,6 +442,8 @@ function drawGroup(
 ): void {
 	const gap = Math.round(ctx.canvas.height * 0.035);
 	const textGap = gap * 0.45;
+	// Logo↔text gap — must match measureGroup's logoGap exactly or layout desyncs.
+	const logoGap = Math.max(gap, Math.round(m.logoBoxH * 0.16));
 	const color = side.text.color;
 	const nameStyle: TextStyle = {
 		size: m.nameSize,
@@ -481,7 +487,7 @@ function drawGroup(
 
 	if (side.layout === "logo-left") {
 		drawLogo(ox, oy + (m.height - m.logoBoxH) / 2);
-		const textX = ox + (m.hasLogo ? m.logoBoxW + gap : 0);
+		const textX = ox + (m.hasLogo ? m.logoBoxW + logoGap : 0);
 		const textBlockH =
 			(m.hasName ? m.nameSize : 0) + (m.hasTagline ? m.taglineSize + textGap : 0);
 		let ty = oy + (m.height - textBlockH) / 2;
@@ -532,7 +538,7 @@ function drawGroup(
 	let y = oy;
 	if (m.hasLogo && logo) {
 		drawLogo(cx - m.logoBoxW / 2, y);
-		y += m.logoBoxH + gap;
+		y += m.logoBoxH + logoGap;
 	}
 	if (m.hasName) {
 		ctx.font = `800 ${m.nameSize}px Inter, system-ui, sans-serif`;
