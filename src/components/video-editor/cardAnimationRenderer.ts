@@ -344,14 +344,16 @@ function drawText(
 		const n = Math.max(1, units.length);
 		const spaceW = ctx.measureText(" ").width;
 		const window = Math.max(0.05, reveal.durationFrac);
-		const unitFade = Math.max(0.06, window / n + 0.06);
+		// Heavily overlap each unit's fade (≈half the window) so the reveal reads as
+		// one smooth cascade instead of words hard-popping one at a time.
+		const unitFade = Math.max(0.12, window * 0.5);
 		let penX = leftX;
 		ctx.fillStyle = color;
 		for (let i = 0; i < n; i++) {
 			const u = units[i];
 			const startI = reveal.start + (i / n) * window;
 			const op = smoothstep01(startI, startI + unitFade, t);
-			const rise = (1 - op) * style.size * 0.35;
+			const rise = (1 - op) * style.size * 0.18;
 			ctx.globalAlpha = base * op;
 			ctx.fillText(u, penX, topY + rise);
 			penX += ctx.measureText(u).width + (reveal.mode === "char" ? 0 : spaceW);
@@ -381,7 +383,7 @@ function drawText(
 			const n = Math.max(1, units.length);
 			const spaceW = ctx.measureText(" ").width;
 			const window = Math.max(0.05, reveal.durationFrac);
-			const unitFade = Math.max(0.06, window / n + 0.06);
+			const unitFade = Math.max(0.12, window * 0.5);
 			let penX = leftX;
 			for (let i = 0; i < n; i++) {
 				const startI = reveal.start + (i / n) * window;
