@@ -124,11 +124,11 @@ export interface IntroOutroConfig {
 
 export const DEFAULT_CARD_BACKGROUND: CardBackground = {
 	type: "gradient",
-	color1: "#0b1020",
-	color2: "#1e293b",
+	color1: "#0a0f1f",
+	color2: "#3730a3",
 	angle: 135,
-	glow: 0.18,
-	vignette: 0.28,
+	glow: 0.24,
+	vignette: 0.34,
 };
 
 export const DEFAULT_CARD_TEXT: CardText = {
