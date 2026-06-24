@@ -204,6 +204,11 @@ import {
 	openExternalLink,
 	RECORDLY_ISSUES_URL,
 } from "./TutorialHelp";
+import {
+	classifyCompositeMs,
+	recordingToCompositeMs,
+	shiftSpan,
+} from "./timeline/introOutroComposite";
 import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
 import {
 	normalizeCursorTelemetry,
@@ -439,6 +444,13 @@ function writeStoredTimelineHeight(px: number): void {
 	} catch {
 		// Ignore storage failures (private mode / quota) — resize still works.
 	}
+}
+
+/** Shift region spans from recording time into composite time (intro pre-roll). */
+function shiftRegionsBy<T extends { startMs: number; endMs: number }>(arr: T[], by: number): T[] {
+	return by === 0
+		? arr
+		: arr.map((r) => ({ ...r, startMs: r.startMs + by, endMs: r.endMs + by }));
 }
 
 export default function VideoEditor() {
@@ -6383,6 +6395,65 @@ export default function VideoEditor() {
 		);
 	}
 
+	// ── Composite timeline (intro → recording → outro) ──────────────────────────
+	// The editor timeline is laid out in composite time: the intro occupies the
+	// lead-in, then the recording, then the outro. Clips/zooms/etc. live in
+	// recording time, so they're shifted right by `leadInMs` for display and the
+	// callbacks shift back. Export is unaffected (cards are built separately in the
+	// main process). NOTE: plain consts (not memos) — this is below an early return.
+	const introRenderable = sideIsRenderable(introOutro.intro, introOutro.logoDataUrl);
+	const outroRenderable = sideIsRenderable(introOutro.outro, introOutro.logoDataUrl);
+	const leadInMs = introRenderable ? cardDurationMs(introOutro.intro) : 0;
+	const tailMs = outroRenderable ? cardDurationMs(introOutro.outro) : 0;
+	const recMs = timelineDuration * 1000;
+	const compositeDurationSec = (leadInMs + recMs + tailMs) / 1000;
+	// Playhead in composite seconds. While scrubbing a card band, pin it there so
+	// the one blue playhead follows the drag into the intro/outro instead of
+	// snapping back to the (unchanged) recording position.
+	let compositePlayheadSec =
+		recordingToCompositeMs(timelinePlayheadTime * 1000, leadInMs) / 1000;
+	if (scrubCard?.side === introOutro.intro) {
+		compositePlayheadSec = (scrubCard.progress * leadInMs) / 1000;
+	} else if (scrubCard?.side === introOutro.outro) {
+		compositePlayheadSec = (leadInMs + recMs + scrubCard.progress * tailMs) / 1000;
+	}
+
+	// Seek in composite seconds: intro/outro bands freeze a card frame, the
+	// recording band maps back to source video (and clears any frozen card).
+	const handleCompositeSeek = (sec: number) => {
+		const cls = classifyCompositeMs(sec * 1000, leadInMs, recMs, tailMs);
+		if (cls.band === "intro") return scrubCardTo(introOutro.intro, cls.progress ?? 0);
+		if (cls.band === "outro") return scrubCardTo(introOutro.outro, cls.progress ?? 0);
+		endScrubCard();
+		handleTimelineSeek((cls.recordingMs ?? 0) / 1000);
+	};
+	// Toolbar/runtime actions arrive in composite ms — map to recording ms.
+	const toRecMs = (compositeMs: number) =>
+		classifyCompositeMs(compositeMs, leadInMs, recMs, tailMs).recordingMs ?? 0;
+
+	const bookendsProp = {
+		leadInMs,
+		tailMs,
+		onAddIntro: () => openIntroStudio("intro"),
+		onAddOutro: () => openIntroStudio("outro"),
+		intro: {
+			label: `Intro ${(leadInMs / 1000).toFixed(1)}s`,
+			active: introRenderable,
+			playing: !!activeCard && activeCard.side === introOutro.intro,
+			onPlay: () => startPlayback({ fromIntro: true }),
+			onEdit: () => openIntroStudio("intro"),
+			onDelete: () => deleteSide("intro"),
+		},
+		outro: {
+			label: `Outro ${(tailMs / 1000).toFixed(1)}s`,
+			active: outroRenderable,
+			playing: !!activeCard && activeCard.side === introOutro.outro,
+			onPlay: () => playCard(introOutro.outro),
+			onEdit: () => openIntroStudio("outro"),
+			onDelete: () => deleteSide("outro"),
+		},
+	};
+
 	return (
 		<div className="flex flex-col h-screen bg-editor-bg text-foreground overflow-hidden selection:bg-[#2563EB]/30">
 			<div
@@ -7556,101 +7627,75 @@ export default function VideoEditor() {
 					)}
 					<TimelineEditor
 						ref={timelineRef}
-						videoDuration={timelineDuration}
+						videoDuration={compositeDurationSec}
 						currentTime={currentTime}
-						playheadTime={timelinePlayheadTime}
-						onSeek={handleTimelineSeek}
-						endcaps={{
-							intro: {
-								label: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
-									? `Intro ${(cardDurationMs(introOutro.intro) / 1000).toFixed(1)}s`
-									: "+ Intro",
-								active: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl),
-								// Click = play intro then continue into the recording (unified
-								// playhead); drag = scrub; pencil = open setup; × = remove.
-								onClick: () =>
-									sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
-										? startPlayback({ fromIntro: true })
-										: openIntroStudio("intro"),
-								onEdit: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
-									? () => openIntroStudio("intro")
-									: undefined,
-								durationMs: cardDurationMs(introOutro.intro),
-								playing: !!activeCard && activeCard.side === introOutro.intro,
-								onScrub: (p) => scrubCardTo(introOutro.intro, p),
-								onScrubEnd: endScrubCard,
-								scrubProgress:
-									scrubCard?.side === introOutro.intro
-										? scrubCard.progress
-										: undefined,
-								onDelete: sideIsRenderable(introOutro.intro, introOutro.logoDataUrl)
-									? () => deleteSide("intro")
-									: undefined,
-							},
-							outro: {
-								label: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
-									? `Outro ${(cardDurationMs(introOutro.outro) / 1000).toFixed(1)}s`
-									: "+ Outro",
-								active: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl),
-								onClick: () =>
-									sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
-										? playCard(introOutro.outro)
-										: openIntroStudio("outro"),
-								onEdit: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
-									? () => openIntroStudio("outro")
-									: undefined,
-								durationMs: cardDurationMs(introOutro.outro),
-								playing: !!activeCard && activeCard.side === introOutro.outro,
-								onScrub: (p) => scrubCardTo(introOutro.outro, p),
-								onScrubEnd: endScrubCard,
-								scrubProgress:
-									scrubCard?.side === introOutro.outro
-										? scrubCard.progress
-										: undefined,
-								onDelete: sideIsRenderable(introOutro.outro, introOutro.logoDataUrl)
-									? () => deleteSide("outro")
-									: undefined,
-							},
-						}}
+						playheadTime={compositePlayheadSec}
+						onSeek={handleCompositeSeek}
+						bookends={bookendsProp}
 						videoPath={videoPath}
 						videoSourcePath={videoSourcePath}
 						cursorTelemetrySourcePath={cursorTelemetrySourcePath}
-						cursorTelemetry={normalizedCursorTelemetry}
+						cursorTelemetry={
+							leadInMs > 0
+								? normalizedCursorTelemetry.map((p) => ({
+										...p,
+										timeMs: p.timeMs + leadInMs,
+									}))
+								: normalizedCursorTelemetry
+						}
 						autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
 						onAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
 						disableSuggestedZooms={!autoApplyFreshRecordingAutoZooms}
-						zoomRegions={zoomRegions}
-						onZoomAdded={handleZoomAdded}
-						onZoomSuggested={handleZoomSuggested}
-						onZoomSpanChange={handleZoomSpanChange}
+						zoomRegions={shiftRegionsBy(zoomRegions, leadInMs)}
+						onZoomAdded={(span) => handleZoomAdded(shiftSpan(span, -leadInMs))}
+						onZoomSuggested={(span, focus) =>
+							handleZoomSuggested(shiftSpan(span, -leadInMs), focus)
+						}
+						onZoomSpanChange={(id, span) =>
+							handleZoomSpanChange(id, shiftSpan(span, -leadInMs))
+						}
 						onZoomDelete={handleZoomDelete}
 						selectedZoomId={selectedZoomId}
 						onSelectZoom={handleSelectZoom}
-						trimRegions={trimRegions}
-						clipRegions={clipRegions}
-						onClipSplit={handleClipSplit}
-						onTrimToEnd={handleTrimToEnd}
-						onAddSpeedPoint={handleAddSpeedPoint}
-						onShiftMarker={handleShiftMarker}
-						pendingMarkerMs={pendingMarkerMs}
-						onClipSpanChange={handleClipSpanChange}
+						trimRegions={shiftRegionsBy(trimRegions, leadInMs)}
+						clipRegions={shiftRegionsBy(clipRegions, leadInMs)}
+						onClipSplit={(ms) => handleClipSplit(toRecMs(ms))}
+						onTrimToEnd={(ms) => handleTrimToEnd(toRecMs(ms))}
+						onAddSpeedPoint={(ms) => handleAddSpeedPoint(toRecMs(ms))}
+						onShiftMarker={(ms) => handleShiftMarker(toRecMs(ms))}
+						pendingMarkerMs={
+							pendingMarkerMs != null ? pendingMarkerMs + leadInMs : pendingMarkerMs
+						}
+						onClipSpanChange={(id, span) =>
+							handleClipSpanChange(id, shiftSpan(span, -leadInMs))
+						}
 						onClipMutedChange={handleClipMutedChange}
 						onClipDelete={handleClipDelete}
 						selectedClipId={selectedClipId}
 						onSelectClip={handleSelectClip}
-						speedRegions={speedRegions}
-						onSpeedSpanChange={handleSpeedSpanChange}
+						speedRegions={shiftRegionsBy(speedRegions, leadInMs)}
+						onSpeedSpanChange={(id, span) =>
+							handleSpeedSpanChange(id, shiftSpan(span, -leadInMs))
+						}
 						selectedSpeedId={selectedSpeedId}
 						onSelectSpeed={handleSelectSpeed}
-						audioRegions={audioRegions}
-						onAudioAdded={handleAudioAdded}
-						onAudioSpanChange={handleAudioSpanChange}
+						audioRegions={shiftRegionsBy(audioRegions, leadInMs)}
+						onAudioAdded={(span, audioPath, trackIndex) =>
+							handleAudioAdded(shiftSpan(span, -leadInMs), audioPath, trackIndex)
+						}
+						onAudioSpanChange={(id, span, trackIndex) =>
+							handleAudioSpanChange(id, shiftSpan(span, -leadInMs), trackIndex)
+						}
 						onAudioDelete={handleAudioDelete}
 						selectedAudioId={selectedAudioId}
 						onSelectAudio={handleSelectAudio}
-						annotationRegions={annotationRegions}
-						onAnnotationAdded={handleAnnotationAdded}
-						onAnnotationSpanChange={handleAnnotationSpanChange}
+						annotationRegions={shiftRegionsBy(annotationRegions, leadInMs)}
+						onAnnotationAdded={(span, trackIndex) =>
+							handleAnnotationAdded(shiftSpan(span, -leadInMs), trackIndex)
+						}
+						onAnnotationSpanChange={(id, span, trackIndex) =>
+							handleAnnotationSpanChange(id, shiftSpan(span, -leadInMs), trackIndex)
+						}
 						onAnnotationDelete={handleAnnotationDelete}
 						selectedAnnotationId={selectedAnnotationId}
 						onSelectAnnotation={handleSelectAnnotation}
