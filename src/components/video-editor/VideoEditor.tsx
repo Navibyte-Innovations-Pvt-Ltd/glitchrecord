@@ -205,9 +205,8 @@ import {
 	RECORDLY_ISSUES_URL,
 } from "./TutorialHelp";
 import {
-	cardProgressToCompositeMs,
 	classifyCompositeMs,
-	recordingToCompositeMs,
+	resolveCompositePlayheadMs,
 	shiftSpan,
 } from "./timeline/introOutroComposite";
 import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
@@ -3951,6 +3950,10 @@ export default function VideoEditor() {
 			const video = playback?.video;
 			if (!playback || !video) return;
 
+			// Clear any frozen scrub so the playhead tracks playback instead of
+			// staying pinned in the intro/outro band the user last scrubbed.
+			setScrubCard(null);
+
 			const playContent = () => {
 				audio.playSourceAudioPreview();
 				playback.play().catch((err) => console.error("Video play failed:", err));
@@ -6437,19 +6440,31 @@ export default function VideoEditor() {
 	// Playhead in composite seconds. Priority: a playing card sweeps its band; else
 	// a scrub pins it in the band; else it tracks the recording position. This is
 	// what makes the ONE blue playhead travel 0:00 → intro → recording → outro.
-	let compositePlayheadSec =
-		recordingToCompositeMs(timelinePlayheadTime * 1000, leadInMs) / 1000;
-	if (activeCard?.side === introOutro.intro) {
-		compositePlayheadSec =
-			cardProgressToCompositeMs("intro", cardProgress, leadInMs, recMs, tailMs) / 1000;
-	} else if (activeCard?.side === introOutro.outro) {
-		compositePlayheadSec =
-			cardProgressToCompositeMs("outro", cardProgress, leadInMs, recMs, tailMs) / 1000;
-	} else if (scrubCard?.side === introOutro.intro) {
-		compositePlayheadSec = (scrubCard.progress * leadInMs) / 1000;
-	} else if (scrubCard?.side === introOutro.outro) {
-		compositePlayheadSec = (leadInMs + recMs + scrubCard.progress * tailMs) / 1000;
-	}
+	const activeBand =
+		activeCard?.side === introOutro.intro
+			? "intro"
+			: activeCard?.side === introOutro.outro
+				? "outro"
+				: undefined;
+	const scrubBand =
+		scrubCard?.side === introOutro.intro
+			? "intro"
+			: scrubCard?.side === introOutro.outro
+				? "outro"
+				: undefined;
+	const compositePlayheadSec =
+		resolveCompositePlayheadMs(
+			{
+				playingBand: activeBand,
+				playingProgress: cardProgress,
+				scrubBand,
+				scrubProgress: scrubCard?.progress,
+				recordingPlayheadMs: timelinePlayheadTime * 1000,
+			},
+			leadInMs,
+			recMs,
+			tailMs,
+		) / 1000;
 
 	// Seek in composite seconds: intro/outro bands freeze a card frame, the
 	// recording band maps back to source video (and clears any frozen card).
