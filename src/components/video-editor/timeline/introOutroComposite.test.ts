@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	cardProgressToCompositeMs,
 	classifyCompositeMs,
 	compositeBands,
 	recordingToCompositeMs,
@@ -74,6 +75,24 @@ describe("recordingToCompositeMs", () => {
 		expect(recordingToCompositeMs(0, LEAD)).toBe(7000);
 		expect(recordingToCompositeMs(1000, LEAD)).toBe(8000);
 		expect(recordingToCompositeMs(1000, 0)).toBe(1000);
+	});
+});
+
+describe("cardProgressToCompositeMs", () => {
+	it("sweeps the intro band 0 → leadIn as the card plays", () => {
+		expect(cardProgressToCompositeMs("intro", 0, LEAD, REC, TAIL)).toBe(0);
+		expect(cardProgressToCompositeMs("intro", 0.5, LEAD, REC, TAIL)).toBe(3500);
+		expect(cardProgressToCompositeMs("intro", 1, LEAD, REC, TAIL)).toBe(LEAD);
+	});
+
+	it("sweeps the outro band recEnd → total as the card plays", () => {
+		expect(cardProgressToCompositeMs("outro", 0, LEAD, REC, TAIL)).toBe(LEAD + REC);
+		expect(cardProgressToCompositeMs("outro", 1, LEAD, REC, TAIL)).toBe(LEAD + REC + TAIL);
+	});
+
+	it("clamps progress outside 0..1", () => {
+		expect(cardProgressToCompositeMs("intro", -1, LEAD, REC, TAIL)).toBe(0);
+		expect(cardProgressToCompositeMs("intro", 2, LEAD, REC, TAIL)).toBe(LEAD);
 	});
 });
 
