@@ -72,11 +72,15 @@ function paintBackground(
 	ctx.fillRect(0, 0, W, H);
 
 	// Soft radial accent glow behind the content for depth (minimal-premium).
+	// Hue follows the palette — lightened toward white so it always blooms, even
+	// on dark backgrounds — instead of a fixed blue that clashed with warm/green/
+	// violet cards.
 	if (bg.glow > 0) {
 		const r = Math.max(W, H) * 0.62;
+		const tint = lightenHex(bg.type === "gradient" ? bg.color2 : bg.color1, 0.55);
 		const glow = ctx.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H * 0.42, r);
-		glow.addColorStop(0, `rgba(150,170,255,${(bg.glow * 0.5).toFixed(3)})`);
-		glow.addColorStop(1, "rgba(150,170,255,0)");
+		glow.addColorStop(0, hexToRgba(tint, bg.glow * 0.5));
+		glow.addColorStop(1, hexToRgba(tint, 0));
 		ctx.fillStyle = glow;
 		ctx.fillRect(0, 0, W, H);
 	}
@@ -294,6 +298,18 @@ function hexToRgba(hex: string, alpha: number): string {
 	const g = parseInt(h.slice(2, 4), 16) || 0;
 	const b = parseInt(h.slice(4, 6), 16) || 0;
 	return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Mix a hex color toward white by `amount` (0..1). Keeps the palette hue while
+ *  guaranteeing the result is bright enough to read as a glow on dark cards. */
+function lightenHex(hex: string, amount: number): string {
+	const h = hex.replace(/^#/, "");
+	const r = parseInt(h.slice(0, 2), 16) || 0;
+	const g = parseInt(h.slice(2, 4), 16) || 0;
+	const b = parseInt(h.slice(4, 6), 16) || 0;
+	const mix = (c: number) => Math.round(c + (255 - c) * amount);
+	const to2 = (n: number) => mix(n).toString(16).padStart(2, "0");
+	return `#${to2(r)}${to2(g)}${to2(b)}`;
 }
 
 interface TextStyle {
@@ -603,11 +619,17 @@ export function drawCardForeground(
 	const cx = origin.x + m.width / 2;
 	const cy = origin.y + m.height / 2;
 
+	// Auto-fit: a long tagline or oversized logo would otherwise spill off-frame
+	// (text is single-line, never wraps). Shrink the whole group around its
+	// center to stay within 90% of the frame on both axes.
+	const fit = Math.min(1, (W * 0.9) / m.width, (H * 0.9) / m.height);
+	const scale = anim.scale * fit;
+
 	ctx.save();
 	ctx.globalAlpha = clamp01(anim.opacity);
 	if (anim.blur > 0) ctx.filter = `blur(${anim.blur}px)`;
 	ctx.translate(cx + anim.x * W, cy + anim.y * H);
-	if (anim.scale !== 1) ctx.scale(anim.scale, anim.scale);
+	if (scale !== 1) ctx.scale(scale, scale);
 	if (anim.rotate !== 0) ctx.rotate((anim.rotate * Math.PI) / 180);
 	ctx.translate(-cx, -cy);
 	drawGroup(ctx, logo, side, m, origin.x, origin.y, spec, t);
