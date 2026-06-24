@@ -403,22 +403,6 @@ function drawText(
 	setLetterSpacing(ctx, 0);
 }
 
-/** Short accent divider centered at (cx) on baseline y. */
-function drawDivider(
-	ctx: CanvasRenderingContext2D,
-	cx: number,
-	y: number,
-	width: number,
-	color: string,
-): void {
-	const prev = ctx.globalAlpha;
-	ctx.globalAlpha = prev * 0.4;
-	ctx.fillStyle = color;
-	roundRectPath(ctx, cx - width / 2, y, width, Math.max(2, width * 0.03), 2);
-	ctx.fill();
-	ctx.globalAlpha = prev;
-}
-
 function revealFor(
 	spec: AnimationSpec,
 	role: "name" | "tagline",
@@ -520,15 +504,6 @@ function drawGroup(
 					t,
 				),
 			);
-			if (m.hasTagline) {
-				drawDivider(
-					ctx,
-					textX + m.nameSize * 0.7,
-					ty + m.nameSize + textGap * 0.35,
-					m.nameSize * 1.2,
-					color,
-				);
-			}
 			ty += m.nameSize + textGap;
 		}
 		if (m.hasTagline) {
@@ -578,9 +553,6 @@ function drawGroup(
 				t,
 			),
 		);
-		if (m.hasTagline) {
-			drawDivider(ctx, cx, y + m.nameSize + textGap * 0.3, m.nameSize * 1.3, color);
-		}
 		y += m.nameSize + textGap;
 	}
 	if (m.hasTagline) {
