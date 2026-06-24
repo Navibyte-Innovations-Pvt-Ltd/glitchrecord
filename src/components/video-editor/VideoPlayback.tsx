@@ -378,6 +378,8 @@ interface VideoPlaybackProps {
 	onAvatarFraming?: (framingX: number, framingY: number) => void;
 	/** Toggle the avatar clip's own audio (mute/unmute) from the PiP overlay button. */
 	onAvatarMuteToggle?: () => void;
+	/** Remove the avatar PiP entirely (X button on the overlay). */
+	onAvatarRemove?: () => void;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
 	/** SOURCE time (ms) where the edited timeline ends — playback stops here instead of
@@ -471,6 +473,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onAvatarMove,
 			onAvatarFraming,
 			onAvatarMuteToggle,
+			onAvatarRemove,
 			trimRegions = [],
 			speedRegions = [],
 			playbackEndSourceMs = null,
@@ -3335,6 +3338,37 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 														<line x1="17" y1="9" x2="23" y2="15" />
 													</svg>
 												)}
+											</button>
+										) : null}
+										{/* Remove the avatar PiP entirely. Top-left so it clears the
+										    top-right mute button. */}
+										{onAvatarRemove ? (
+											<button
+												type="button"
+												aria-label="Remove avatar"
+												title="Remove avatar from the video"
+												onPointerDown={(e) => e.stopPropagation()}
+												onClick={(e) => {
+													e.stopPropagation();
+													onAvatarRemove();
+												}}
+												className="absolute left-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-red-600/85"
+												style={{ pointerEvents: "auto", cursor: "pointer" }}
+											>
+												<svg
+													width="13"
+													height="13"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													strokeWidth="2.2"
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													aria-hidden="true"
+												>
+													<line x1="18" y1="6" x2="6" y2="18" />
+													<line x1="6" y1="6" x2="18" y2="18" />
+												</svg>
 											</button>
 										) : null}
 									</>
