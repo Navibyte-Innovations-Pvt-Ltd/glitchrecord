@@ -3776,6 +3776,9 @@ export default function VideoEditor() {
 		band: "intro" | "recording" | "outro";
 		progress: number;
 	}>({ band: "recording", progress: 0 });
+	// True while a manual seek is pausing playback — stops the pause handler from
+	// mistaking it for a natural end-of-content and rolling the outro card.
+	const manualSeekRef = useRef(false);
 	useEffect(() => {
 		currentTimeRef.current = currentTime;
 	}, [currentTime]);
@@ -4196,11 +4199,12 @@ export default function VideoEditor() {
 			const endMs = playbackEndSourceMsRef.current;
 			const atEnd = endMs > 0 && currentTimeRef.current * 1000 >= endMs - 150;
 			setIsPlaying(false);
-			if (outroCard && atEnd && !cardActiveRef.current) {
+			if (outroCard && atEnd && !cardActiveRef.current && !manualSeekRef.current) {
 				// Roll the outro card after content; isPlaying stays false so audio
 				// doesn't restart under the card.
 				playCard(outroCard);
 			}
+			manualSeekRef.current = false;
 		},
 		[playCard],
 	);
@@ -6504,10 +6508,18 @@ export default function VideoEditor() {
 		playheadBandRef.current = { band: cls.band, progress: cls.progress ?? 0 };
 	}
 
-	// Seek in composite seconds: intro/outro bands freeze a card frame, the
-	// recording band maps back to source video (and clears any frozen card).
+	// Seek in composite seconds. ANY seek stops playback and parks on the target
+	// frame: intro/outro bands freeze a card frame, the recording band seeks the
+	// source video (paused). Pausing here is guarded so it isn't read as a natural
+	// end-of-content (which would roll the outro).
 	const handleCompositeSeek = (sec: number) => {
 		const cls = classifyCompositeMs(sec * 1000, leadInMs, recMs, tailMs);
+		const pb = getActivePlayback();
+		if (pb?.video && !pb.video.paused) {
+			manualSeekRef.current = true;
+			pb.pause();
+			setIsPlaying(false);
+		}
 		if (cls.band === "intro") return scrubCardTo(introOutro.intro, cls.progress ?? 0);
 		if (cls.band === "outro") return scrubCardTo(introOutro.outro, cls.progress ?? 0);
 		endScrubCard();
