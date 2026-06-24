@@ -3795,6 +3795,9 @@ export default function VideoEditor() {
 	const cardAudioRef = useRef<HTMLAudioElement | null>(null);
 	// True while a card is showing — guards the outro trigger from re-firing.
 	const cardActiveRef = useRef(false);
+	// The side of the currently-playing card — so when it ends we know whether to
+	// hand off (intro) or park on its last frame (outro/terminal).
+	const activeCardSideRef = useRef<IntroOutroSideConfig | null>(null);
 
 	// The card's uploaded audio plays alongside the inline card (built-in stings
 	// are main-process-only, so can't play in the renderer here).
@@ -3824,6 +3827,7 @@ export default function VideoEditor() {
 		(side: IntroOutroSideConfig, onDone?: () => void, startProgress = 0) => {
 			cardOnDoneRef.current = onDone ?? null;
 			cardActiveRef.current = true;
+			activeCardSideRef.current = side;
 			if (side.mode === "card") startCardAudio(side);
 			setActiveCard({ side, startProgress });
 		},
@@ -3837,14 +3841,23 @@ export default function VideoEditor() {
 		setActiveCard(null);
 	}, [stopCardAudio]);
 
-	// A card (canvas or video) finished → clear overlay and resume the flow.
+	// A card (canvas or video) finished. Intro hands off to the recording (its
+	// onDone = playContent). A terminal card (outro) has no onDone → park the
+	// marker on its LAST frame (so it rests at the outro end, not snapping back to
+	// the recording end).
 	const handleCardVideoEnded = useCallback(() => {
 		stopCardAudio();
 		cardActiveRef.current = false;
+		const endedSide = activeCardSideRef.current;
+		activeCardSideRef.current = null;
 		setActiveCard(null);
 		const done = cardOnDoneRef.current;
 		cardOnDoneRef.current = null;
-		done?.();
+		if (done) {
+			done();
+		} else if (endedSide) {
+			setScrubCard({ side: endedSide, progress: 1 });
+		}
 	}, [stopCardAudio]);
 
 	// While a card plays, sweep `cardProgress` 0→1 (capped ~30fps) so the composite
