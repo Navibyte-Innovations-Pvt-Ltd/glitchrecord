@@ -18,6 +18,8 @@ interface CardOverlayProps {
 	onEnded?: () => void;
 	/** When set (0..1), show a single frozen frame at this progress (scrubbing) — no loop. */
 	frozenProgress?: number;
+	/** 0..1 — start playback from this fraction (resume from the marker). */
+	startProgress?: number;
 }
 
 const CAP_W = 720;
@@ -34,6 +36,7 @@ export function CardOverlay({
 	durationMs,
 	onEnded,
 	frozenProgress,
+	startProgress,
 }: CardOverlayProps) {
 	if (side.mode === "video" && side.videoPath) {
 		return (
@@ -44,6 +47,10 @@ export function CardOverlay({
 					src={`file://${side.videoPath}`}
 					autoPlay={frozenProgress === undefined}
 					className="h-full w-full object-contain"
+					onLoadedMetadata={(e) => {
+						const v = e.currentTarget;
+						if (startProgress && v.duration) v.currentTime = startProgress * v.duration;
+					}}
 					onEnded={onEnded}
 					onError={onEnded}
 				/>
@@ -57,6 +64,7 @@ export function CardOverlay({
 			durationMs={durationMs}
 			onEnded={onEnded}
 			frozenProgress={frozenProgress}
+			startProgress={startProgress}
 		/>
 	);
 }
@@ -67,6 +75,7 @@ function CardCanvasOverlay({
 	durationMs,
 	onEnded,
 	frozenProgress,
+	startProgress,
 }: CardOverlayProps) {
 	const wrapRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -162,7 +171,9 @@ function CardCanvasOverlay({
 	useEffect(() => {
 		if (isFrozen) return;
 		let raf = 0;
-		const startedAt = performance.now();
+		// Backdate so playback resumes at the marker's fraction.
+		const startAt = Math.min(1, Math.max(0, startProgress ?? 0));
+		const startedAt = performance.now() - startAt * Math.max(1, durationMs);
 		let lastDraw = -1;
 		const frameMs = 1000 / 30;
 		const loop = (now: number) => {
