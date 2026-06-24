@@ -4,6 +4,7 @@ import {
 	classifyCompositeMs,
 	compositeBands,
 	recordingToCompositeMs,
+	resolveCompositePlayheadMs,
 	shiftSpan,
 } from "./introOutroComposite";
 
@@ -93,6 +94,52 @@ describe("cardProgressToCompositeMs", () => {
 	it("clamps progress outside 0..1", () => {
 		expect(cardProgressToCompositeMs("intro", -1, LEAD, REC, TAIL)).toBe(0);
 		expect(cardProgressToCompositeMs("intro", 2, LEAD, REC, TAIL)).toBe(LEAD);
+	});
+});
+
+describe("resolveCompositePlayheadMs", () => {
+	it("a playing intro card sweeps the intro band (wins over recording)", () => {
+		const ms = resolveCompositePlayheadMs(
+			{ playingBand: "intro", playingProgress: 0.5, recordingPlayheadMs: 0 },
+			LEAD,
+			REC,
+			TAIL,
+		);
+		expect(ms).toBe(3500);
+	});
+
+	it("a scrub pins the band when nothing is playing", () => {
+		const ms = resolveCompositePlayheadMs(
+			{ scrubBand: "intro", scrubProgress: 0.25, recordingPlayheadMs: 0 },
+			LEAD,
+			REC,
+			TAIL,
+		);
+		expect(ms).toBe(1750);
+	});
+
+	it("REGRESSION: with no card and no scrub, the marker tracks the recording (not stuck in intro)", () => {
+		// User bug: scrubbed into intro, pressed play → marker stayed pinned in the
+		// intro while the video played. Once the caller clears the scrub, the marker
+		// must track the recording position (shifted into the composite frame).
+		const ms = resolveCompositePlayheadMs({ recordingPlayheadMs: 2000 }, LEAD, REC, TAIL);
+		expect(ms).toBe(LEAD + 2000); // 9000 — recording 2s sits at 0:09 composite, NOT 0:00
+	});
+
+	it("a playing card wins even if a stale scrub is still set", () => {
+		const ms = resolveCompositePlayheadMs(
+			{
+				playingBand: "intro",
+				playingProgress: 1,
+				scrubBand: "outro",
+				scrubProgress: 0.5,
+				recordingPlayheadMs: 5000,
+			},
+			LEAD,
+			REC,
+			TAIL,
+		);
+		expect(ms).toBe(LEAD);
 	});
 });
 
