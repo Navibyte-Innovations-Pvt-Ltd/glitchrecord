@@ -854,18 +854,32 @@ CRITICAL — the logo MUST be clearly visible. Do NOT put it on a background of 
 		const envelope = audio.points.map((p) => `${p.t}:${p.level}`).join("  ");
 		const beats = audio.beats.length ? audio.beats.join(", ") : "none detected";
 		const longer = audio.fullDurationSec > side.durationMs / 1000 + 0.05;
+		const lvl = (v: number) => (v < 0.2 ? "very quiet" : v < 0.5 ? "soft" : v < 0.8 ? "loud" : "peak");
 		audioBlock = `
 
+═══ MUSIC SYNC — make the motion feel scored to this track ═══
 Background music: ${audio.fullDurationSec}s long; the card is currently ${(side.durationMs / 1000).toFixed(1)}s.${
 			longer
-				? ` ⚠ The music is LONGER than the card — set "durationMs": ${audio.recommendedDurationMs} so the animation spans the whole track (the envelope below is normalized over that ${audio.durationSec}s window).`
+				? ` ⚠ The music is LONGER than the card — set "durationMs": ${audio.recommendedDurationMs} so the animation spans the whole track (all t values below are normalized over that ${audio.durationSec}s window).`
 				: ""
 		}
-Structure: ${audio.summary}.
-Loudness over the analyzed window (t:level, both 0..1, t=0 is card start, t=1 is card end):
-${envelope}
-Energy peaks at t: ${beats}
-Sync to it: set durationMs to the music length, build the entrance with the swell, time shine/glow pulses + accents to the peaks, and land the climax where the music does.`;
+Energy shape: ${audio.shape.toUpperCase()} — ${audio.summary}.
+
+KEY MOMENTS (t = 0 is card start, 1 is card end):
+- Intro (t≈0): ${lvl(audio.startLevel)} (level ${audio.startLevel}). ${audio.startLevel < 0.3 ? "Ease in gently here — don't slam the logo in on silence." : "There's energy right away — you can enter with confidence."}
+- THE HIT (biggest sudden jump) at t=${audio.hitT} — this is the strongest accent point. Land a logo scale-pop / glow-pulse peak / shine sweep right here.
+- LOUDEST moment at t=${audio.loudestT} — put the visual climax here (peak glow, settle, brightest shine) if it differs from the hit.
+- Quietest at t=${audio.quietestT} — keep motion calm here.
+- Outro (t≈1): ${lvl(audio.endLevel)} (level ${audio.endLevel}). ${audio.endLevel < 0.3 ? "The track fades — fade the card out with it." : "Still energetic at the end — a confident hold then a clean fade reads best."}
+- Secondary accent peaks at t: ${beats}.
+
+Full loudness curve (t:level, both 0..1): ${envelope}
+
+HOW TO MAP IT (do all of these):
+1. Set durationMs to the music length so the timeline lines up.
+2. Quiet stretches → minimal motion (low opacity/scale). Rising energy → build the entrance into it.
+3. Put your biggest accent (logo scale bump + glow keyframe at its highest value + shine.start) ON t=${audio.hitT}; align glow.keyframes peaks to the accent times above.
+4. Match the ending: fade with the music if it fades, hold-then-cut if it stays loud.`;
 	}
 	return `${CARD_DESIGN_DOC}
 
