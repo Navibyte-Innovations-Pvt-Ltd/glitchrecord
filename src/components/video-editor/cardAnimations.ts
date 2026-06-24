@@ -774,54 +774,66 @@ export function normalizeCardDesign(raw: unknown): Partial<IntroOutroSideConfig>
 	return Object.keys(patch).length > 0 ? patch : null;
 }
 
-const CARD_DESIGN_DOC = `You are designing a GlitchGrab intro/outro brand card. Return a JSON "design" object:
+const CARD_DESIGN_DOC = `You are designing ONE GlitchGrab intro/outro brand card. This is a data task, NOT a coding task.
+
+OUTPUT CONTRACT (read first):
+- Return EXACTLY ONE JSON "design" object and NOTHING else — no prose, no explanation, no markdown fences.
+- Do NOT build a tool, app, widget, UI, component, or script. Do NOT write code. Do NOT call any API.
+- Just emit the updated design JSON. That single object is consumed directly by the renderer.
+
+HOW IT RENDERS (so your numbers actually look right):
+- The card fills the whole video frame (16:9 landscape). Everything is drawn on one flat frame.
+- Background = a linear gradient (color1→color2 along "angle") + a soft radial GLOW bloom + an edge VIGNETTE. The glow hue is derived automatically from your gradient — you do NOT set a background glow color, only its strength 0..1.
+- Text is drawn on a SINGLE LINE and NEVER wraps. If it's too long the whole card auto-shrinks to fit — which makes EVERYTHING small and weak. So keep copy tight: brandName ≤ ~18 chars, tagline ≤ ~42 chars. Trim a long tagline rather than letting it shrink the card.
+- "size" is the logo height as a fraction of frame height. 0.22–0.32 reads premium; >0.45 looks oversized.
+- The logo's pixels are FIXED (it's the user's real logo) — you control its size, container, and motion, never its colors.
+
+SCHEMA — return this shape:
 {
   "background": { "type": "gradient"|"solid", "color1": "#hex", "color2": "#hex", "angle": 0..360, "glow": 0..1, "vignette": 0..1 },
   "text": { "brandName": string, "tagline": string, "color": "#hex" },
   "layout": "logo-top"|"logo-left"|"logo-only"|"text-only",
-  "logoContainer": "panel"|"rounded"|"none",   // panel = white rounded card behind the logo
+  "logoContainer": "panel"|"rounded"|"none",   // panel = white rounded plate behind the logo
   "logoPadding": 0.05..0.5,                      // padding inside the panel (fraction of logo height)
   "size": 0.1..0.8,                              // logo height as a fraction of frame height
   "position": "center"|"top"|"bottom"|"left"|"right",
-  "durationMs": 500..8000,                        // total card length; set this to match the music
+  "durationMs": 500..8000,                        // total card length; match the music if given
   "animation": {
     "label": string,
-    "tracks": Track[],                              // group motion (whole card)
-    "elements": {                                   // OPTIONAL extra motion per element
-      "logo": Track[], "name": Track[], "tagline": Track[]
-    },
+    "tracks": Track[],                              // group motion (whole card moves together)
+    "elements": { "logo": Track[], "name": Track[], "tagline": Track[] },  // OPTIONAL per-element motion
     "reveal": { "target": "name"|"tagline"|"both", "mode": "word"|"char", "start": 0..1, "durationFrac": 0..1 },  // staggered text reveal
     "shine": { "target": "name"|"tagline"|"both", "start": 0..1, "durationFrac": 0..1, "intensity": 0..1 },        // light sweep across text
-    "glow": { "color": "#hex", "keyframes": Keyframe[] }                                                          // logo glow pulse (value 0..1 intensity over t)
+    "glow": { "color": "#hex", "keyframes": Keyframe[] }                                                          // colored HALO behind the logo (this one IS colored; value 0..1 over t)
   }
 }
+A Track animates ONE property: { "property": Property, "keyframes": [{ "t": 0..1, "value": number, "easing"?: Easing }] }.
+t is normalized time (0 = card start, 1 = card end); easing applies INTO the keyframe.
+Property (resting value): "opacity"(1) 0..1 | "scale"(1) multiplier | "x"(0)/"y"(0) offset as FRACTION of frame | "rotate"(0) deg | "blur"(0) px.
+Easing (use ONLY these): linear | easeIn | easeOut | easeInOut | easeOutCubic | easeOutBack | easeOutExpo | easeOutBounce.
 
-A Track animates ONE property over the card lifetime: { "property": Property, "keyframes": [{ "t": 0..1, "value": number, "easing"?: Easing }] }.
-t is normalized time (0 = start, 1 = end); easing applies INTO the keyframe.
-Property (resting value): "opacity"(1) 0..1 | "scale"(1) multiplier | "x"(0)/"y"(0) offset as FRACTION of frame (-1 = one frame off) | "rotate"(0) deg | "blur"(0) px.
-Easing: linear | easeIn | easeOut | easeInOut | easeOutCubic | easeOutBack | easeOutExpo | easeOutBounce.
+LAYER IT — a flat single-track fade looks cheap. A premium card combines layers:
+- "tracks" carries the whole group in (opacity + a gentle scale/slide).
+- "elements" gives the logo / name / tagline their OWN entrance (e.g. logo zooms while the name slides up just after).
+- "reveal" makes the brand name appear word-by-word — high impact for the name.
+- "shine" sweeps a light flare across the name shortly after it lands.
+- "glow" pulses a colored halo behind the logo; tint it near the logo color for cohesion and pulse it on the music peaks.
+Aim to use at least 2–3 of these together, not just one.
 
-EVERY field above is yours to change — you can freely change:
-- "background": colors, gradient angle, glow, vignette (or switch to solid).
-- "layout": "logo-top" (logo above text), "logo-left" (logo beside text), "logo-only", "text-only".
-- "position": where the whole card content sits — center / top / bottom / left / right.
-- "logoContainer": "panel" (white card behind logo), "rounded" (clip corners), "none" (raw logo — best for transparent logos). "logoPadding" = breathing room inside the panel.
-- "size": logo size. "durationMs": how long the card lasts.
-- "text": brand name + tagline + color.
+TASTE RUBRIC:
+- CONTRAST IS MANDATORY. The logo and text must clearly stand out. Never put the logo on a background of its own color family. If the logo is dark/busy or close to the background, use logoContainer "panel" (white plate) — guaranteed pop.
+- Subtle, brand-appropriate gradients + a little glow/vignette = professional. Avoid harsh neon or muddy low-contrast pairings.
+- Keep the existing brandName/tagline unless asked to change copy. Ensure "text.color" contrasts the background.
+- Motion should end fully visible, then fade out near t=1 (unless told otherwise). t=0..1 spans the WHOLE durationMs.
 
-Animation capabilities (use what fits):
-- "tracks" = the whole card moves together. "elements" = give the logo / name / tagline their OWN entrance (e.g. logo zooms, name slides up, tagline fades after).
-- "reveal" = text appears word-by-word (or letter-by-letter) — great for the brand name.
-- "shine" = a light flare sweeps across the text. Time its "start" to a beat for impact.
-- "glow" = a colored halo pulses behind the logo — pulse its keyframes on the audio peaks.
+WORKED EXAMPLES (valid designs — match this depth, do not copy verbatim):
+Example A — deep-indigo, layered logo reveal:
+{ "background": { "type": "gradient", "color1": "#0b1020", "color2": "#3730a3", "angle": 135, "glow": 0.28, "vignette": 0.34 }, "text": { "brandName": "Acme", "tagline": "Ship faster", "color": "#ffffff" }, "layout": "logo-top", "logoContainer": "panel", "logoPadding": 0.12, "size": 0.27, "position": "center", "durationMs": 2600, "animation": { "label": "Indigo reveal", "tracks": [ { "property": "opacity", "keyframes": [ {"t":0,"value":0}, {"t":0.18,"value":1,"easing":"easeOut"}, {"t":0.82,"value":1}, {"t":1,"value":0,"easing":"easeIn"} ] } ], "elements": { "logo": [ { "property": "scale", "keyframes": [ {"t":0,"value":0.6}, {"t":0.5,"value":1,"easing":"easeOutBack"} ] }, { "property": "y", "keyframes": [ {"t":0,"value":0.06}, {"t":0.5,"value":0,"easing":"easeOut"} ] } ] }, "reveal": { "target": "name", "mode": "word", "start": 0.3, "durationFrac": 0.4 }, "shine": { "target": "name", "start": 0.66, "durationFrac": 0.3, "intensity": 0.6 }, "glow": { "color": "#7c83ff", "keyframes": [ {"t":0.05,"value":0}, {"t":0.45,"value":0.85,"easing":"easeOut"}, {"t":0.75,"value":0.3}, {"t":1,"value":0} ] } } }
 
-Premium guidance:
-- Tasteful, brand-appropriate. Subtle gradients + a little glow/vignette read as professional.
-- Keep brandName/tagline if present unless asked to change copy. Ensure text color contrasts the background.
-- CONTRAST IS MANDATORY: the logo and text must clearly stand out from the background. Never use a background in the same color family as the logo; if needed, use logoContainer "panel" for a guaranteed contrast plate.
-- Animation should end visible then fade out near t=1 unless told otherwise.
-- IMPORTANT: t=0..1 spans the WHOLE card (durationMs). If you set durationMs longer, the same keyframes stretch over more time.
-- Return ONLY the JSON object, no prose, no markdown fences.`;
+Example B — warm light card, dark text, logo slides beside name:
+{ "background": { "type": "gradient", "color1": "#fff7ed", "color2": "#fed7aa", "angle": 120, "glow": 0, "vignette": 0.18 }, "text": { "brandName": "Lumen", "tagline": "Light up your day", "color": "#7c2d12" }, "layout": "logo-left", "logoContainer": "none", "logoPadding": 0.1, "size": 0.3, "position": "center", "durationMs": 2400, "animation": { "label": "Warm slide", "tracks": [ { "property": "opacity", "keyframes": [ {"t":0,"value":0}, {"t":0.2,"value":1,"easing":"easeOut"}, {"t":0.84,"value":1}, {"t":1,"value":0,"easing":"easeIn"} ] } ], "elements": { "logo": [ { "property": "x", "keyframes": [ {"t":0,"value":-0.12}, {"t":0.5,"value":0,"easing":"easeOutCubic"} ] } ], "name": [ { "property": "x", "keyframes": [ {"t":0,"value":0.08}, {"t":0.55,"value":0,"easing":"easeOutCubic"} ] } ] }, "reveal": { "target": "tagline", "mode": "word", "start": 0.4, "durationFrac": 0.4 }, "shine": { "target": "name", "start": 0.55, "durationFrac": 0.3, "intensity": 0.5 } } }
+
+Now output the updated design as ONE JSON object only — no prose, no code, no fences.`;
 
 /** Full prompt: the entire card design (not just animation) for any AI. */
 export function buildCardDesignPrompt(
@@ -861,5 +873,5 @@ ${JSON.stringify(sideToDesign(side), null, 2)}${logoBlock}${audioBlock}
 
 Now apply this change: <describe what you want, e.g. "make it feel premium and cinematic with a deep blue gradient and a confident logo entrance"${audio ? '; or "design it around the music"' : ""}>
 
-Return the full updated design JSON only.`;
+Reply with the full updated design as ONE raw JSON object and nothing else — no tool, no widget, no code, no commentary, no markdown fences.`;
 }
