@@ -230,11 +230,24 @@ export const CARD_ANIMATIONS: Record<IntroOutroPreset, AnimationSpec> = {
 			{
 				property: "scale",
 				keyframes: [
-					{ t: 0, value: 0.3 },
-					{ t: 0.55, value: 1, easing: "easeOutBack" },
+					{ t: 0, value: 0.55 },
+					{ t: 0.5, value: 1, easing: "easeOutBack" },
 				],
 			},
 		],
+		// Premium default: a colored halo pulses behind the logo as it settles, the
+		// brand name reveals word-by-word, then a light flare sweeps across it.
+		glow: {
+			color: "#7c83ff",
+			keyframes: [
+				{ t: 0.05, value: 0 },
+				{ t: 0.45, value: 0.85, easing: "easeOut" },
+				{ t: 0.75, value: 0.3 },
+				{ t: 1, value: 0 },
+			],
+		},
+		reveal: { target: "name", mode: "word", start: 0.25, durationFrac: 0.45 },
+		shine: { target: "name", start: 0.62, durationFrac: 0.32, intensity: 0.6 },
 	},
 	"scale-pop": {
 		id: "scale-pop",
