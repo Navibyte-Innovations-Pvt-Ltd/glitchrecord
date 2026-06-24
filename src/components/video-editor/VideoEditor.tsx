@@ -205,6 +205,7 @@ import {
 	RECORDLY_ISSUES_URL,
 } from "./TutorialHelp";
 import {
+	cardProgressToCompositeMs,
 	classifyCompositeMs,
 	recordingToCompositeMs,
 	shiftSpan,
@@ -868,6 +869,10 @@ export default function VideoEditor() {
 		side: IntroOutroSideConfig;
 		progress: number;
 	} | null>(null);
+	// 0..1 sweep of the currently-playing card, driving the composite playhead
+	// across the intro/outro band during playback (the card itself draws on its
+	// own imperative rAF, so this only repositions the playhead).
+	const [cardProgress, setCardProgress] = useState(0);
 	const introPlayedForRunRef = useRef(false);
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
@@ -3829,6 +3834,28 @@ export default function VideoEditor() {
 		done?.();
 	}, [stopCardAudio]);
 
+	// While a card plays, sweep `cardProgress` 0→1 (capped ~30fps) so the composite
+	// playhead travels across the band. Resets when no card is active.
+	useEffect(() => {
+		if (!activeCard) {
+			setCardProgress(0);
+			return;
+		}
+		const dur = Math.max(1, cardDurationMs(activeCard.side));
+		const start = performance.now();
+		let raf = 0;
+		let last = -1;
+		const tick = (now: number) => {
+			raf = requestAnimationFrame(tick);
+			if (last >= 0 && now - last < 1000 / 30) return;
+			last = now;
+			setCardProgress(Math.min(1, (now - start) / dur));
+		};
+		setCardProgress(0);
+		raf = requestAnimationFrame(tick);
+		return () => cancelAnimationFrame(raf);
+	}, [activeCard]);
+
 	// Scrubbing an intro/outro gutter: stop any playing card and freeze a single
 	// frame at the dragged progress into the preview.
 	const scrubCardTo = useCallback(
@@ -6407,12 +6434,18 @@ export default function VideoEditor() {
 	const tailMs = outroRenderable ? cardDurationMs(introOutro.outro) : 0;
 	const recMs = timelineDuration * 1000;
 	const compositeDurationSec = (leadInMs + recMs + tailMs) / 1000;
-	// Playhead in composite seconds. While scrubbing a card band, pin it there so
-	// the one blue playhead follows the drag into the intro/outro instead of
-	// snapping back to the (unchanged) recording position.
+	// Playhead in composite seconds. Priority: a playing card sweeps its band; else
+	// a scrub pins it in the band; else it tracks the recording position. This is
+	// what makes the ONE blue playhead travel 0:00 → intro → recording → outro.
 	let compositePlayheadSec =
 		recordingToCompositeMs(timelinePlayheadTime * 1000, leadInMs) / 1000;
-	if (scrubCard?.side === introOutro.intro) {
+	if (activeCard?.side === introOutro.intro) {
+		compositePlayheadSec =
+			cardProgressToCompositeMs("intro", cardProgress, leadInMs, recMs, tailMs) / 1000;
+	} else if (activeCard?.side === introOutro.outro) {
+		compositePlayheadSec =
+			cardProgressToCompositeMs("outro", cardProgress, leadInMs, recMs, tailMs) / 1000;
+	} else if (scrubCard?.side === introOutro.intro) {
 		compositePlayheadSec = (scrubCard.progress * leadInMs) / 1000;
 	} else if (scrubCard?.side === introOutro.outro) {
 		compositePlayheadSec = (leadInMs + recMs + scrubCard.progress * tailMs) / 1000;
@@ -7456,7 +7489,7 @@ export default function VideoEditor() {
 							<div className="z-10 flex items-center justify-center">
 								<div className="flex items-center gap-1.5">
 									<span className="mr-1 text-[10px] font-medium tabular-nums text-muted-foreground">
-										{formatTime(timelinePlayheadTime)}
+										{formatTime(compositePlayheadSec)}
 									</span>
 									<Button
 										variant="ghost"
@@ -7490,7 +7523,7 @@ export default function VideoEditor() {
 										<SkipForward className="w-3.5 h-3.5" weight="fill" />
 									</Button>
 									<span className="text-[10px] font-medium text-muted-foreground/70 tabular-nums ml-1">
-										{formatTime(timelineDuration)}
+										{formatTime(compositeDurationSec)}
 									</span>
 								</div>
 							</div>
