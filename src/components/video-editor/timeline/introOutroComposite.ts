@@ -60,6 +60,23 @@ export function recordingToCompositeMs(recordingMs: number, leadInMs: number): n
 	return recordingMs + Math.max(0, leadInMs);
 }
 
+/**
+ * Composite ms for a playing intro/outro card at `progress` (0..1). Lets the one
+ * playhead sweep ACROSS the card band during playback (intro: 0→leadIn, outro:
+ * recEnd→total) instead of freezing at the recording edge.
+ */
+export function cardProgressToCompositeMs(
+	side: "intro" | "outro",
+	progress: number,
+	leadInMs: number,
+	recMs: number,
+	tailMs: number,
+): number {
+	const p = clamp01(progress);
+	if (side === "intro") return p * Math.max(0, leadInMs);
+	return Math.max(0, leadInMs) + Math.max(0, recMs) + p * Math.max(0, tailMs);
+}
+
 /** Shift a region span from recording time into composite time (or back, if negative). */
 export function shiftSpan(span: Span, byMs: number): Span {
 	return { start: span.start + byMs, end: span.end + byMs };
