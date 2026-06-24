@@ -2497,6 +2497,12 @@ export default function VideoEditor() {
 		setAnnotationRegions([]);
 		setAudioRegions([]);
 		setBackgroundMusic(null);
+		// Avatar PIP is source-scoped too — without this a generated avatar from the
+		// previous project stayed visible on the new one (restore re-adds it if the
+		// new source has its own saved clip).
+		setAvatarOverlay(DEFAULT_AVATAR_OVERLAY);
+		setAvatarRegions([]);
+		setResolvedAvatarVideoUrl(null);
 		setCursorTelemetry([]);
 		setCursorTelemetrySourcePath(null);
 		setSourceAudioTrackSettingsByClip({});
@@ -2917,6 +2923,22 @@ export default function VideoEditor() {
 			if (overlay.sourcePath || overlay.previewUrl) setAvatarOverlay(overlay);
 		} catch {
 			/* corrupt entry — ignore */
+		}
+	}, [currentSourcePath]);
+
+	// Dismiss the avatar PIP entirely (X button on the overlay). Clears in-memory
+	// state AND both persisted keys — otherwise the restore effect treats the saved
+	// clip as authoritative and the avatar reappears on the next load.
+	const handleAvatarRemove = useCallback(() => {
+		setAvatarOverlay(DEFAULT_AVATAR_OVERLAY);
+		setAvatarRegions([]);
+		setResolvedAvatarVideoUrl(null);
+		if (!currentSourcePath) return;
+		try {
+			localStorage.removeItem(`gg.avatar.clip.${currentSourcePath}`);
+			localStorage.removeItem(`gg.avatar.proj.${currentSourcePath}`);
+		} catch {
+			/* ignore */
 		}
 	}, [currentSourcePath]);
 
@@ -6357,6 +6379,7 @@ export default function VideoEditor() {
 			onAvatarMove={handleAvatarMove}
 			onAvatarFraming={handleAvatarFraming}
 			onAvatarMuteToggle={handleAvatarMuteToggle}
+			onAvatarRemove={handleAvatarRemove}
 			trimRegions={trimRegions}
 			speedRegions={effectiveSpeedRegions}
 			annotationRegions={annotationRegions}
