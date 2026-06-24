@@ -18,6 +18,18 @@ export interface AudioAnalysis {
 	recommendedDurationMs: number;
 	/** Plain-language structure summary for the AI to reason about. */
 	summary: string;
+	/** t (0..1) of the single loudest moment — land the biggest accent here. */
+	loudestT: number;
+	/** t (0..1) of the quietest moment. */
+	quietestT: number;
+	/** t (0..1) of the strongest onset (biggest sudden jump in loudness) — the "hit". */
+	hitT: number;
+	/** Loudness at the very start (0..1) — low = quiet intro to ease into. */
+	startLevel: number;
+	/** Loudness at the very end (0..1) — low = the track fades out. */
+	endLevel: number;
+	/** One-word energy shape: "build" | "fade" | "swell" | "steady". */
+	shape: "build" | "fade" | "swell" | "steady";
 }
 
 const BUCKETS = 32;
@@ -72,7 +84,24 @@ export async function analyzeAudio(dataUrl: string, capMs = 8000): Promise<Audio
 			}
 		}
 
-		const summary = describeStructure(rms, beats.length);
+		// Explicit landmarks the AI can map an accent onto directly, instead of
+		// re-deriving them from the 32-point envelope.
+		const tOf = (i: number) => Number((i / (BUCKETS - 1)).toFixed(2));
+		let loudIdx = 0;
+		let quietIdx = 0;
+		let hitIdx = 1;
+		let hitJump = -Infinity;
+		for (let i = 1; i < BUCKETS; i++) {
+			if (rms[i] > rms[loudIdx]) loudIdx = i;
+			if (rms[i] < rms[quietIdx]) quietIdx = i;
+			const jump = rms[i] - rms[i - 1];
+			if (jump > hitJump) {
+				hitJump = jump;
+				hitIdx = i;
+			}
+		}
+
+		const { text: summary, shape } = describeStructure(rms, beats.length);
 		return {
 			points,
 			beats,
@@ -80,16 +109,27 @@ export async function analyzeAudio(dataUrl: string, capMs = 8000): Promise<Audio
 			fullDurationSec: Number(audio.duration.toFixed(2)),
 			recommendedDurationMs: Math.round(cardSec * 1000),
 			summary,
+			loudestT: tOf(loudIdx),
+			quietestT: tOf(quietIdx),
+			hitT: tOf(hitIdx),
+			startLevel: Number((rms[0] / max).toFixed(2)),
+			endLevel: Number((rms[BUCKETS - 1] / max).toFixed(2)),
+			shape,
 		};
 	} catch {
 		return null;
 	}
 }
 
-/** Heuristic plain-language description of the energy structure. */
-function describeStructure(rms: number[], peakCount: number): string {
+type EnergyShape = "build" | "fade" | "swell" | "steady";
+
+/** Heuristic plain-language description + one-word shape of the energy structure. */
+function describeStructure(
+	rms: number[],
+	peakCount: number,
+): { text: string; shape: EnergyShape } {
 	const n = rms.length;
-	if (n < 3) return "very short clip";
+	if (n < 3) return { text: "very short clip", shape: "steady" };
 	const avg = (a: number, b: number) => {
 		let s = 0;
 		for (let i = a; i < b; i++) s += rms[i];
@@ -104,17 +144,22 @@ function describeStructure(rms: number[], peakCount: number): string {
 	const maxT = (maxIdx / (n - 1)).toFixed(2);
 
 	const parts: string[] = [];
+	let shape: EnergyShape;
 	if (endE > startE * 1.4 && endE >= midE) {
 		parts.push(`steadily builds and is loudest near the end (climax ~t=${maxT})`);
+		shape = "build";
 	} else if (startE > endE * 1.4) {
 		parts.push("starts strong then fades out");
+		shape = "fade";
 	} else if (midE > startE * 1.3 && midE > endE * 1.3) {
 		parts.push(`swells in the middle (peak ~t=${maxT}) then eases`);
+		shape = "swell";
 	} else {
 		parts.push("fairly steady energy throughout");
+		shape = "steady";
 	}
 	const quietStart = startE < 0.15;
 	if (quietStart) parts.push("near-silent intro");
 	parts.push(`${peakCount} accent hit${peakCount === 1 ? "" : "s"}`);
-	return parts.join("; ");
+	return { text: parts.join("; "), shape };
 }
