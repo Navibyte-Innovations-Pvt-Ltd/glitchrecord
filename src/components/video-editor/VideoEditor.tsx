@@ -861,7 +861,11 @@ export default function VideoEditor() {
 	// no card is active the player behaves exactly as before.
 	// Which card is showing (the overlay self-animates; we don't track progress
 	// in React state — that re-rendered the whole editor every frame and lagged).
-	const [activeCard, setActiveCard] = useState<{ side: IntroOutroSideConfig } | null>(null);
+	const [activeCard, setActiveCard] = useState<{
+		side: IntroOutroSideConfig;
+		/** 0..1 — where in the card to START (resume from the marker). */
+		startProgress: number;
+	} | null>(null);
 	// Frozen card frame shown while the user scrubs an intro/outro gutter (no rAF
 	// loop — CardOverlay paints a single frame at this progress).
 	const [scrubCard, setScrubCard] = useState<{
@@ -3765,6 +3769,13 @@ export default function VideoEditor() {
 	const currentTimeRef = useRef(0);
 	const playbackEndSourceMsRef = useRef(0);
 	const timelinePlayheadRef = useRef(0);
+	// Which composite band the marker is in (+ in-band fraction), mirrored from
+	// render so startPlayback can resume playback FROM the marker (e.g. press play
+	// while parked in the intro → play the intro, not skip to the recording).
+	const playheadBandRef = useRef<{
+		band: "intro" | "recording" | "outro";
+		progress: number;
+	}>({ band: "recording", progress: 0 });
 	useEffect(() => {
 		currentTimeRef.current = currentTime;
 	}, [currentTime]);
@@ -3807,11 +3818,11 @@ export default function VideoEditor() {
 	// here, so the editor doesn't re-render per frame. Card-mode uploaded audio
 	// starts here (one-shot); video mode plays the clip's own audio.
 	const playCard = useCallback(
-		(side: IntroOutroSideConfig, onDone?: () => void) => {
+		(side: IntroOutroSideConfig, onDone?: () => void, startProgress = 0) => {
 			cardOnDoneRef.current = onDone ?? null;
 			cardActiveRef.current = true;
 			if (side.mode === "card") startCardAudio(side);
-			setActiveCard({ side });
+			setActiveCard({ side, startProgress });
 		},
 		[startCardAudio],
 	);
@@ -3841,7 +3852,9 @@ export default function VideoEditor() {
 			return;
 		}
 		const dur = Math.max(1, cardDurationMs(activeCard.side));
-		const start = performance.now();
+		const startAt = Math.min(1, Math.max(0, activeCard.startProgress));
+		// Backdate the clock so the sweep begins at the marker's fraction.
+		const start = performance.now() - startAt * dur;
 		let raf = 0;
 		let last = -1;
 		const tick = (now: number) => {
@@ -3850,7 +3863,7 @@ export default function VideoEditor() {
 			last = now;
 			setCardProgress(Math.min(1, (now - start) / dur));
 		};
-		setCardProgress(0);
+		setCardProgress(startAt);
 		raf = requestAnimationFrame(tick);
 		return () => cancelAnimationFrame(raf);
 	}, [activeCard]);
@@ -3959,22 +3972,41 @@ export default function VideoEditor() {
 				playback.play().catch((err) => console.error("Video play failed:", err));
 			};
 
-			// Intro pre-roll: auto when starting from the very beginning of the
-			// timeline (and not already shown this run), OR forced when the user
-			// clicks the Intro gutter — then it rewinds to the start so the recording
-			// plays continuously right after the card.
+			// Resume FROM the marker. `playheadBandRef` still holds the pre-clear band
+			// (the scrub the user sees), so pressing play while parked in the intro
+			// plays the intro from that fraction — not skip to the recording.
+			const info = playheadBandRef.current;
 			const io = introOutroRef.current;
 			const introCard = sideIsRenderable(io.intro, io.logoDataUrl) ? io.intro : null;
-			const atStart = timelinePlayheadRef.current <= 0.05;
-			const wantIntro =
-				introCard && (opts?.fromIntro || (atStart && !introPlayedForRunRef.current));
-			if (introCard && wantIntro) {
-				if (opts?.fromIntro) video.currentTime = mapTimelineTimeToSourceTime(0) / 1000;
-				// Keep isPlaying false while the card plays so the audio hook / source
-				// preview don't start early (the card runs on its own rAF). Audio + video
-				// kick in together at handoff in playContent().
+			const outroCard = sideIsRenderable(io.outro, io.logoDataUrl) ? io.outro : null;
+
+			// Bookend "play intro" button forces the intro from the very start.
+			if (opts?.fromIntro && introCard) {
+				video.currentTime = mapTimelineTimeToSourceTime(0) / 1000;
 				introPlayedForRunRef.current = true;
-				playCard(introCard, playContent);
+				playCard(introCard, playContent, 0);
+				return;
+			}
+
+			// Marker in the intro band → play the intro from the marker, then hand off
+			// to the recording starting at 0. Keep isPlaying false during the card so
+			// the audio hook / source preview don't start early (card runs its own rAF).
+			if (info.band === "intro" && introCard) {
+				video.currentTime = mapTimelineTimeToSourceTime(0) / 1000;
+				introPlayedForRunRef.current = true;
+				playCard(introCard, playContent, info.progress);
+				return;
+			}
+			// Marker in the outro band → play the outro from the marker (terminal).
+			if (info.band === "outro" && outroCard) {
+				playCard(outroCard, undefined, info.progress);
+				return;
+			}
+			// Recording band: intro pre-roll only at the very start, first run.
+			const atStart = timelinePlayheadRef.current <= 0.05;
+			if (introCard && atStart && !introPlayedForRunRef.current) {
+				introPlayedForRunRef.current = true;
+				playCard(introCard, playContent, 0);
 				return;
 			}
 
@@ -6465,6 +6497,12 @@ export default function VideoEditor() {
 			recMs,
 			tailMs,
 		) / 1000;
+	// Mirror the marker's band so startPlayback can resume from it (ref write in
+	// render is fine — it's a latest-value mirror, like onEndedRef elsewhere).
+	{
+		const cls = classifyCompositeMs(compositePlayheadSec * 1000, leadInMs, recMs, tailMs);
+		playheadBandRef.current = { band: cls.band, progress: cls.progress ?? 0 };
+	}
 
 	// Seek in composite seconds: intro/outro bands freeze a card frame, the
 	// recording band maps back to source video (and clears any frozen card).
@@ -7376,6 +7414,7 @@ export default function VideoEditor() {
 													side={activeCard.side}
 													logoDataUrl={introOutro.logoDataUrl}
 													durationMs={cardDurationMs(activeCard.side)}
+													startProgress={activeCard.startProgress}
 													onEnded={handleCardVideoEnded}
 												/>
 											) : scrubCard ? (
