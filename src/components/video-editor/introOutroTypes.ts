@@ -127,8 +127,8 @@ export const DEFAULT_CARD_BACKGROUND: CardBackground = {
 	color1: "#0a0f1f",
 	color2: "#3730a3",
 	angle: 135,
-	glow: 0.24,
-	vignette: 0.34,
+	glow: 0.16,
+	vignette: 0.22,
 };
 
 export const DEFAULT_CARD_TEXT: CardText = {
