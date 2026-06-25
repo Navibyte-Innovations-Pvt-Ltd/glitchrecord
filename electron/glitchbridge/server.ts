@@ -64,6 +64,10 @@ const PORT = Number(process.env.GLITCHBRIDGE_PORT) || 7337;
 // we sort + generate the script. Single-profile recordings just pay this delay once.
 const MERGE_WINDOW_MS = Number(process.env.GLITCHBRIDGE_MERGE_MS) || 1500;
 
+// After stop, if no profile bulk-uploads, finalize from live-streamed events.
+// Must exceed MERGE_WINDOW_MS so a real upload's merge-timer always wins the race.
+const STOP_FALLBACK_MS = Number(process.env.GLITCHBRIDGE_STOP_FALLBACK_MS) || 3000;
+
 const sessions = new Map<string, Session>();
 const chromeClients = new Set<WebSocket>();
 
@@ -96,6 +100,56 @@ function broadcastChrome(msg: WsMsg) {
 
 let liveEventCb: ((event: CaptureEvent) => void) | null = null;
 let eventsReadyCb: ((sessionId: string, count: number) => void) | null = null;
+let scriptReadyCb: ((sessionId: string, script: string) => void) | null = null;
+
+// Merge window closed (or stop fallback fired) → fold in any live-streamed events
+// from profiles that never bulk-uploaded (idle secondary profiles whose MV3 worker
+// died / missed the stop), sort the combined timeline, then upload + generate the
+// script ONCE. Module-scoped so both the upload merge-timer and the stop fallback
+// can trigger it. Runs at most once per session (finalized guard).
+async function finalizeSession(session: Session) {
+  if (session.finalized) return;
+  session.finalized = true;
+  if (session.mergeTimer) clearTimeout(session.mergeTimer);
+  session.mergeTimer = undefined;
+
+  // Carry profiles that streamed events live but never sent a bulk events:upload
+  // (their service worker was asleep at recording:stop and missed the broadcast).
+  // The live stream already reached us in real time, so their events aren't lost.
+  const uploaded = session.uploadedClients ?? new Set<string>();
+  if (session.liveByClient) {
+    for (const [cid, evs] of session.liveByClient) {
+      if (uploaded.has(cid) || evs.length === 0) continue;
+      session.events.push(...evs);
+      appendDebugLog("rec", `finalize: recovered ${evs.length} live events from non-uploading profile ${cid}`);
+    }
+  }
+
+  // Interleave profiles in real time order so the script reads as one flow.
+  session.events.sort((a, b) => a.t - b.t);
+  persistSession(session);
+  const profiles = new Set([...(session.uploadedClients ?? []), ...(session.liveByClient?.keys() ?? [])]).size || 1;
+  appendDebugLog("rec", `finalize ${session.id}: ${session.events.length} events from ${profiles} profile(s)`);
+  eventsReadyCb?.(session.id, session.events.length);
+
+  if (!currentUser) {
+    console.log(`[GlitchBridge] ${session.events.length} events saved locally (not logged in)`);
+    appendDebugLog("rec", `${session.events.length} events saved locally (not logged in)`);
+    return;
+  }
+
+  const dbSessionId = await uploadSession({ events: session.events, meta: session.meta });
+  if (!dbSessionId) {
+    broadcastChrome({ type: "error", message: "Failed to save capture session" });
+    return;
+  }
+  const result = await generateScript({ token: currentUser.token, sessionId: dbSessionId });
+  if ("script" in result) {
+    session.script = result.script;
+    broadcastChrome({ type: "script:ready", sessionId: session.id, script: result.script });
+    scriptReadyCb?.(session.id, result.script);
+  }
+}
 
 export function startBridgeServer(callbacks: {
   onScriptReady: (sessionId: string, script: string) => void;
@@ -105,41 +159,10 @@ export function startBridgeServer(callbacks: {
 }) {
   liveEventCb = callbacks.onLiveEvent ?? null;
   eventsReadyCb = callbacks.onEventsReady ?? null;
+  scriptReadyCb = callbacks.onScriptReady;
   if (wss) return;
 
   refreshCurrentUserFromStorage(); // pick up stored login token
-
-  // Merge window closed → sort the combined events from every profile by time,
-  // then upload + generate the script ONCE. Runs at most once per session.
-  async function finalizeSession(session: Session) {
-    if (session.finalized) return;
-    session.finalized = true;
-    session.mergeTimer = undefined;
-
-    // Interleave profiles in real time order so the script reads as one flow.
-    session.events.sort((a, b) => a.t - b.t);
-    persistSession(session);
-    const profiles = session.uploadedClients?.size ?? 1;
-    appendDebugLog("rec", `finalize ${session.id}: ${session.events.length} events from ${profiles} profile(s)`);
-
-    if (!currentUser) {
-      console.log(`[GlitchBridge] ${session.events.length} events saved locally (not logged in)`);
-      appendDebugLog("rec", `${session.events.length} events saved locally (not logged in)`);
-      return;
-    }
-
-    const dbSessionId = await uploadSession({ events: session.events, meta: session.meta });
-    if (!dbSessionId) {
-      broadcastChrome({ type: "error", message: "Failed to save capture session" });
-      return;
-    }
-    const result = await generateScript({ token: currentUser.token, sessionId: dbSessionId });
-    if ("script" in result) {
-      session.script = result.script;
-      broadcastChrome({ type: "script:ready", sessionId: session.id, script: result.script });
-      callbacks.onScriptReady(session.id, result.script);
-    }
-  }
 
   wss = new WebSocketServer({ port: PORT });
   console.log(`[GlitchBridge] WS server on ws://localhost:${PORT}`);
@@ -189,9 +212,19 @@ export function startBridgeServer(callbacks: {
         return;
       }
 
-      // Live event stream from Chrome ext → forward to renderer feed
+      // Live event stream from Chrome ext → forward to renderer feed AND buffer
+      // per profile. The buffer is the safety net for an idle secondary profile
+      // whose service worker dies / misses the stop and never bulk-uploads: its
+      // events already arrived here live, so finalizeSession can recover them.
       if (msg.type === "event:live") {
         liveEventCb?.(msg.event);
+        if (currentSession && recordingActive) {
+          const cid = msg.event.client ?? "default";
+          currentSession.liveByClient ??= new Map<string, CaptureEvent[]>();
+          const arr = currentSession.liveByClient.get(cid) ?? [];
+          arr.push(msg.event);
+          currentSession.liveByClient.set(cid, arr);
+        }
         return;
       }
 
@@ -300,6 +333,16 @@ export function broadcastRecordingStop(sessionId: string, meta: RecordingMeta) {
   broadcastChrome({ type: "recording:stop", sessionId, meta });
   console.log(`[GlitchBridge] Recording stopped: ${sessionId}`);
   appendDebugLog("rec", `Recording stopped: ${sessionId} (events=${session?.events.length ?? 0})`);
+
+  // Stop-fallback finalize. Profiles that are awake at stop bulk-upload within ms
+  // and their merge-timer finalizes first (this becomes a no-op via the finalized
+  // guard). But if NO profile uploads — e.g. every awake profile is the primary
+  // and the secondary's worker is dead — nothing would ever finalize. Schedule a
+  // finalize from accumulated live events so the session still produces a script.
+  if (session && !session.finalized) {
+    if (session.mergeTimer) clearTimeout(session.mergeTimer);
+    session.mergeTimer = setTimeout(() => { void finalizeSession(session); }, STOP_FALLBACK_MS);
+  }
 }
 
 export function getCurrentUser() { return currentUser; }
