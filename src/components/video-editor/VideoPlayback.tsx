@@ -23,6 +23,7 @@ import {
 	isVideoWallpaperSource,
 } from "@/lib/wallpapers";
 import { buildActiveCaptionLayout } from "./captionLayout";
+import { clampPlaybackRate } from "./playbackRateModel";
 import {
 	CAPTION_FONT_WEIGHT,
 	CAPTION_LINE_HEIGHT,
@@ -1702,7 +1703,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				(region) =>
 					currentTime * 1000 >= region.startMs && currentTime * 1000 < region.endMs,
 			);
-			const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+			// Clamp to the element's native ceiling — above it Chrome stops presenting
+			// frames and the preview freezes. The drift-seek below keeps bgVideo aligned
+			// to the playhead's source time regardless, so footage above the cap still
+			// advances by seeking rather than by an impossible playback rate.
+			const targetPlaybackRate = clampPlaybackRate(activeSpeedRegion ? activeSpeedRegion.speed : 1);
 			enablePitchPreservingPlayback(bgVideo);
 			const syncedPlaybackRate = getMediaSyncPlaybackRate({
 				basePlaybackRate: targetPlaybackRate,
@@ -2101,7 +2106,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const activeSpeedRegion = speedRegionsRef.current.find(
 				(region) => timelineTimeMs >= region.startMs && timelineTimeMs < region.endMs,
 			);
-			const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+			const targetPlaybackRate = clampPlaybackRate(activeSpeedRegion ? activeSpeedRegion.speed : 1);
 			enablePitchPreservingPlayback(webcamVideo);
 			if (Math.abs(webcamVideo.playbackRate - targetPlaybackRate) > 0.001) {
 				webcamVideo.playbackRate = targetPlaybackRate;
