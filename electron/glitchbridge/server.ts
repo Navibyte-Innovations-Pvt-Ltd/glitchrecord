@@ -59,6 +59,11 @@ export function loadPersistedSession(): { events: CaptureEvent[]; sessionId: str
 // 7337 in prod; overridable so tests don't collide with a running GlitchRecord.
 const PORT = Number(process.env.GLITCHBRIDGE_PORT) || 7337;
 
+// After the first profile uploads on stop, hold the session open briefly so any
+// OTHER Chrome profiles recording the same session can upload and merge in before
+// we sort + generate the script. Single-profile recordings just pay this delay once.
+const MERGE_WINDOW_MS = Number(process.env.GLITCHBRIDGE_MERGE_MS) || 1500;
+
 const sessions = new Map<string, Session>();
 const chromeClients = new Set<WebSocket>();
 
@@ -103,6 +108,38 @@ export function startBridgeServer(callbacks: {
   if (wss) return;
 
   refreshCurrentUserFromStorage(); // pick up stored login token
+
+  // Merge window closed → sort the combined events from every profile by time,
+  // then upload + generate the script ONCE. Runs at most once per session.
+  async function finalizeSession(session: Session) {
+    if (session.finalized) return;
+    session.finalized = true;
+    session.mergeTimer = undefined;
+
+    // Interleave profiles in real time order so the script reads as one flow.
+    session.events.sort((a, b) => a.t - b.t);
+    persistSession(session);
+    const profiles = session.uploadedClients?.size ?? 1;
+    appendDebugLog("rec", `finalize ${session.id}: ${session.events.length} events from ${profiles} profile(s)`);
+
+    if (!currentUser) {
+      console.log(`[GlitchBridge] ${session.events.length} events saved locally (not logged in)`);
+      appendDebugLog("rec", `${session.events.length} events saved locally (not logged in)`);
+      return;
+    }
+
+    const dbSessionId = await uploadSession({ events: session.events, meta: session.meta });
+    if (!dbSessionId) {
+      broadcastChrome({ type: "error", message: "Failed to save capture session" });
+      return;
+    }
+    const result = await generateScript({ token: currentUser.token, sessionId: dbSessionId });
+    if ("script" in result) {
+      session.script = result.script;
+      broadcastChrome({ type: "script:ready", sessionId: session.id, script: result.script });
+      callbacks.onScriptReady(session.id, result.script);
+    }
+  }
 
   wss = new WebSocketServer({ port: PORT });
   console.log(`[GlitchBridge] WS server on ws://localhost:${PORT}`);
@@ -185,53 +222,36 @@ export function startBridgeServer(callbacks: {
           return;
         }
 
-        // Idempotency FIRST — a session is finalized once. Double-stop (HUD +
-        // universal hook both fire recording:stop) must not re-append events or
-        // re-run upload/script/issue (which would duplicate events + GitHub issues).
-        // The extension uploads the full event list once on stop, so finalize on
-        // the first upload and ignore any later duplicate.
+        // Already fully processed (sorted + script generated) → ignore stragglers.
         if (session.finalized) {
           appendDebugLog("rec", `events:upload ignored — session ${session.id} already finalized`);
           return;
         }
-        session.finalized = true;
+
+        // Per-profile dedup vs merge. The SAME profile uploads twice on a
+        // double-stop (HUD button + universal hook both fire recording:stop) —
+        // ignore the second by clientId. A DIFFERENT profile (multi-profile
+        // capture: admin in one Chrome profile, student in another) carries a
+        // distinct clientId — merge its events in.
+        const cid = msg.clientId ?? "default";
+        session.uploadedClients ??= new Set<string>();
+        if (session.uploadedClients.has(cid)) {
+          appendDebugLog("rec", `events:upload ignored — profile ${cid} already uploaded to ${session.id}`);
+          return;
+        }
+        session.uploadedClients.add(cid);
 
         session.events.push(...(msg.events as CaptureEvent[]));
         persistSession(session);
         eventsReadyCb?.(session.id, session.events.length);
-        appendDebugLog("rec", `events:upload received ${msg.events.length} (total ${session.events.length}) for ${session.id}`);
+        appendDebugLog("rec", `events:upload received ${msg.events.length} from profile ${cid} (total ${session.events.length}) for ${session.id}`);
 
-        // Skip DB upload + issue creation when not logged in
-        if (!currentUser) {
-          console.log(`[GlitchBridge] ${session.events.length} events saved locally (not logged in)`);
-          appendDebugLog("rec", `${session.events.length} events saved locally (not logged in)`);
-          return;
-        }
-
-        // 1. Persist events to a DB capture session (in-memory bridge id ≠ DB id)
-        const dbSessionId = await uploadSession({
-          events: session.events,
-          meta: session.meta,
-        });
-        if (!dbSessionId) {
-          broadcastChrome({ type: "error", message: "Failed to save capture session" });
-          return;
-        }
-
-        // 2. Generate script from the DB session
-        const result = await generateScript({
-          token: currentUser.token,
-          sessionId: dbSessionId,
-        });
-        if ("script" in result) {
-          const script = result.script;
-          session.script = script;
-          broadcastChrome({ type: "script:ready", sessionId: msg.sessionId, script });
-          callbacks.onScriptReady(msg.sessionId, script);
-          // Auto GitHub issue creation removed — recordings no longer spam the
-          // repo with "[GlitchRecord] …" issues. Script is still generated for
-          // the narration panel; create an issue manually if needed.
-        }
+        // Open / extend the merge window. Other profiles recording the same
+        // session may still be uploading; once it goes quiet, finalize once:
+        // sort the combined timeline + generate the script.
+        if (session.mergeTimer) clearTimeout(session.mergeTimer);
+        const s = session;
+        session.mergeTimer = setTimeout(() => { void finalizeSession(s); }, MERGE_WINDOW_MS);
       }
     });
 
@@ -243,6 +263,7 @@ export function startBridgeServer(callbacks: {
 }
 
 export function stopBridgeServer() {
+  for (const s of sessions.values()) if (s.mergeTimer) clearTimeout(s.mergeTimer);
   wss?.close();
   wss = null;
 }
@@ -288,6 +309,7 @@ export function getCurrentSession() { return currentSession; }
 // event panel clears and getCurrentSession()/loadPersistedSession() return empty
 // until the next recording starts.
 export function resetBridgeSession() {
+  if (currentSession?.mergeTimer) clearTimeout(currentSession.mergeTimer);
   currentSession = null;
   recordingActive = false;
   try {
