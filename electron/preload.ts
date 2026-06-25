@@ -535,6 +535,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			error?: string;
 		}>;
 	},
+	exportIntroOutroCard: (payload: {
+		side: import("../src/components/video-editor/introOutroTypes").IntroOutroSideConfig;
+		framesDir?: string | null;
+		width: number;
+		height: number;
+		fps: number;
+		defaultFileName?: string;
+	}) => {
+		return ipcRenderer.invoke("export-intro-outro-card", payload) as Promise<{
+			success: boolean;
+			path?: string;
+			canceled?: boolean;
+			error?: string;
+		}>;
+	},
 	discardExportedTemp: (tempPath: string) => {
 		return ipcRenderer.invoke("discard-exported-temp", tempPath);
 	},
