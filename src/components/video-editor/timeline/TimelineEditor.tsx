@@ -20,6 +20,7 @@ import type {
 } from "../types";
 import TimelineBookends, { type BookendSide } from "./components/bookends/TimelineBookends";
 import KeyframeMarkers from "./components/markers/KeyframeMarkers";
+import TimelinePanScrollbar from "./components/scrollbar/TimelinePanScrollbar";
 import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
 import { calculateTimelineScale } from "./core/time";
@@ -578,6 +579,11 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						</TimelineWrapper>
 					</div>
 				</div>
+				<TimelinePanScrollbar
+					range={clampedRange}
+					totalMs={totalMs}
+					onRangeChange={setRange}
+				/>
 			</div>
 		);
 	},
