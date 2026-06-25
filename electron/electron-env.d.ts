@@ -572,6 +572,19 @@ interface Window {
 		stageIntroOutroFrames: (
 			framesBase64: string[],
 		) => Promise<{ success: boolean; dir?: string; error?: string }>;
+		exportIntroOutroCard: (payload: {
+			side: import("../src/components/video-editor/introOutroTypes").IntroOutroSideConfig;
+			framesDir?: string | null;
+			width: number;
+			height: number;
+			fps: number;
+			defaultFileName?: string;
+		}) => Promise<{
+			success: boolean;
+			path?: string;
+			canceled?: boolean;
+			error?: string;
+		}>;
 		discardExportedTemp: (tempPath: string) => Promise<{ success: boolean; error?: string }>;
 		getVideoAudioFallbackPaths: (videoPath: string) => Promise<{
 			success: boolean;
