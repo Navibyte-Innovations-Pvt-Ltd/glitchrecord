@@ -15,8 +15,10 @@ import {
 } from "../export/exportStream";
 import {
 	applyIntroOutro,
+	exportStandaloneCard,
 	type IntroOutroConfig,
 	type IntroOutroFrameDirs,
+	type IntroOutroSideConfig,
 	stageIntroOutroFrames,
 } from "../export/introOutro";
 import {
@@ -1046,6 +1048,65 @@ export function registerExportHandlers() {
 				const dir = await stageIntroOutroFrames(framesBase64 as string[]);
 				return { success: true, dir };
 			} catch (error) {
+				return { success: false, error: String(error) };
+			}
+		},
+	);
+
+	ipcMain.handle(
+		"export-intro-outro-card",
+		async (
+			event,
+			payload: {
+				side: IntroOutroSideConfig;
+				framesDir?: string | null;
+				width: number;
+				height: number;
+				fps: number;
+				defaultFileName?: string;
+			},
+		): Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }> => {
+			if (!payload || typeof payload !== "object" || !payload.side) {
+				return { success: false, error: "Invalid export-intro-outro-card payload" };
+			}
+			const framesDir = typeof payload.framesDir === "string" ? payload.framesDir : null;
+			const cleanupFrames = async () => {
+				if (framesDir)
+					await fs.rm(framesDir, { recursive: true, force: true }).catch(() => undefined);
+			};
+			const fileName =
+				typeof payload.defaultFileName === "string" && payload.defaultFileName.trim()
+					? payload.defaultFileName
+					: "intro-card.mp4";
+			try {
+				const parentWindow = BrowserWindow.fromWebContents(event.sender);
+				const saveDialogOptions: SaveDialogOptions = {
+					title: "Save Intro / Outro Clip",
+					defaultPath: path.join(app.getPath("downloads"), fileName),
+					filters: [{ name: "MP4 Video", extensions: ["mp4"] }],
+					properties: ["createDirectory", "showOverwriteConfirmation"],
+				};
+				const result = parentWindow
+					? await dialog.showSaveDialog(parentWindow, saveDialogOptions)
+					: await dialog.showSaveDialog(saveDialogOptions);
+				if (result.canceled || !result.filePath) {
+					await cleanupFrames();
+					return { success: false, canceled: true };
+				}
+				// exportStandaloneCard owns frame-dir cleanup once it runs.
+				const ok = await exportStandaloneCard({
+					side: payload.side,
+					framesDir,
+					width: payload.width,
+					height: payload.height,
+					fps: payload.fps,
+					outPath: result.filePath,
+				});
+				if (!ok) return { success: false, error: "Failed to render the clip" };
+				approveUserPath(result.filePath);
+				return { success: true, path: result.filePath };
+			} catch (error) {
+				await cleanupFrames();
 				return { success: false, error: String(error) };
 			}
 		},
