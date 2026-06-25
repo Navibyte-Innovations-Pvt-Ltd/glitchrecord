@@ -72,6 +72,48 @@ export function createInitialRange(totalMs: number): Range {
 	return { start: 0, end: FALLBACK_RANGE_MS };
 }
 
+/**
+ * Geometry for the horizontal pan scrollbar. The thumb's WIDTH is the visible
+ * fraction of the timeline; its LEFT is how far the visible window has panned.
+ * Derive this from the CLAMPED range (what's actually on screen) so the thumb
+ * can never desync from a raw range whose end overshoots totalMs.
+ */
+export function computeScrollbarThumb(
+	range: Range,
+	totalMs: number,
+): { leftFraction: number; widthFraction: number; canPan: boolean } {
+	if (totalMs <= 0) {
+		return { leftFraction: 0, widthFraction: 1, canPan: false };
+	}
+	const visibleSpanMs = Math.max(0, range.end - range.start);
+	const widthFraction = Math.min(1, visibleSpanMs / totalMs);
+	const maxStartMs = Math.max(0, totalMs - visibleSpanMs);
+	const leftFraction = maxStartMs > 0 ? Math.min(1, Math.max(0, range.start / totalMs)) : 0;
+	// Zoomed all the way out (whole timeline visible) → nothing to pan.
+	const canPan = widthFraction < 1 - 1e-6 && visibleSpanMs > 0;
+	return { leftFraction, widthFraction, canPan };
+}
+
+/**
+ * Map a scrollbar START position (0…1 of the full timeline) to a clamped range,
+ * preserving the visible span. startFraction 1 ⇒ window pinned to the RIGHT edge
+ * (end === totalMs) — the exact navigation the user couldn't reach before.
+ */
+export function resolveRangeFromScrollFraction(
+	startFraction: number,
+	visibleSpanMs: number,
+	totalMs: number,
+): Range {
+	if (totalMs <= 0) {
+		return { start: 0, end: Math.max(1, visibleSpanMs) };
+	}
+	const span = Math.max(1, Math.min(visibleSpanMs, totalMs));
+	const maxStartMs = Math.max(0, totalMs - span);
+	const safeFraction = Number.isFinite(startFraction) ? startFraction : 0;
+	const start = Math.max(0, Math.min(safeFraction * totalMs, maxStartMs));
+	return { start, end: start + span };
+}
+
 export function normalizeWheelDeltaToPixels(delta: number, deltaMode: number) {
 	if (deltaMode === 1) {
 		return delta * 16;
