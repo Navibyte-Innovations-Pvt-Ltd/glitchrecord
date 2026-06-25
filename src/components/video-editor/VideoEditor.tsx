@@ -1771,6 +1771,55 @@ export default function VideoEditor() {
 	const buildIntroOutroFrameDirsRef = useRef(buildIntroOutroFrameDirs);
 	buildIntroOutroFrameDirsRef.current = buildIntroOutroFrameDirs;
 
+	// Download ONE intro/outro side as a standalone clip (animation + music baked
+	// in) at the current export quality/fps. Follows what's on screen, so a side
+	// configured but not "Enabled" still downloads. Card mode only (v1).
+	const downloadIntroOutroSide = useCallback(
+		async (
+			tab: "intro" | "outro",
+		): Promise<{ success: boolean; canceled?: boolean; error?: string }> => {
+			const io = introOutroRef.current;
+			if (!io) return { success: false, error: "No intro/outro config" };
+			const side = io[tab];
+			if (side.mode !== "card") {
+				return { success: false, error: "Download supports Logo card mode only" };
+			}
+			const hasContent =
+				Boolean(io.logoDataUrl) ||
+				Boolean(side.text.brandName) ||
+				Boolean(side.text.tagline);
+			if (!hasContent) {
+				return { success: false, error: "Add a logo or brand text first" };
+			}
+			const dims = mp4OutputDimensions[exportQuality] ?? { width: 1920, height: 1080 };
+			try {
+				const frames = await renderCardFrames(
+					side,
+					io.logoDataUrl,
+					dims.width,
+					dims.height,
+					mp4FrameRate,
+				);
+				if (frames.length === 0) return { success: false, error: "Nothing to render" };
+				const staged = await window.electronAPI.stageIntroOutroFrames(frames);
+				if (!staged.success || !staged.dir) {
+					return { success: false, error: staged.error ?? "Failed to stage frames" };
+				}
+				return await window.electronAPI.exportIntroOutroCard({
+					side,
+					framesDir: staged.dir,
+					width: dims.width,
+					height: dims.height,
+					fps: mp4FrameRate,
+					defaultFileName: `${tab}-clip.mp4`,
+				});
+			} catch (error) {
+				return { success: false, error: String(error) };
+			}
+		},
+		[mp4OutputDimensions, exportQuality, mp4FrameRate],
+	);
+
 	const ensureSupportedMp4SourceDimensions = useCallback(
 		async (frameRate: ExportMp4FrameRate) => {
 			const result = await probeSupportedMp4Dimensions({
@@ -7872,6 +7921,7 @@ export default function VideoEditor() {
 				onChange={setIntroOutro}
 				activeTab={introStudioTab}
 				onTabChange={setIntroStudioTab}
+				onDownloadSide={downloadIntroOutroSide}
 			/>
 
 			{showCropModal ? (
