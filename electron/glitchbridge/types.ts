@@ -19,6 +19,8 @@ export interface Session {
   issueUrl: string | null;
   createdAt: number;
   finalized?: boolean; // true once upload/script/issue ran — prevents duplicates
+  uploadedClients?: Set<string>; // clientIds that already uploaded — dedups double-stop, merges distinct profiles
+  mergeTimer?: ReturnType<typeof setTimeout>; // open merge window: late uploads from other profiles merge before processing
 }
 
 export interface CaptureEvent {
@@ -31,6 +33,7 @@ export interface CaptureEvent {
   preview?: string;
   meta?: Record<string, string | number | boolean>;
   note?: string;
+  client?: string; // which Chrome profile produced this event (multi-profile capture)
 }
 
 export type WsMsg =
@@ -40,7 +43,7 @@ export type WsMsg =
   | { type: "repos"; repos: GlitchRepo[] }
   | { type: "recording:start"; sessionId: string; repoId: string; repoName: string }
   | { type: "recording:stop"; sessionId: string; meta: RecordingMeta }
-  | { type: "events:upload"; sessionId: string; events: CaptureEvent[] }
+  | { type: "events:upload"; sessionId: string; events: CaptureEvent[]; clientId?: string }
   | { type: "event:live"; event: CaptureEvent }
   | { type: "script:ready"; sessionId: string; script: string }
   | { type: "issue:created"; sessionId: string; issueUrl: string; issueNumber: number }
