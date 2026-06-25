@@ -21,6 +21,7 @@ export interface Session {
   finalized?: boolean; // true once upload/script/issue ran — prevents duplicates
   uploadedClients?: Set<string>; // clientIds that already uploaded — dedups double-stop, merges distinct profiles
   mergeTimer?: ReturnType<typeof setTimeout>; // open merge window: late uploads from other profiles merge before processing
+  liveByClient?: Map<string, CaptureEvent[]>; // events streamed live per profile — survives SW death + missed stop on idle secondary profiles
 }
 
 export interface CaptureEvent {
