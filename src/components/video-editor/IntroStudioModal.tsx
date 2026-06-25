@@ -1,6 +1,8 @@
 import {
+	DownloadSimple as DownloadIcon,
 	FilmStrip as FilmIcon,
 	MusicNotes as MusicIcon,
+	SpinnerGap as SpinnerIcon,
 	Trash as TrashIcon,
 	UploadSimple as UploadIcon,
 	X as XIcon,
@@ -60,6 +62,9 @@ interface IntroStudioModalProps {
 	onChange: (next: IntroOutroConfig) => void;
 	activeTab: "intro" | "outro";
 	onTabChange: (tab: "intro" | "outro") => void;
+	onDownloadSide?: (
+		tab: "intro" | "outro",
+	) => Promise<{ success: boolean; canceled?: boolean; error?: string }>;
 }
 
 export function IntroStudioModal({
@@ -69,6 +74,7 @@ export function IntroStudioModal({
 	onChange,
 	activeTab,
 	onTabChange,
+	onDownloadSide,
 }: IntroStudioModalProps) {
 	if (!open) return null;
 
@@ -171,14 +177,20 @@ export function IntroStudioModal({
 						</div>
 
 						{side.mode === "card" ? (
-							<div className="overflow-hidden rounded-xl border border-foreground/10">
-								<CardPreview
-									side={side}
-									logoDataUrl={config.logoDataUrl}
-									width={640}
-									height={360}
+							<>
+								<div className="overflow-hidden rounded-xl border border-foreground/10">
+									<CardPreview
+										side={side}
+										logoDataUrl={config.logoDataUrl}
+										width={640}
+										height={360}
+									/>
+								</div>
+								<DownloadCardRow
+									activeTab={activeTab}
+									onDownloadSide={onDownloadSide}
 								/>
-							</div>
+							</>
 						) : (
 							<VideoModePreview side={side} onChange={setSide} />
 						)}
@@ -458,6 +470,66 @@ function isLogoOpaque(dataUrl: string): Promise<boolean> {
 		img.onerror = () => resolve(false);
 		img.src = dataUrl;
 	});
+}
+
+function DownloadCardRow({
+	activeTab,
+	onDownloadSide,
+}: {
+	activeTab: "intro" | "outro";
+	onDownloadSide?: (
+		tab: "intro" | "outro",
+	) => Promise<{ success: boolean; canceled?: boolean; error?: string }>;
+}) {
+	const [busy, setBusy] = useState(false);
+	const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+	if (!onDownloadSide) return null;
+
+	const handleDownload = async () => {
+		setBusy(true);
+		setStatus(null);
+		try {
+			const result = await onDownloadSide(activeTab);
+			if (result.success) setStatus({ kind: "ok", text: "Saved" });
+			else if (!result.canceled)
+				setStatus({ kind: "err", text: result.error ?? "Export failed" });
+		} catch (error) {
+			setStatus({ kind: "err", text: String(error) });
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<div className="flex items-center gap-3">
+			<button
+				type="button"
+				onClick={handleDownload}
+				disabled={busy}
+				className={cn(
+					"flex items-center gap-2 rounded-lg bg-[#2563EB] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#1d4ed8]",
+					busy && "cursor-not-allowed opacity-70",
+				)}
+			>
+				{busy ? (
+					<SpinnerIcon className="h-4 w-4 animate-spin" />
+				) : (
+					<DownloadIcon className="h-4 w-4" />
+				)}
+				{busy ? "Exporting…" : "Download clip"}
+			</button>
+			<span className="text-[11px] text-muted-foreground">
+				{status ? (
+					<span className={status.kind === "err" ? "text-red-400" : "text-emerald-400"}>
+						{status.text}
+					</span>
+				) : (
+					"MP4 with music & animation, at export quality"
+				)}
+			</span>
+		</div>
+	);
 }
 
 function LogoRow({
