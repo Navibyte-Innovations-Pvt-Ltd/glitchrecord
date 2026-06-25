@@ -94,12 +94,11 @@ import {
 import { rippleAudioRegionsForRemovedSegments } from "./audioRegionRipple";
 import {
 	carveSpeedRegion,
-	dissolveRetimeGroup,
-	getRetimeGroup,
 	planRetimeDrag,
 	planSpeedPointInsert,
 	resolveInternalBoundaryDrag,
 } from "./clipRetime";
+import { planClipDelete } from "./clipDelete";
 import { planClipSpeedChange, snapClipSpeed, snapStretchSpeed } from "./clipSpeedChange";
 import { ExtensionIcon } from "./ExtensionIcon";
 import { calculateMp4ExportDimensions, calculateMp4SourceDimensions } from "./exportDimensions";
@@ -4895,74 +4894,38 @@ export default function VideoEditor() {
 	const handleClipDelete = useCallback(
 		(id: string) => {
 			const deletedClip = clipRegions.find((clip) => clip.id === id);
-			// Deleting a SPEED-POINT (retime) zone removes the whole effect: dissolve
-			// the linked pair back to one clip, then reset it to 1× like any speed clip.
-			if (deletedClip?.retimeGroupId) {
-				const group = getRetimeGroup(clipRegions, deletedClip.retimeGroupId);
-				const merged = dissolveRetimeGroup(clipRegions, deletedClip.retimeGroupId);
-				if (group && merged) {
-					// dissolveRetimeGroup keeps the left member's id for the merged clip.
-					const plan = planClipSpeedChange({
-						clipRegions: merged,
-						zoomRegions,
-						selectedClipId: group.left.id,
-						speed: 1,
-					});
-					if (plan && !("blockedReason" in plan)) {
-						setClipRegions(plan.clipRegions);
-						setZoomRegions(plan.zoomRegions);
-					} else {
-						setClipRegions(merged);
-					}
-					if (selectedClipId === id) setSelectedClipId(null);
-					return;
-				}
-				// Group is malformed (partner missing / not contiguous): fall through to
-				// the generic speed-reset below so delete never silently does nothing.
+			if (!deletedClip) return;
+			// Delete CUTS the clip's footage out and ripples the rest left to close the
+			// gap. It never reverts a sped clip to 1× — the Speed panel's "1×" button
+			// does that; reverting on delete ballooned the clip back to full width and
+			// looked like the deleted footage "reappeared" (see clipDelete.ts).
+			//
+			// A retime "speed point" splits one clip into two contiguous members sharing
+			// a retimeGroupId. Deleting any member removes the whole effect's footage, so
+			// fold every member through planClipDelete (later members' coords shift as
+			// each earlier one ripples — planClipDelete re-reads them by id each pass).
+			const idsToDelete = deletedClip.retimeGroupId
+				? clipRegions
+						.filter((clip) => clip.retimeGroupId === deletedClip.retimeGroupId)
+						.map((clip) => clip.id)
+				: [id];
+
+			let acc = { clipRegions, zoomRegions, annotationRegions, speedRegions, audioRegions };
+			for (const delId of idsToDelete) {
+				const plan = planClipDelete({ ...acc, clipId: delId, ripple: true });
+				if (plan) acc = plan;
 			}
-			// Deleting a SPEED segment removes the speed EFFECT (revert to 1× and reflow
-			// the timeline back) instead of cutting the footage out.
-			if (deletedClip && deletedClip.speed !== 1) {
-				const plan = planClipSpeedChange({
-					clipRegions,
-					zoomRegions,
-					selectedClipId: id,
-					speed: 1,
-				});
-				if (plan && !("blockedReason" in plan)) {
-					setClipRegions(plan.clipRegions);
-					setZoomRegions(plan.zoomRegions);
-				}
-				if (selectedClipId === id) setSelectedClipId(null);
-				return;
-			}
-			setClipRegions((prev) => prev.filter((clip) => clip.id !== id));
-			if (deletedClip) {
-				const { startMs, endMs } = deletedClip;
-				setZoomRegions((prev) =>
-					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
-				);
-				setAnnotationRegions((prev) =>
-					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
-				);
-				setSpeedRegions((prev) =>
-					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
-				);
-				// Audio is an INDEPENDENT layer (e.g. the narration spans the whole
-				// timeline), unlike zoom/annotation/speed which are clip-scoped. An
-				// overlap filter here would delete a spanning narration whenever ANY
-				// clip is removed. Only drop audio that lives ENTIRELY inside the
-				// deleted clip (a snippet that belonged to it); keep everything that
-				// merely crosses the clip's range.
-				setAudioRegions((prev) =>
-					prev.filter((region) => !(region.startMs >= startMs && region.endMs <= endMs)),
-				);
-			}
+
+			setClipRegions(acc.clipRegions);
+			setZoomRegions(acc.zoomRegions);
+			setAnnotationRegions(acc.annotationRegions);
+			setSpeedRegions(acc.speedRegions);
+			setAudioRegions(acc.audioRegions);
 			if (selectedClipId === id) {
 				setSelectedClipId(null);
 			}
 		},
-		[clipRegions, zoomRegions, selectedClipId],
+		[clipRegions, zoomRegions, annotationRegions, speedRegions, audioRegions, selectedClipId],
 	);
 
 	const handleSelectAudio = useCallback((id: string | null) => {
