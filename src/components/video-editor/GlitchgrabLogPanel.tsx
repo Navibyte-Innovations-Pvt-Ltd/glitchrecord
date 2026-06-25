@@ -11,11 +11,13 @@ import {
 	Keyboard,
 	NoteBlank,
 	Sparkle,
+	Stack,
 	TextT,
 	UserCircle,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { changedRange } from "../../lib/scriptDiff";
 
 interface CaptureEvent {
 	type:
@@ -28,14 +30,15 @@ interface CaptureEvent {
 		| "scroll"
 		| "copy"
 		| "paste"
-		| "note";
+		| "note"
+		| "mutate";
 	t: number;
 	label?: string;
 	tag?: string;
 	url?: string;
 	durationMs?: number;
 	preview?: string;
-	meta?: Record<string, string>;
+	meta?: Record<string, string | number | boolean>;
 	note?: string;
 }
 
@@ -108,6 +111,8 @@ function EventIcon({ type }: { type: CaptureEvent["type"] }) {
 			return <Clipboard className={cls} />;
 		case "note":
 			return <NoteBlank className="h-3.5 w-3.5 shrink-0 text-amber-400" weight="fill" />;
+		case "mutate":
+			return <Stack className={cls} />;
 		default:
 			return <CursorClick className={cls} />;
 	}
@@ -133,6 +138,8 @@ function eventText(e: CaptureEvent): string {
 			return "Paste";
 		case "note":
 			return `📌 Explain: ${e.label ?? "this"}`;
+		case "mutate":
+			return e.label ?? "Bulk change on canvas";
 		default:
 			return `Click: ${e.label ?? "element"}`;
 	}
@@ -345,6 +352,10 @@ export function GlitchgrabLogPanel({
 	const [chatError, setChatError] = useState<string | null>(null);
 	const chatEndRef = useRef<HTMLDivElement | null>(null);
 	const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
+	// The main narration <textarea> + a pending [start,end] to highlight after an
+	// "Apply to script" so the user is shown exactly what changed.
+	const narrationTaRef = useRef<HTMLTextAreaElement | null>(null);
+	const pendingHighlightRef = useRef<[number, number] | null>(null);
 	const [narrating, setNarrating] = useState(false);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
 	const [narrationError, setNarrationError] = useState<string | null>(null);
@@ -1058,6 +1069,40 @@ export function GlitchgrabLogPanel({
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	}, [chatMessages, chatBusy]);
+
+	// Apply a refined script AND remember which span changed so the next render can
+	// show it (highlight + scroll). Diff is computed against the CURRENT text before
+	// it's replaced.
+	const applyScript = useCallback(
+		(next: string) => {
+			pendingHighlightRef.current = changedRange(narrationText, next);
+			setNarrationText(next);
+		},
+		[narrationText],
+	);
+
+	// After an Apply re-renders the textarea with the new text, select the changed
+	// span (native highlight) and scroll it to roughly a third down the box so the
+	// user sees exactly what the edit touched.
+	useEffect(() => {
+		const range = pendingHighlightRef.current;
+		const ta = narrationTaRef.current;
+		if (!range || !ta) return;
+		pendingHighlightRef.current = null;
+		const [start, end] = range;
+		ta.focus();
+		try {
+			ta.setSelectionRange(start, end);
+		} catch {
+			/* offsets out of range — ignore */
+		}
+		// Manual scroll: setSelectionRange alone doesn't reliably scroll a textarea.
+		const before = narrationText.slice(0, start);
+		const line = before.split("\n").length - 1;
+		const lineHeight =
+			parseFloat(getComputedStyle(ta).lineHeight) || 20;
+		ta.scrollTop = Math.max(0, line * lineHeight - ta.clientHeight / 3);
+	}, [narrationText]);
 
 	// Auto-grow the refine textarea to fit its content (so the long placeholder /
 	// typed text isn't clipped and no inner scrollbar shows). Caps at ~6 lines.
@@ -2363,6 +2408,7 @@ export function GlitchgrabLogPanel({
 								</button>
 							)}
 							<textarea
+								ref={narrationTaRef}
 								data-testid="gg-narration-textarea"
 								value={narrationText}
 								onChange={(e) => setNarrationText(e.target.value)}
@@ -2403,7 +2449,7 @@ export function GlitchgrabLogPanel({
 															type="button"
 															data-testid="gg-apply-script"
 															onClick={() =>
-																setNarrationText(m.script as string)
+																applyScript(m.script as string)
 															}
 															className="mt-1 flex items-center gap-1 self-start rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300 hover:bg-blue-500/20"
 														>
