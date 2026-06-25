@@ -12,6 +12,9 @@ import { WebSocket } from "ws";
 // Must run BEFORE the hoisted import of ./server (which reads PORT at load).
 vi.hoisted(() => {
 	process.env.GLITCHBRIDGE_PORT = "7345";
+	// Shrink the merge/stop-fallback windows so finalize fires within a test tick.
+	process.env.GLITCHBRIDGE_MERGE_MS = "100";
+	process.env.GLITCHBRIDGE_STOP_FALLBACK_MS = "150";
 });
 
 // ── Mocks ─────────────────────────────────────────────────────
@@ -216,6 +219,64 @@ describe("GlitchGrab bridge protocol", () => {
 
 		chrome.close();
 		broadcastRecordingStop(sessionId, {} as never);
+	});
+
+	it("recovers a profile that streamed live but never bulk-uploaded (idle SW missed stop)", async () => {
+		resetBridgeSession();
+		const admin = await connectChrome();
+		const student = await connectChrome();
+		const startP = admin.waitFor("recording:start");
+		const sessionId = broadcastRecordingStart("repoL", "Repo Live");
+		await startP;
+
+		// Both profiles stream events live as they happen.
+		const adminEvents = SAMPLE_EVENTS.map((e) => ({ ...e, client: "admin" }));
+		for (const e of adminEvents) admin.ws.send(JSON.stringify({ type: "event:live", event: e }));
+		const studentEvents = [
+			{ type: "click", t: 1200, label: "Enroll", client: "student", meta: { role: "button" } },
+			{ type: "input", t: 2400, label: "Name", client: "student", preview: "Riya" },
+		];
+		for (const e of studentEvents) student.ws.send(JSON.stringify({ type: "event:live", event: e }));
+		await tick();
+
+		// Admin bulk-uploads on stop; the student's worker is asleep → no upload.
+		admin.ws.send(JSON.stringify({ type: "events:upload", sessionId, events: adminEvents, clientId: "admin" }));
+		broadcastRecordingStop(sessionId, {} as never);
+		await new Promise((r) => setTimeout(r, 250)); // let the merge timer finalize
+
+		const evs = getCurrentSession()?.events ?? [];
+		expect(evs).toHaveLength(5); // 3 admin (bulk) + 2 student (recovered from live)
+		expect(evs.filter((e) => e.client === "student")).toHaveLength(2);
+		// No double-count: admin's live duplicates are skipped because it bulk-uploaded.
+		expect(evs.filter((e) => e.client === "admin")).toHaveLength(3);
+
+		admin.close();
+		student.close();
+	});
+
+	it("finalizes from live events when NO profile bulk-uploads (stop fallback)", async () => {
+		resetBridgeSession();
+		const student = await connectChrome();
+		const startP = student.waitFor("recording:start");
+		const sessionId = broadcastRecordingStart("repoF", "Repo Fallback");
+		await startP;
+
+		const studentEvents = [
+			{ type: "navigate", t: 0, label: "Signup", client: "student" },
+			{ type: "click", t: 1500, label: "Create account", client: "student" },
+		];
+		for (const e of studentEvents) student.ws.send(JSON.stringify({ type: "event:live", event: e }));
+		await tick();
+
+		// No events:upload at all — stop must still finalize from the live buffer.
+		broadcastRecordingStop(sessionId, {} as never);
+		await new Promise((r) => setTimeout(r, 300));
+
+		const s = getCurrentSession();
+		expect(s?.finalized).toBe(true);
+		expect(s?.events).toHaveLength(2);
+
+		student.close();
 	});
 
 	it("resyncs recording:start to an extension that connects AFTER record started", async () => {
