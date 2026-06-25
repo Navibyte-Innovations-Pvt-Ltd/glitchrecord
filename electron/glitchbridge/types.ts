@@ -22,14 +22,14 @@ export interface Session {
 }
 
 export interface CaptureEvent {
-  type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste" | "note";
+  type: "click" | "navigate" | "idle" | "input" | "select" | "keydown" | "scroll" | "copy" | "paste" | "note" | "mutate";
   t: number;
   label?: string;
   tag?: string;
   url?: string;
   durationMs?: number;
   preview?: string;
-  meta?: Record<string, string>;
+  meta?: Record<string, string | number | boolean>;
   note?: string;
 }
 
