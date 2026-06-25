@@ -112,7 +112,7 @@ vi.mock("./annotationRenderer", () => ({
 }));
 
 import { renderAnnotations } from "./annotationRenderer";
-import { FrameRenderer } from "./modernFrameRenderer";
+import { FrameRenderer, safeDestroyExportApplication } from "./modernFrameRenderer";
 
 function createMockContext() {
 	return {
@@ -181,6 +181,29 @@ function createRenderer() {
 		],
 	});
 }
+
+describe("safeDestroyExportApplication", () => {
+	it("swallows the ResizePlugin '_cancelResize is not a function' throw from a partially-initialized app", () => {
+		// Reproduces the Lightning export crash: app.init() timed out before Pixi's
+		// plugin-init loop ran, so Application.destroy() -> ResizePlugin.destroy()
+		// throws because _cancelResize was never assigned.
+		const app = {
+			destroy: vi.fn(() => {
+				throw new TypeError("this._cancelResize is not a function");
+			}),
+		};
+
+		expect(() => safeDestroyExportApplication(app, "webgl")).not.toThrow();
+		expect(app.destroy).toHaveBeenCalledWith(true);
+	});
+
+	it("destroys a healthy app without swallowing anything", () => {
+		const app = { destroy: vi.fn() };
+
+		expect(() => safeDestroyExportApplication(app, "webgpu")).not.toThrow();
+		expect(app.destroy).toHaveBeenCalledWith(true);
+	});
+});
 
 describe("ModernFrameRenderer blur export path", () => {
 	beforeEach(() => {
