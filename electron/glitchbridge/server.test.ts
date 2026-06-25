@@ -12,10 +12,11 @@ import { WebSocket } from "ws";
 // Must run BEFORE the hoisted import of ./server (which reads PORT at load).
 vi.hoisted(() => {
 	process.env.GLITCHBRIDGE_PORT = "7345";
-	// Shrink the merge/stop-fallback windows so finalize fires within a test tick.
-	process.env.GLITCHBRIDGE_MERGE_MS = "100";
-	process.env.GLITCHBRIDGE_STOP_FALLBACK_MS = "150";
 });
+
+// Default finalize windows (server.ts): merge 1500ms, stop-fallback 3000ms.
+const MERGE_MS = 1500;
+const STOP_FALLBACK_MS = 3000;
 
 // ── Mocks ─────────────────────────────────────────────────────
 // Electron's app.getPath → a temp dir so persistSession/appendDebugLog work.
@@ -242,7 +243,7 @@ describe("GlitchGrab bridge protocol", () => {
 		// Admin bulk-uploads on stop; the student's worker is asleep → no upload.
 		admin.ws.send(JSON.stringify({ type: "events:upload", sessionId, events: adminEvents, clientId: "admin" }));
 		broadcastRecordingStop(sessionId, {} as never);
-		await new Promise((r) => setTimeout(r, 250)); // let the merge timer finalize
+		await new Promise((r) => setTimeout(r, MERGE_MS + 300)); // let the merge timer finalize
 
 		const evs = getCurrentSession()?.events ?? [];
 		expect(evs).toHaveLength(5); // 3 admin (bulk) + 2 student (recovered from live)
