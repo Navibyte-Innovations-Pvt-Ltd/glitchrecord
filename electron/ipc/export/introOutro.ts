@@ -501,6 +501,60 @@ export async function stageIntroOutroFrames(framesBase64: string[]): Promise<str
 }
 
 /**
+ * Export a SINGLE intro/outro side as a standalone mp4 (animation + music baked
+ * in), independent of any main video. Unlike `applyIntroOutro`, there is no source
+ * mp4 to probe, so encode params are synthesized from the caller's export settings
+ * (dims/fps) with a self-contained audio stream. Card mode encodes the renderer's
+ * staged PNG frames; video mode transcodes the user's clip. `framesDir` (card mode)
+ * is always cleaned up. Returns true on success.
+ */
+export async function exportStandaloneCard(opts: {
+	side: IntroOutroSideConfig;
+	framesDir: string | null;
+	width: number;
+	height: number;
+	fps: number;
+	outPath: string;
+}): Promise<boolean> {
+	const { side, framesDir, width, height, fps, outPath } = opts;
+	let workDir: string | null = null;
+	try {
+		const ffmpegPath = getFfmpegBinaryPath();
+		// Card music depends on a chosen track; video mode keeps its own audio.
+		const hasAudio = side.mode === "video" || side.audio.mode !== "none";
+		const params: ProbedVideoParams = {
+			width: Math.round(width),
+			height: Math.round(height),
+			fps: fps > 0 ? fps : 30,
+			videoTimescale: 0,
+			profile: "high",
+			level: "",
+			pixFmt: "yuv420p",
+			hasAudio,
+			audioSampleRate: 48000,
+			audioChannels: 2,
+		};
+		if (params.width <= 0 || params.height <= 0) return false;
+
+		workDir = await makeTempDir("glitchrecord-cardexport");
+		const audioPath = await resolveAudioInput(ffmpegPath, side, workDir, "card");
+
+		if (side.mode === "video") {
+			return await buildVideoClip(ffmpegPath, side, params, audioPath, outPath);
+		}
+		if (!framesDir) return false;
+		return await buildCardClip(ffmpegPath, framesDir, side, params, audioPath, outPath);
+	} catch (error) {
+		console.warn("[introOutro] standalone card export failed:", error);
+		return false;
+	} finally {
+		if (workDir) await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+		if (framesDir)
+			await fs.rm(framesDir, { recursive: true, force: true }).catch(() => undefined);
+	}
+}
+
+/**
  * Apply intro/outro to an exported mp4. Returns a NEW temp path with the stitched
  * result, or the original `videoPath` unchanged if nothing applies / on failure.
  */
