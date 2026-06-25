@@ -141,6 +141,11 @@ export function useTimelineSelection({
 	const handleSelectClip = useCallback(
 		(id: string | null) => {
 			setSelectAllBlocksActive(false);
+			// Clear any selected keyframe so Delete targets the clip, not a stale marker.
+			// resolveDeleteSelectionTarget ranks keyframe ABOVE clip, so a marker left
+			// selected on the clip would swallow the first Delete and the clip wouldn't
+			// go — the user's "I clicked delete but the clip stayed" report.
+			if (id) setSelectedKeyframeId(null);
 			onSelectClip?.(id);
 		},
 		[onSelectClip],
