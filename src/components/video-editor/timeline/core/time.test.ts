@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
 	calculateAxisScale,
 	calculateTimelineScale,
+	computeScrollbarThumb,
 	createInitialRange,
 	formatPlayheadTime,
 	formatTimeLabel,
 	normalizeWheelDeltaToPixels,
+	resolveRangeFromScrollFraction,
 } from "./time";
 
 describe("timeline core/time", () => {
@@ -54,5 +56,55 @@ describe("timeline core/time", () => {
 		expect(tiny.gridMs).toBeGreaterThan(0);
 		expect(typical.intervalMs).toBeGreaterThanOrEqual(tiny.intervalMs);
 		expect(huge.intervalMs).toBeGreaterThanOrEqual(typical.intervalMs);
+	});
+
+	// Regression: zoomed in, the user could NOT pan right to the end of the
+	// timeline — there was no mouse-accessible horizontal pan affordance, so they
+	// had to zoom all the way out and back in to navigate. These guard the pan math
+	// behind the new scrollbar.
+	describe("horizontal pan scrollbar", () => {
+		it("thumb width is the visible fraction; left is the pan offset", () => {
+			// 60s timeline, 5s window starting at 30s.
+			const thumb = computeScrollbarThumb({ start: 30_000, end: 35_000 }, 60_000);
+			expect(thumb.widthFraction).toBeCloseTo(5 / 60, 5);
+			expect(thumb.leftFraction).toBeCloseTo(30 / 60, 5);
+			expect(thumb.canPan).toBe(true);
+		});
+
+		it("cannot pan when the whole timeline is visible (zoomed out)", () => {
+			const thumb = computeScrollbarThumb({ start: 0, end: 60_000 }, 60_000);
+			expect(thumb.widthFraction).toBe(1);
+			expect(thumb.leftFraction).toBe(0);
+			expect(thumb.canPan).toBe(false);
+		});
+
+		it("dragging the thumb to the far RIGHT reaches the end (the bug)", () => {
+			// THIS is the reported bug encoded as a test: panning to fraction 1 must
+			// land the visible window flush against totalMs so the last clips are
+			// reachable without zooming out.
+			const range = resolveRangeFromScrollFraction(1, 5_000, 60_000);
+			expect(range.end).toBe(60_000);
+			expect(range.start).toBe(55_000);
+		});
+
+		it("dragging to the far LEFT reaches the start", () => {
+			const range = resolveRangeFromScrollFraction(0, 5_000, 60_000);
+			expect(range.start).toBe(0);
+			expect(range.end).toBe(5_000);
+		});
+
+		it("preserves the visible span while panning and never overshoots", () => {
+			const mid = resolveRangeFromScrollFraction(0.5, 5_000, 60_000);
+			expect(mid.end - mid.start).toBe(5_000);
+			const past = resolveRangeFromScrollFraction(99, 5_000, 60_000);
+			expect(past.end).toBe(60_000); // clamped, not 60_000 * 99
+		});
+
+		it("thumb geometry round-trips with the range it produces", () => {
+			const range = resolveRangeFromScrollFraction(1, 5_000, 60_000);
+			const thumb = computeScrollbarThumb(range, 60_000);
+			// Window at the right edge ⇒ thumb's right edge touches 1.
+			expect(thumb.leftFraction + thumb.widthFraction).toBeCloseTo(1, 5);
+		});
 	});
 });
