@@ -1,6 +1,11 @@
 import type React from "react";
 import { extensionHost } from "@/lib/extensions";
 import { enablePitchPreservingPlayback } from "@/lib/mediaTiming";
+import {
+	clampPlaybackRate,
+	computeManualSeekTarget,
+	exceedsNativeRate,
+} from "../playbackRateModel";
 import type { SpeedRegion, TrimRegion } from "../types";
 
 interface PresentedFrameMetadata {
@@ -156,6 +161,25 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 						presentedFrameVideo.cancelVideoFrameCallback(videoFrameRequestId);
 						videoFrameRequestId = null;
 					}
+					// A region faster than the native ceiling never presents fresh frames, so
+					// the element's currentTime stalls and re-pumping updateTime() alone keeps
+					// showing the same frozen frame. Manually scrub currentTime forward by the
+					// speed the element can't deliver, so the preview keeps moving and stays in
+					// sync with the playhead (which maps at the full requested speed).
+					const region = findActiveSpeedRegion(video.currentTime * 1000);
+					if (region && exceedsNativeRate(region.speed) && !video.seeking) {
+						const now = performance.now();
+						const target = computeManualSeekTarget({
+							currentSec: video.currentTime,
+							wallDeltaMs: now - lastPresentedAtMs,
+							targetSpeed: region.speed,
+							endSec: getPlaybackEndSec(),
+						});
+						if (target > video.currentTime) {
+							video.currentTime = target;
+						}
+						lastPresentedAtMs = now;
+					}
 					updateTime();
 					return;
 				}
@@ -208,10 +232,13 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		if (activeTrimRegion && !video.paused && !video.ended) {
 			skipPastTrimRegion(activeTrimRegion);
 		} else {
-			// Apply playback speed from active speed region
+			// Apply playback speed from active speed region. Clamp to the element's
+			// native ceiling: Chrome silently stops presenting frames above ~16×, which
+			// froze the preview while audio kept playing. Speed above the ceiling is made
+			// up by the manual scrub in the watchdog below.
 			const activeSpeedRegion = findActiveSpeedRegion(currentTimeMs);
 			enablePitchPreservingPlayback(video);
-			video.playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+			video.playbackRate = clampPlaybackRate(activeSpeedRegion ? activeSpeedRegion.speed : 1);
 			emitTime(presentedTime);
 		}
 
