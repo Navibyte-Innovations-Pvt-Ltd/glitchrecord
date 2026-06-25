@@ -24,6 +24,7 @@ import {
 	Sparkle,
 	Trash as TrashIcon,
 	ArrowLineRight as TrimToEndIcon,
+	ClockCounterClockwise as RestoreTailIcon,
 	ArrowCounterClockwise as Undo2,
 	UserCircle as User,
 	SpeakerLow as Volume1,
@@ -100,6 +101,7 @@ import {
 	resolveInternalBoundaryDrag,
 } from "./clipRetime";
 import { planClipDelete } from "./clipDelete";
+import { getTrimmedTailMs, planRestoreTrimmedTail } from "./clipRestore";
 import { planClipSpeedChange, snapClipSpeed, snapStretchSpeed } from "./clipSpeedChange";
 import { ExtensionIcon } from "./ExtensionIcon";
 import { calculateMp4ExportDimensions, calculateMp4SourceDimensions } from "./exportDimensions";
@@ -4632,6 +4634,25 @@ export default function VideoEditor() {
 		setSpeedRegions((prev) => trimRangesToEnd(prev, cut));
 	}, []);
 
+	// Restore trimmed tail: when end clips were deleted, the source past the last
+	// clip's coverage is no longer on the timeline (and has no drag handle). This
+	// appends a 1× clip re-covering that leftover footage at the timeline end.
+	// Undoable like any edit (state flows through setClipRegions).
+	const trimmedTailMs = useMemo(
+		() => getTrimmedTailMs(clipRegions, duration * 1000),
+		[clipRegions, duration],
+	);
+	const handleRestoreTrimmedTail = useCallback(() => {
+		setClipRegions((prev) => {
+			const next = planRestoreTrimmedTail({
+				clipRegions: prev,
+				sourceDurationMs: duration * 1000,
+				newClipId: `clip-${nextClipIdRef.current++}`,
+			});
+			return next ?? prev;
+		});
+	}, [duration]);
+
 	// Add a DaVinci-style speed point at the playhead: split the clip into a
 	// linked retime pair (both at the current speed) whose seam can then be
 	// dragged to redistribute time while keeping the total duration constant.
@@ -7537,6 +7558,21 @@ export default function VideoEditor() {
 									title="Trim to End — delete everything after the playhead (E)"
 								>
 									<TrimToEndIcon className="w-4 h-4" />
+								</Button>
+								<Button
+									onClick={handleRestoreTrimmedTail}
+									disabled={trimmedTailMs < 1}
+									variant="ghost"
+									size="icon"
+									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[#2563EB]/10 hover:text-[#2563EB] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+									title={
+										trimmedTailMs >= 1
+											? `Restore trimmed footage — re-add the ${(trimmedTailMs / 1000).toFixed(1)}s cut from the end`
+											: "Restore trimmed footage (none trimmed)"
+									}
+									aria-label="Restore trimmed footage"
+								>
+									<RestoreTailIcon className="w-4 h-4" />
 								</Button>
 								<Button
 									onClick={() => timelineRef.current?.addSpeedPoint()}
