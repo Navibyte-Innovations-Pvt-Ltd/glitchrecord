@@ -150,6 +150,34 @@ export default function TimelineWrapper({
 		[allRegionSpans, hasOverlap, minItemDurationMs, resolveTargetRowId, totalMs],
 	);
 
+	// The live React preview (onLiveSpanPreviewChange) re-renders every clip + zoom
+	// row, so firing it on every pointermove tanks the timeline on heavy projects.
+	// Coalesce it to one update per animation frame; the tooltip stays immediate
+	// (it's direct-DOM and cheap). `cancelLivePreviewRaf` is used at drag-end so a
+	// queued stale preview never fires after the final clear.
+	const previewRafIdRef = useRef<number | null>(null);
+	const pendingPreviewRef = useRef<{ id: string; span: Span | null } | null>(null);
+	const cancelLivePreviewRaf = useCallback(() => {
+		if (previewRafIdRef.current !== null) {
+			cancelAnimationFrame(previewRafIdRef.current);
+			previewRafIdRef.current = null;
+		}
+		pendingPreviewRef.current = null;
+	}, []);
+	const scheduleLivePreview = useCallback(
+		(id: string, span: Span | null) => {
+			pendingPreviewRef.current = { id, span };
+			if (previewRafIdRef.current !== null) return;
+			previewRafIdRef.current = requestAnimationFrame(() => {
+				previewRafIdRef.current = null;
+				const pending = pendingPreviewRef.current;
+				pendingPreviewRef.current = null;
+				if (pending) onLiveSpanPreviewChange?.(pending.id, pending.span);
+			});
+		},
+		[onLiveSpanPreviewChange],
+	);
+
 	const onDragStart = useCallback(
 		(event: DragStartEvent) => {
 			const span = event.active.data.current.getSpanFromDragEvent?.(event);
@@ -173,10 +201,10 @@ export default function TimelineWrapper({
 			}
 			const moved = Math.hypot(event.delta?.x ?? 0, event.delta?.y ?? 0) > 0.01;
 			if (moved) {
-				onLiveSpanPreviewChange?.(event.active.id as string, previewSpan);
+				scheduleLivePreview(event.active.id as string, previewSpan);
 			}
 		},
-		[onLiveSpanPreviewChange, resolveDragPreviewSpan, showTooltip],
+		[resolveDragPreviewSpan, scheduleLivePreview, showTooltip],
 	);
 
 	const onResizeMove = useCallback(
@@ -207,10 +235,13 @@ export default function TimelineWrapper({
 	const onDragEndWithTooltip = useCallback(
 		(event: DragEndEvent) => {
 			hideTooltip();
+			// Drop any frame-queued preview before the final clear, else the stale
+			// rAF could re-show a ghost span after the drop committed.
+			cancelLivePreviewRaf();
 			onDragEnd(event);
 			onLiveSpanPreviewChange?.(event.active.id as string, null);
 		},
-		[hideTooltip, onDragEnd, onLiveSpanPreviewChange],
+		[cancelLivePreviewRaf, hideTooltip, onDragEnd, onLiveSpanPreviewChange],
 	);
 
 	const handleRangeChange = useCallback(
