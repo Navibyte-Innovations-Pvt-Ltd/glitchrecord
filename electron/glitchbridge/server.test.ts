@@ -172,6 +172,52 @@ describe("GlitchGrab bridge protocol", () => {
 		broadcastRecordingStop(sessionId, {} as never);
 	});
 
+	it("merges events from two distinct Chrome profiles into one session", async () => {
+		resetBridgeSession();
+		const admin = await connectChrome();
+		const student = await connectChrome();
+		const startP = admin.waitFor("recording:start");
+		const sessionId = broadcastRecordingStart("repoM", "Repo Multi");
+		await startP;
+
+		// Admin profile (one Chrome profile) uploads its batch…
+		const adminEvents = SAMPLE_EVENTS.map((e) => ({ ...e, client: "admin" }));
+		admin.ws.send(JSON.stringify({ type: "events:upload", sessionId, events: adminEvents, clientId: "admin" }));
+		await tick();
+		// …and the student profile (a different Chrome profile) uploads too.
+		const studentEvents = [{ type: "click", t: 1500, label: "Enroll", tag: "button", client: "student", meta: { role: "button" } }];
+		student.ws.send(JSON.stringify({ type: "events:upload", sessionId, events: studentEvents, clientId: "student" }));
+		await tick();
+
+		const session = getCurrentSession();
+		expect(session?.events).toHaveLength(4); // 3 admin + 1 student merged, not dropped
+		expect(session?.events.filter((e) => e.client === "admin")).toHaveLength(3);
+		expect(session?.events.filter((e) => e.client === "student")).toHaveLength(1);
+
+		admin.close();
+		student.close();
+		broadcastRecordingStop(sessionId, {} as never);
+	});
+
+	it("dedups a double-stop from the SAME profile (clientId) but still merges others", async () => {
+		resetBridgeSession();
+		const chrome = await connectChrome();
+		const startP = chrome.waitFor("recording:start");
+		const sessionId = broadcastRecordingStart("repoD", "Repo Dedup");
+		await startP;
+
+		chrome.ws.send(JSON.stringify({ type: "events:upload", sessionId, events: SAMPLE_EVENTS, clientId: "admin" }));
+		await tick();
+		// Double-stop: same profile uploads the same batch again → ignored.
+		chrome.ws.send(JSON.stringify({ type: "events:upload", sessionId, events: SAMPLE_EVENTS, clientId: "admin" }));
+		await tick();
+
+		expect(getCurrentSession()?.events).toHaveLength(3); // not 6
+
+		chrome.close();
+		broadcastRecordingStop(sessionId, {} as never);
+	});
+
 	it("resyncs recording:start to an extension that connects AFTER record started", async () => {
 		// Start recording with NO chrome client connected (start-before-connect race)
 		const sessionId = broadcastRecordingStart("repo3", "Repo Three");
