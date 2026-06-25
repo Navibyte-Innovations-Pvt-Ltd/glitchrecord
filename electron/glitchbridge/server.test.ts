@@ -271,7 +271,7 @@ describe("GlitchGrab bridge protocol", () => {
 
 		// No events:upload at all — stop must still finalize from the live buffer.
 		broadcastRecordingStop(sessionId, {} as never);
-		await new Promise((r) => setTimeout(r, 300));
+		await new Promise((r) => setTimeout(r, STOP_FALLBACK_MS + 400));
 
 		const s = getCurrentSession();
 		expect(s?.finalized).toBe(true);
