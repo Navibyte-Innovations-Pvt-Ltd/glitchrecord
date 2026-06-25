@@ -22,6 +22,7 @@ import {
 	SkipBack,
 	SkipForward,
 	Sparkle,
+	Trash as TrashIcon,
 	ArrowLineRight as TrimToEndIcon,
 	ArrowCounterClockwise as Undo2,
 	UserCircle as User,
@@ -7548,6 +7549,22 @@ export default function VideoEditor() {
 									)}
 								>
 									<Gauge className="w-4 h-4" />
+								</Button>
+								<Button
+									onClick={() => {
+										if (selectedClipId) handleClipDelete(selectedClipId);
+									}}
+									disabled={!selectedClipId}
+									variant="ghost"
+									size="icon"
+									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-500 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+									title={t(
+										"editor.toolbar.deleteClip",
+										"Delete selected clip (cut it out, ripple the rest) — Delete/Backspace",
+									)}
+									aria-label={t("editor.toolbar.deleteClip", "Delete selected clip")}
+								>
+									<TrashIcon className="w-4 h-4" />
 								</Button>
 							</div>
 							{/* Playback controls - centered */}
