@@ -293,6 +293,31 @@ function isKnownRendererUnavailableError(error: unknown): boolean {
 	);
 }
 
+/**
+ * Destroys a Pixi Application without letting cleanup errors escape.
+ *
+ * When `app.init()` rejects or times out before its plugin-init loop runs,
+ * Pixi's ResizePlugin never assigns `_cancelResize`, so `Application.destroy()`
+ * (which invokes every plugin's `destroy` unconditionally) throws
+ * "this._cancelResize is not a function". Left unguarded, that throw escapes the
+ * backend-selection loop and masks the real init failure (timeout / GPU
+ * unavailable). Swallowing it lets the loop fall through to the next backend or
+ * surface the genuine `summarizeRendererAttempts` reason.
+ */
+export function safeDestroyExportApplication(
+	app: Pick<Application, "destroy">,
+	backend: string,
+): void {
+	try {
+		app.destroy(true);
+	} catch (destroyError) {
+		console.warn(
+			`[FrameRenderer] Ignoring error destroying partially-initialized ${backend} renderer:`,
+			destroyError,
+		);
+	}
+}
+
 type PixiInitOptions = Parameters<Application["init"]>[0];
 
 async function initApplicationWithTimeout(
@@ -785,7 +810,7 @@ export class FrameRenderer {
 					`[FrameRenderer] ${backend} export renderer unavailable (${rendererMessage}) after ${elapsed}ms; trying next backend:`,
 					error,
 				);
-				app.destroy(true);
+				safeDestroyExportApplication(app, backend);
 			}
 		}
 
