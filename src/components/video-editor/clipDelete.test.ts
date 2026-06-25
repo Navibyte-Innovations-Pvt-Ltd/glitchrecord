@@ -94,6 +94,32 @@ describe("planClipDelete — removes a clip instead of reverting its speed", () 
 		expect(after).toBe(before - 1000); // exactly b's width removed, nothing ballooned back
 	});
 
+	it("folds a retime group: deleting both contiguous members removes the whole effect", () => {
+		// A speed point splits one clip into two contiguous members. handleClipDelete
+		// folds planClipDelete over both ids; later members shift as earlier ones ripple.
+		const clips = [
+			clip("a", 0, 1000),
+			{ ...clip("b1", 1000, 1500, 2), retimeGroupId: "g" },
+			{ ...clip("b2", 1500, 2000, 4), retimeGroupId: "g" },
+			clip("c", 2000, 3000),
+		];
+		let acc = {
+			clipRegions: clips as ClipRegion[],
+			zoomRegions: [] as ZoomRegion[],
+			annotationRegions: [] as AnnotationRegion[],
+			speedRegions: [] as SpeedRegion[],
+			audioRegions: [] as AudioRegion[],
+		};
+		for (const id of ["b1", "b2"]) {
+			const plan = planClipDelete({ ...acc, clipId: id, ripple: true });
+			expect(plan).not.toBeNull();
+			acc = plan!;
+		}
+		expect(acc.clipRegions.map((c) => c.id)).toEqual(["a", "c"]);
+		// Both members (1000ms total) removed; c rippled from 2000 back to 1000.
+		expect(acc.clipRegions.find((c) => c.id === "c")!.startMs).toBe(1000);
+	});
+
 	it("returns null for an unknown clip id", () => {
 		expect(
 			planClipDelete({
