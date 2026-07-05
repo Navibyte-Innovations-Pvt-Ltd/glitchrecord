@@ -97,6 +97,12 @@ describe("multi-profile capture (two real Chrome profiles + extensions → one s
       };
       await actA();
       await actB();
+      // Profile B then goes idle (e.g. narrating) right up to stop — this is the
+      // real regression: stop() must flush the trailing idle span so the last
+      // stretch of a recording isn't silently dropped from the timeline.
+      // Real extension defaults: idleThresholdMs=3000, idleCheckMs=1000 — wait past
+      // both so checkIdle() has actually flipped into the idle state before stop().
+      await pageB.waitForTimeout(4500);
 
       // Wait until the merged session shows events from BOTH profiles (distinct
       // clientId tags) — capture is async across two SWs + the WS boundary.
@@ -130,6 +136,11 @@ describe("multi-profile capture (two real Chrome profiles + extensions → one s
       // And each profile's page is represented.
       expect(events.some((e) => /playground\.html/.test(e.url ?? "") || /cta/i.test(e.label ?? ""))).toBe(true);
       expect(events.some((e) => /playground2/.test(e.url ?? ""))).toBe(true);
+
+      // REGRESSION: profile B went idle right up to stop() — the trailing idle
+      // span must still be flushed (capture.ts stop() calls breakIdle()), so the
+      // recording's inactive tail isn't silently missing from the timeline.
+      expect(events.some((e) => e.type === "idle")).toBe(true);
     },
     180_000,
   );
