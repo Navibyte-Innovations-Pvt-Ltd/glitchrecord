@@ -87,6 +87,8 @@ export async function generateScript(params: {
   durationSec?: number;
   zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
   noteAnswers?: Array<{ label: string; answer: string }>;
+  // Screenshots of silent stretches (lead-in / idle) so the AI narrates them.
+  visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }>;
 }): Promise<{ script: string } | { error: string }> {
   try {
     const res = await fetch(`${BASE}/api/v1/capture-sessions/${params.sessionId}`, {
@@ -101,6 +103,7 @@ export async function generateScript(params: {
         durationSec: params.durationSec,
         zooms: params.zooms,
         noteAnswers: params.noteAnswers,
+        visualContext: params.visualContext,
       }),
     });
     const data = await res.json().catch(() => null) as
