@@ -40,6 +40,7 @@ interface CaptureEvent {
 	preview?: string;
 	meta?: Record<string, string | number | boolean>;
 	note?: string;
+	client?: string; // which Chrome profile produced this event (multi-profile capture)
 }
 
 interface GlitchgrabAuthStatus {
@@ -155,6 +156,69 @@ function formatMs(ms: number): string {
 	const m = Math.floor(s / 60);
 	if (m > 0) return `${m}m${String(s % 60).padStart(2, "0")}s`;
 	return `${s}s`;
+}
+
+// Distinct hue per Chrome profile, assigned by first-seen order (P1, P2, …).
+const PROFILE_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#ec4899", "#8b5cf6"];
+
+function hostOf(url?: string): string {
+	if (!url) return "";
+	try {
+		return new URL(url).host;
+	} catch {
+		return "";
+	}
+}
+
+interface ProfileTime {
+	client: string;
+	label: string; // friendly hostname (e.g. "testing.localhost:3333")
+	activeMs: number; // share of the timeline this profile was the active one
+	firstT: number; // first appearance — drives P1/P2 ordering
+	count: number;
+}
+
+// How long each Chrome profile was "active", by attributing every gap between
+// consecutive events to the profile that produced the earlier event. The user
+// switches profiles mid-recording; this shows where the time actually went.
+// Sums to the full recording span. Ordered by first appearance (P1, P2, …).
+function computeProfileTimes(events: CaptureEvent[]): ProfileTime[] {
+	if (!events.some((e) => e.client)) return [];
+	const sorted = [...events].sort((a, b) => a.t - b.t);
+	const active = new Map<string, number>();
+	const first = new Map<string, number>();
+	const count = new Map<string, number>();
+	const hostCounts = new Map<string, Map<string, number>>();
+	for (let i = 0; i < sorted.length; i++) {
+		const e = sorted[i];
+		const c = e.client;
+		if (!c) continue;
+		if (!first.has(c)) first.set(c, e.t);
+		count.set(c, (count.get(c) ?? 0) + 1);
+		const next = sorted[i + 1];
+		active.set(c, (active.get(c) ?? 0) + (next ? Math.max(0, next.t - e.t) : 0));
+		const h = hostOf(e.url);
+		if (h) {
+			const hc = hostCounts.get(c) ?? new Map<string, number>();
+			hc.set(h, (hc.get(h) ?? 0) + 1);
+			hostCounts.set(c, hc);
+		}
+	}
+	const domHost = (c: string): string => {
+		let best = "";
+		let bestN = 0;
+		for (const [h, n] of hostCounts.get(c) ?? []) if (n > bestN) [best, bestN] = [h, n];
+		return best;
+	};
+	return [...first.keys()]
+		.sort((a, b) => (first.get(a) ?? 0) - (first.get(b) ?? 0))
+		.map((c) => ({
+			client: c,
+			label: domHost(c) || c.slice(0, 6),
+			activeMs: active.get(c) ?? 0,
+			firstT: first.get(c) ?? 0,
+			count: count.get(c) ?? 0,
+		}));
 }
 
 // TTS engines + voices — mirror the standalone Narration Tester window so the
@@ -1166,10 +1230,16 @@ export function GlitchgrabLogPanel({
 				return lines.join("\n");
 			})
 			.join("\n");
+		const profiles = computeProfileTimes(events);
+		const profileLine =
+			profiles.length >= 2
+				? `profiles: ${profiles.map((p, i) => `P${i + 1} ${p.label} ${formatMs(p.activeMs)}`).join(" · ")}\n`
+				: "";
 		const header =
 			`GlitchGrab event log\n` +
 			`page: ${events.find((e) => e.url)?.url ?? "unknown"}\n` +
 			`events: ${events.length}\n` +
+			profileLine +
 			`${"=".repeat(50)}\n`;
 		const payload = header + text;
 
@@ -1306,7 +1376,23 @@ export function GlitchgrabLogPanel({
 		setNarrationAdded(true);
 	}, [narrationPath, narrationStartSec, onAddNarrationToTimeline]);
 
+	// Per-profile time split (multi-profile recordings) + a stable color per profile.
+	const profileTimes = useMemo(() => computeProfileTimes(events), [events]);
+	const multiProfile = profileTimes.length >= 2;
+	const clientColor = useMemo(() => {
+		const m = new Map<string, string>();
+		profileTimes.forEach((p, i) => m.set(p.client, PROFILE_COLORS[i % PROFILE_COLORS.length]));
+		return m;
+	}, [profileTimes]);
+	const clientIndex = useMemo(() => {
+		const m = new Map<string, number>();
+		profileTimes.forEach((p, i) => m.set(p.client, i + 1));
+		return m;
+	}, [profileTimes]);
+
 	// Memoized so the per-frame re-renders during playback don't re-map 65+ events.
+	// When >1 profile recorded, a colored dot on each row shows which profile it
+	// came from — so profile switches are visible right in the timeline.
 	const eventListEls = useMemo(
 		() =>
 			events.map((e, i) => (
@@ -1314,6 +1400,13 @@ export function GlitchgrabLogPanel({
 					key={`${e.t}-${i}`}
 					className="flex items-start gap-2 rounded-md px-2 py-1.5 text-[12px] hover:bg-foreground/[0.04]"
 				>
+					{multiProfile && e.client && (
+						<span
+							className="mt-1 h-2 w-2 shrink-0 rounded-full"
+							style={{ backgroundColor: clientColor.get(e.client) ?? "transparent" }}
+							title={`Profile ${clientIndex.get(e.client) ?? "?"}`}
+						/>
+					)}
 					<EventIcon type={e.type} />
 					<span className="flex-1 min-w-0 truncate text-foreground/80">
 						{eventText(e)}
@@ -1323,7 +1416,7 @@ export function GlitchgrabLogPanel({
 					</span>
 				</div>
 			)),
-		[events],
+		[events, multiProfile, clientColor, clientIndex],
 	);
 
 	if (!gg()) return null;
@@ -1408,6 +1501,31 @@ export function GlitchgrabLogPanel({
 							<ArrowClockwise className="h-3.5 w-3.5" />
 						</button>
 					</div>
+
+					{/* Per-profile time split — only for multi-profile recordings (you
+					    switched Chrome profiles mid-recording). Shows where the time went. */}
+					{multiProfile && (
+						<div className="flex shrink-0 flex-col gap-1 rounded-lg border border-foreground/10 bg-foreground/[0.03] p-2 text-[11px]">
+							<div className="flex items-center gap-1 font-semibold text-foreground/60">
+								<Clock className="h-3 w-3" /> Time per profile
+							</div>
+							{profileTimes.map((p, i) => (
+								<div key={p.client} className="flex items-center gap-1.5">
+									<span
+										className="h-2 w-2 shrink-0 rounded-full"
+										style={{ backgroundColor: PROFILE_COLORS[i % PROFILE_COLORS.length] }}
+									/>
+									<span className="shrink-0 text-foreground/50">P{i + 1}</span>
+									<span className="min-w-0 flex-1 truncate text-foreground/40" title={p.label}>
+										{p.label}
+									</span>
+									<span className="shrink-0 font-mono text-foreground/70">
+										{formatMs(p.activeMs)}
+									</span>
+								</div>
+							))}
+						</div>
+					)}
 
 					{/* Event list */}
 					{loading ? (
