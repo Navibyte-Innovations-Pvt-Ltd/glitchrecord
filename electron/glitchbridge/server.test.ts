@@ -132,6 +132,10 @@ describe("GlitchGrab bridge protocol", () => {
 		const startMsg = await startPromise;
 		expect(startMsg.sessionId).toBe(sessionId);
 		expect(startMsg.repoName).toBe("My Repo");
+		// Authoritative shared timeline origin: every profile computes event `t`
+		// against this, so multi-profile merges + a restarted SW stay in order.
+		expect(typeof startMsg.startedAt).toBe("number");
+		expect(startMsg.startedAt).toBe(getCurrentSession()?.createdAt);
 
 		// 2. Live event stream reaches the renderer feed
 		chrome.ws.send(JSON.stringify({ type: "event:live", event: SAMPLE_EVENTS[0] }));
@@ -289,6 +293,10 @@ describe("GlitchGrab bridge protocol", () => {
 		const chrome = await connectChrome();
 		const resync = await chrome.waitFor("recording:start");
 		expect(resync.sessionId).toBe(sessionId);
+		// The resync MUST carry the same startedAt as the original start — a late
+		// (or restarted) worker computes `t` from this, so its events land on the
+		// shared timeline instead of resetting to the reconnect moment.
+		expect(resync.startedAt).toBe(getCurrentSession()?.createdAt);
 
 		chrome.close();
 		broadcastRecordingStop(sessionId, {} as never);
