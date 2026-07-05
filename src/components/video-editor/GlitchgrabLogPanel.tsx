@@ -76,6 +76,7 @@ interface GlitchgrabAPI {
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 		noteAnswers?: Array<{ label: string; answer: string }>;
+		visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }>;
 	}) => Promise<{ ok: boolean; script?: string; error?: string }>;
 	refineScript?: (opts: {
 		messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -160,6 +161,31 @@ function formatMs(ms: number): string {
 
 // Distinct hue per Chrome profile, assigned by first-seen order (P1, P2, …).
 const PROFILE_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#ec4899", "#8b5cf6"];
+
+// Stretches where the presenter talked with NO captured clicks — the recording's
+// lead-in (before the extension caught up) and long idle pauses. A screenshot is
+// grabbed at each so the AI can narrate what's on screen where events are silent.
+const LEAD_IN_MIN_MS = 6000; // ignore a trivial lead-in
+const SILENT_GAP_MIN_MS = 10000; // a pause this long between events = worth a frame
+const MAX_SILENT_FRAMES = 8; // cost cap on vision frames per generate
+function computeSilentGaps(events: CaptureEvent[]): Array<{ tMs: number; kind: "lead-in" | "idle" }> {
+	if (events.length === 0) return [];
+	const sorted = [...events].sort((a, b) => a.t - b.t);
+	const gaps: Array<{ tMs: number; kind: "lead-in" | "idle"; span: number }> = [];
+	const firstT = sorted[0].t;
+	if (firstT > LEAD_IN_MIN_MS) gaps.push({ tMs: Math.round(firstT / 2), kind: "lead-in", span: firstT });
+	for (let i = 0; i < sorted.length - 1; i++) {
+		const span = sorted[i + 1].t - sorted[i].t;
+		if (span > SILENT_GAP_MIN_MS)
+			gaps.push({ tMs: sorted[i].t + Math.round(span / 2), kind: "idle", span });
+	}
+	// Keep the lead-in + the largest pauses, capped; then restore timeline order.
+	return gaps
+		.sort((a, b) => (a.kind === "lead-in" ? -1 : b.kind === "lead-in" ? 1 : b.span - a.span))
+		.slice(0, MAX_SILENT_FRAMES)
+		.sort((a, b) => a.tMs - b.tMs)
+		.map(({ tMs, kind }) => ({ tMs, kind }));
+}
 
 function hostOf(url?: string): string {
 	if (!url) return "";
@@ -967,7 +993,10 @@ export function GlitchgrabLogPanel({
 
 	// Actually generate the script (with the user's per-note answers, if any).
 	const runGenerate = useCallback(
-		async (answers?: Array<{ label: string; answer: string }>) => {
+		async (
+			answers?: Array<{ label: string; answer: string }>,
+			visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }>,
+		) => {
 			const api = gg();
 			if (!api?.generateScript) return;
 			setScriptLoading(true);
@@ -982,12 +1011,30 @@ export function GlitchgrabLogPanel({
 					cx: z.focus?.cx,
 					cy: z.focus?.cy,
 				}));
+				// Grab screenshots of silent stretches (lead-in + long pauses) so the AI
+				// narrates what's on screen where no clicks were captured — e.g. the
+				// dashboard the presenter talks over before the first click.
+				let visual = visualContext;
+				if (!visual && onCaptureFrame) {
+					const gaps = computeSilentGaps(events);
+					if (gaps.length > 0) {
+						setVisionProgress(`📸 Capturing ${gaps.length} silent moment${gaps.length === 1 ? "" : "s"}…`);
+						const captured: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }> = [];
+						for (const g of gaps) {
+							const dataUrl = await onCaptureFrame(g.tMs);
+							if (dataUrl) captured.push({ tMs: g.tMs, kind: g.kind, dataUrl });
+						}
+						visual = captured.length ? captured : undefined;
+						setVisionProgress(null);
+					}
+				}
 				const res = await api.generateScript({
 					lang,
 					gender,
 					durationSec: timelineDurationSec,
 					zooms,
 					noteAnswers: answers,
+					visualContext: visual,
 				});
 				if (res.ok && res.script) {
 					setNarrationText(res.script);
@@ -1002,7 +1049,7 @@ export function GlitchgrabLogPanel({
 				setScriptLoading(false);
 			}
 		},
-		[engine, voice, lang, timelineDurationSec, zoomRegions],
+		[engine, voice, lang, timelineDurationSec, zoomRegions, events, onCaptureFrame],
 	);
 
 	// Generate from events: if there are shift-marked notes, ASK what to explain
@@ -1379,6 +1426,20 @@ export function GlitchgrabLogPanel({
 	// Per-profile time split (multi-profile recordings) + a stable color per profile.
 	const profileTimes = useMemo(() => computeProfileTimes(events), [events]);
 	const multiProfile = profileTimes.length >= 2;
+	// The lead-in (recording start → first captured event) is real time the user
+	// spent NOT clicking — e.g. talking over the stats. It belongs to no profile,
+	// so surface it separately + a total, else the split looks like it lost time.
+	const timelineSpan = useMemo(() => {
+		if (events.length === 0) return { leadInMs: 0, lastT: 0 };
+		let min = Infinity;
+		let max = 0;
+		for (const e of events) {
+			if (e.t < min) min = e.t;
+			if (e.t > max) max = e.t;
+		}
+		return { leadInMs: min === Infinity ? 0 : min, lastT: max };
+	}, [events]);
+	const totalMs = timelineDurationSec != null ? timelineDurationSec * 1000 : timelineSpan.lastT;
 	const clientColor = useMemo(() => {
 		const m = new Map<string, string>();
 		profileTimes.forEach((p, i) => m.set(p.client, PROFILE_COLORS[i % PROFILE_COLORS.length]));
@@ -1524,6 +1585,18 @@ export function GlitchgrabLogPanel({
 									</span>
 								</div>
 							))}
+							{/* Time before the first click (talking / setup) — belongs to no profile. */}
+							{timelineSpan.leadInMs > 2000 && (
+								<div className="flex items-center gap-1.5 text-foreground/35">
+									<span className="h-2 w-2 shrink-0 rounded-full border border-foreground/20" />
+									<span className="min-w-0 flex-1 truncate italic">intro — no clicks</span>
+									<span className="shrink-0 font-mono">{formatMs(timelineSpan.leadInMs)}</span>
+								</div>
+							)}
+							<div className="mt-0.5 flex items-center gap-1.5 border-t border-foreground/10 pt-1 text-foreground/50">
+								<span className="min-w-0 flex-1 truncate font-medium">Total</span>
+								<span className="shrink-0 font-mono">{formatMs(totalMs)}</span>
+							</div>
 						</div>
 					)}
 
