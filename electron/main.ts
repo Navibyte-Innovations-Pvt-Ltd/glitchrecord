@@ -1083,6 +1083,7 @@ app.whenReady().then(async () => {
 					cy?: number;
 				}>;
 				noteAnswers?: Array<{ label: string; answer: string }>;
+				visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }>;
 			},
 		) => {
 			const user = getCurrentUser();
@@ -1093,7 +1094,7 @@ app.whenReady().then(async () => {
 
 			appendDebugLog(
 				"rec",
-				`generate-script: uploading ${events.length} events (lang=${opts?.lang ?? "hi"})`,
+				`generate-script: uploading ${events.length} events (lang=${opts?.lang ?? "hi"}${opts?.visualContext?.length ? `, ${opts.visualContext.length} silent-stretch frames` : ""})`,
 			);
 			const dbSessionId = await uploadSession({ events, meta: session?.meta ?? null });
 			if (!dbSessionId) return { ok: false, error: "Failed to save capture session." };
@@ -1107,6 +1108,7 @@ app.whenReady().then(async () => {
 				durationSec: opts?.durationSec,
 				zooms: opts?.zooms,
 				noteAnswers: opts?.noteAnswers,
+				visualContext: opts?.visualContext,
 			});
 			if ("error" in result) {
 				appendDebugLog("rec", `generate-script: failed — ${result.error}`);
