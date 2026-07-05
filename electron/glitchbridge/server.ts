@@ -197,6 +197,7 @@ export function startBridgeServer(callbacks: {
           sessionId: currentSession.id,
           repoId: currentSession.repoId,
           repoName: currentSession.repoName,
+          startedAt: currentSession.createdAt, // authoritative shared timeline origin — survives SW death
         });
         appendDebugLog("rec", `Resynced recording:start to reconnected chrome (${currentSession.id})`);
       }
@@ -314,7 +315,7 @@ export function broadcastRecordingStart(repoId: string, repoName: string): strin
   sessions.set(sessionId, session);
   currentSession = session;
   recordingActive = true;
-  broadcastChrome({ type: "recording:start", sessionId, repoId, repoName });
+  broadcastChrome({ type: "recording:start", sessionId, repoId, repoName, startedAt: session.createdAt });
   console.log(`[GlitchBridge] Recording started: ${sessionId} → ${repoName}`);
   appendDebugLog("rec", `Recording started: ${sessionId} → ${repoName} (chromeClients=${chromeClients.size})`);
   return sessionId;
