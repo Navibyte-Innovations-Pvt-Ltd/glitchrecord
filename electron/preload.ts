@@ -205,6 +205,7 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 		noteAnswers?: Array<{ label: string; answer: string }>;
+		visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }>;
 	}) => ipcRenderer.invoke("glitchbridge:generate-script", opts),
 	refineScript: (opts: {
 		messages: Array<{ role: "user" | "assistant"; content: string }>;
