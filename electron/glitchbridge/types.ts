@@ -42,7 +42,7 @@ export type WsMsg =
   | { type: "auth:ok"; userId: string; name: string }
   | { type: "auth:fail"; reason: string }
   | { type: "repos"; repos: GlitchRepo[] }
-  | { type: "recording:start"; sessionId: string; repoId: string; repoName: string }
+  | { type: "recording:start"; sessionId: string; repoId: string; repoName: string; startedAt: number }
   | { type: "recording:stop"; sessionId: string; meta: RecordingMeta }
   | { type: "events:upload"; sessionId: string; events: CaptureEvent[]; clientId?: string }
   | { type: "event:live"; event: CaptureEvent }
