@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	applyNarrationMute,
 	buildExportAudioRegions,
 	getAvatarBubbleLayout,
 	getAvatarFullFrameLayout,
@@ -13,6 +14,26 @@ import type { AudioRegion } from "./types";
 import { DEFAULT_AVATAR_OVERLAY } from "./types";
 
 const base = { ...DEFAULT_AVATAR_OVERLAY, enabled: true };
+
+describe("applyNarrationMute", () => {
+	const narration: AudioRegion = { id: "n", startMs: 0, endMs: 5000, audioPath: "narr.wav", volume: 1, isNarration: true };
+	const manual: AudioRegion = { id: "m", startMs: 0, endMs: 5000, audioPath: "sfx.wav", volume: 1 };
+	const music: AudioRegion = { id: "bg", startMs: 0, endMs: 5000, audioPath: "song.mp3", volume: 0.3, loop: true };
+
+	it("keeps everything when not silencing", () => {
+		expect(applyNarrationMute([narration, manual, music], false)).toHaveLength(3);
+	});
+
+	it("drops ONLY the narration when silencing — manual audio + music survive", () => {
+		const out = applyNarrationMute([narration, manual, music], true);
+		expect(out.map((r) => r.id)).toEqual(["m", "bg"]);
+		expect(out.some((r) => r.isNarration)).toBe(false);
+	});
+
+	it("is a no-op when there is no narration region", () => {
+		expect(applyNarrationMute([manual, music], true)).toHaveLength(2);
+	});
+});
 
 describe("isAvatarOverlayVisible", () => {
 	it("hidden when settings missing", () => {
