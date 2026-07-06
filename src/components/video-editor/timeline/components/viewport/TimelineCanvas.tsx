@@ -3,6 +3,7 @@ import { useTimelineContext } from "dnd-timeline";
 import {
 	type MouseEvent,
 	type MouseEventHandler,
+	type PointerEvent,
 	memo,
 	useCallback,
 	useEffect,
@@ -580,23 +581,44 @@ export default function TimelineCanvas({
 		[setTimelineRef],
 	);
 
+	// Shift+click drops a speed marker. This MUST fire on pointerDOWN (capture),
+	// not the 'click' the seek-handler below uses: a shift+click landing on a
+	// clip/zoom item engages dnd-kit's drag machinery, whose pointerup handler
+	// calls preventDefault() — which, per the Pointer Events spec, suppresses the
+	// browser's compatibility 'click' event entirely for that interaction. So a
+	// click-based handler here NEVER fires when the marker lands on an item
+	// (which is most of the row — items tile it, leaving little bare canvas).
+	// Item selection already dodges this exact issue by living on pointerdown
+	// (see Item.tsx's handleSelectPointerDown) — this mirrors that fix. Capture
+	// phase + stopPropagation so it also pre-empts the item's own select-on-grab
+	// and dnd-kit's drag start for this interaction (we're placing a marker, not
+	// selecting/dragging).
+	const handleTimelineShiftPointerDown = useCallback(
+		(e: PointerEvent<HTMLDivElement>) => {
+			if (!e.shiftKey || !onShiftMarker || videoDurationMs <= 0) return;
+			const rect = e.currentTarget.getBoundingClientRect();
+			const clickX =
+				direction === "rtl"
+					? rect.right - sidebarWidth - e.clientX
+					: e.clientX - rect.left - sidebarWidth;
+			if (clickX < 0) return;
+			const absMs = Math.max(0, Math.min(range.start + pixelsToValue(clickX), videoDurationMs));
+			e.preventDefault();
+			e.stopPropagation();
+			onShiftMarker(absMs);
+		},
+		[onShiftMarker, videoDurationMs, direction, sidebarWidth, range.start, pixelsToValue],
+	);
+
 	const handleTimelineClick = useCallback(
 		(e: MouseEvent<HTMLDivElement>) => {
 			if (isSeeking) return;
 			if (videoDurationMs <= 0) return;
-
-			// Shift+click drops a speed marker instead of seeking.
-			if (e.shiftKey && onShiftMarker) {
-				const rect = e.currentTarget.getBoundingClientRect();
-				const clickX =
-					direction === "rtl"
-						? rect.right - sidebarWidth - e.clientX
-						: e.clientX - rect.left - sidebarWidth;
-				if (clickX < 0) return;
-				const absMs = Math.max(0, Math.min(range.start + pixelsToValue(clickX), videoDurationMs));
-				onShiftMarker(absMs);
-				return;
-			}
+			// Shift+click is fully handled by handleTimelineShiftPointerDown above
+			// (pointerdown, capture) — bail here so a bare-canvas shift+click (which
+			// DOES still emit a 'click', since nothing suppressed it) doesn't also
+			// run the plain-seek fallthrough below and double-handle the same click.
+			if (e.shiftKey) return;
 
 			if (!onSeek) return;
 
@@ -622,7 +644,6 @@ export default function TimelineCanvas({
 		[
 			isSeeking,
 			onSeek,
-			onShiftMarker,
 			onSelectZoom,
 			onSelectClip,
 			onSelectAnnotation,
@@ -776,6 +797,7 @@ export default function TimelineCanvas({
 			}}
 			className="select-none bg-editor-bg relative cursor-pointer group flex flex-col"
 			data-testid="timeline-canvas"
+			onPointerDownCapture={handleTimelineShiftPointerDown}
 			onMouseDown={handleTimelineMouseDown}
 			onClick={handleTimelineClick}
 			onMouseEnter={handleTimelineMouseEnter}
