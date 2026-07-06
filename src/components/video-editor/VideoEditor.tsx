@@ -143,13 +143,12 @@ const PhAvatar = (props: { className?: string; weight?: "fill" | "regular" }) =>
 // to the audio hook — but an inline `[]` is a fresh identity every render, which busts
 // the hook's `resolvedPlan` memo each render and re-runs its audio-element effects in a
 // loop → the editor freezes. A shared constant keeps the identity stable.
-const EMPTY_AUDIO_REGIONS: AudioRegion[] = [];
 
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { extensionHost } from "@/lib/extensions";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
-import { buildExportAudioRegions } from "./avatarOverlay";
+import { applyNarrationMute, buildExportAudioRegions } from "./avatarOverlay";
 import { buildBackgroundMusicRegion } from "./backgroundMusic";
 import { CardOverlay } from "./CardOverlay";
 import { CropControl } from "./CropControl";
@@ -788,6 +787,12 @@ export default function VideoEditor() {
 	// the user judges the narration track alone (two tracks at once is confusing).
 	// The panel flips this on/off when arming/disarming the preview.
 	const [narrationPreviewMuted, setNarrationPreviewMuted] = useState(false);
+	// User-facing narration mute — independent of the avatar. The narration track
+	// plays in preview + export unless this is on (or the avatar voice is on, which
+	// mutes narration to avoid a double-voice). Gives a way to control the sound
+	// without touching the avatar. Volume uses the narration region's OWN volume
+	// (same value the timeline audio panel edits — one source, surfaced in both).
+	const [narrationMuted, setNarrationMuted] = useState(false);
 	const applySessionPresentation = useCallback(
 		(
 			session:
@@ -4006,17 +4011,40 @@ export default function VideoEditor() {
 		[backgroundMusic, timelineDuration],
 	);
 
-	const exportAudioRegions = useMemo<AudioRegion[]>(() => {
-		const regions = buildExportAudioRegions(audioRegions, avatarOverlay, timelineDuration);
-		return backgroundMusicRegion ? [...regions, backgroundMusicRegion] : regions;
-	}, [audioRegions, avatarOverlay, timelineDuration, backgroundMusicRegion]);
+	// The narration track is silenced ONLY by an explicit choice: the user muting
+	// narration, OR turning on the avatar's own voice (else you'd hear it twice).
+	// Non-narration audio + the music bed are never touched by these.
+	const silenceNarration = narrationMuted || avatarAudioActive;
+	const applyNarrationAudio = useCallback(
+		(regions: AudioRegion[]): AudioRegion[] => applyNarrationMute(regions, silenceNarration),
+		[silenceNarration],
+	);
+	// Narration volume = the narration region's own volume (the timeline audio
+	// panel edits the same field), so tab + timeline stay one source of truth.
+	const narrationVolume = useMemo(
+		() => audioRegions.find((r) => r.isNarration)?.volume ?? 1,
+		[audioRegions],
+	);
+	const handleNarrationVolumeChange = useCallback((volume: number) => {
+		const v = Math.max(0, Math.min(1, volume));
+		setAudioRegions((prev) => prev.map((r) => (r.isNarration ? { ...r, volume: v } : r)));
+	}, []);
 
-	// Preview regions: narration (silenced when the avatar plays its own voice) plus
-	// the music bed. Music always plays in preview so the editor mirrors the export.
+	const exportAudioRegions = useMemo<AudioRegion[]>(() => {
+		const regions = buildExportAudioRegions(
+			applyNarrationAudio(audioRegions),
+			avatarOverlay,
+			timelineDuration,
+		);
+		return backgroundMusicRegion ? [...regions, backgroundMusicRegion] : regions;
+	}, [applyNarrationAudio, audioRegions, avatarOverlay, timelineDuration, backgroundMusicRegion]);
+
+	// Preview regions mirror the export: narration honors its own mute/volume (and
+	// the avatar-voice exclusion); the music bed always plays.
 	const previewAudioRegions = useMemo<AudioRegion[]>(() => {
-		const base = avatarAudioActive ? EMPTY_AUDIO_REGIONS : audioRegions;
+		const base = applyNarrationAudio(audioRegions);
 		return backgroundMusicRegion ? [...base, backgroundMusicRegion] : base;
-	}, [avatarAudioActive, audioRegions, backgroundMusicRegion]);
+	}, [applyNarrationAudio, audioRegions, backgroundMusicRegion]);
 
 	const audio = useVideoEditorAudio({
 		currentSourcePath,
@@ -5013,7 +5041,7 @@ export default function VideoEditor() {
 			span: Span,
 			audioPath: string,
 			trackIndex?: number,
-			opts?: { focusAudioPanel?: boolean },
+			opts?: { focusAudioPanel?: boolean; isNarration?: boolean },
 		) => {
 			const id = `audio-${nextAudioIdRef.current++}`;
 			const newRegion: AudioRegion = {
@@ -5024,6 +5052,7 @@ export default function VideoEditor() {
 				volume: 1,
 				normalize: false,
 				trackIndex,
+				isNarration: opts?.isNarration,
 			};
 			setAudioRegions((prev) => [...prev, newRegion]);
 			// Only jump to the Audio settings panel for manual "Add Layer → audio".
@@ -5047,7 +5076,7 @@ export default function VideoEditor() {
 				{ start: startMs, end: startMs + Math.round(durationSec * 1000) },
 				audioPath,
 				0,
-				{ focusAudioPanel: false },
+				{ focusAudioPanel: false, isNarration: true },
 			);
 		},
 		[handleAudioAdded],
@@ -7204,6 +7233,10 @@ export default function VideoEditor() {
 								onRemoveAvatarSpotlight={handleRemoveAvatarSpotlight}
 								initialAvatarClip={avatarOverlay.sourcePath}
 								avatarMuted={avatarOverlay.muted}
+								narrationMuted={narrationMuted}
+								onNarrationMutedChange={setNarrationMuted}
+								narrationVolume={narrationVolume}
+								onNarrationVolumeChange={handleNarrationVolumeChange}
 							/>
 						) : (
 							<SettingsPanel
@@ -7277,6 +7310,13 @@ export default function VideoEditor() {
 												?.normalize ?? false)
 										: null
 								}
+								selectedAudioIsNarration={
+									selectedAudioId
+										? (audioRegions.find((r) => r.id === selectedAudioId)?.isNarration ?? false)
+										: false
+								}
+								narrationMuted={narrationMuted}
+								onNarrationMutedChange={setNarrationMuted}
 								onAudioVolumeChange={handleAudioVolumeChange}
 								onAudioNormalizeChange={handleAudioNormalizeChange}
 								onAudioDelete={handleAudioDelete}
