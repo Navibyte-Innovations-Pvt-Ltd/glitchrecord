@@ -719,6 +719,11 @@ interface SettingsPanelProps {
 	selectedAudioId?: string | null;
 	selectedAudioVolume?: number | null;
 	selectedAudioNormalize?: boolean | null;
+	/** Is the selected audio region the generated narration? → show its mute toggle. */
+	selectedAudioIsNarration?: boolean;
+	/** Narration mute (independent of the avatar) — same flag as the Narration tab. */
+	narrationMuted?: boolean;
+	onNarrationMutedChange?: (muted: boolean) => void;
 	onAudioVolumeChange?: (volume: number) => void;
 	onAudioNormalizeChange?: (normalize: boolean) => void;
 	onAudioDelete?: (id: string) => void;
@@ -1173,6 +1178,9 @@ export function SettingsPanel({
 	selectedAudioId,
 	selectedAudioVolume,
 	selectedAudioNormalize,
+	selectedAudioIsNarration,
+	narrationMuted,
+	onNarrationMutedChange,
 	onAudioVolumeChange,
 	onAudioNormalizeChange,
 	onAudioDelete,
@@ -3380,6 +3388,27 @@ export function SettingsPanel({
 
 		const audioSectionContent = (
 			<section className="flex flex-col gap-3">
+				{/* Narration mute — same independent flag as the Narration tab, so the
+				    voiceover can be silenced right from its timeline region. */}
+				{selectedAudioIsNarration && onNarrationMutedChange && (
+					<button
+						type="button"
+						onClick={() => onNarrationMutedChange(!narrationMuted)}
+						className="flex items-center gap-2 rounded-lg bg-foreground/[0.03] px-2.5 py-1.5 text-left"
+						title={narrationMuted ? "Unmute narration" : "Mute narration"}
+					>
+						<span
+							className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${narrationMuted ? "bg-foreground/15" : "bg-blue-500"}`}
+						>
+							<span
+								className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${narrationMuted ? "left-0.5" : "left-3.5"}`}
+							/>
+						</span>
+						<span className="flex-1 text-[11px] font-medium text-muted-foreground">
+							{narrationMuted ? "Narration muted" : "Narration voice on"}
+						</span>
+					</button>
+				)}
 				<div className="flex items-center justify-between gap-3">
 					<SectionLabel>{tSettings("audio.volumeTitle", "Audio")}</SectionLabel>
 					<button
