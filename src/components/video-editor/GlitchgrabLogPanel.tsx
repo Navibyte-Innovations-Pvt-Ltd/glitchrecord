@@ -270,6 +270,12 @@ interface GlitchgrabLogPanelProps {
 	/** Current avatar-clip mute state (single source of truth — the overlay). The
 	 * same value the preview PiP button toggles, so panel + preview never desync. */
 	avatarMuted?: boolean;
+	/** Narration audio mute/volume — independent of the avatar, so the voiceover is
+	 * controllable whether or not an avatar is used. */
+	narrationMuted?: boolean;
+	onNarrationMutedChange?: (muted: boolean) => void;
+	narrationVolume?: number;
+	onNarrationVolumeChange?: (volume: number) => void;
 	/** Spotlight regions (avatar goes full-frame) + add/remove at the playhead. */
 	avatarRegions?: Array<{ id: string; startMs: number; endMs: number }>;
 	onAddAvatarSpotlight?: (startMs: number) => void;
@@ -308,6 +314,10 @@ export function GlitchgrabLogPanel({
 	onRemoveAvatarSpotlight,
 	initialAvatarClip,
 	avatarMuted = true,
+	narrationMuted = false,
+	onNarrationMutedChange,
+	narrationVolume = 1,
+	onNarrationVolumeChange,
 }: GlitchgrabLogPanelProps = {}) {
 	const [events, setEvents] = useState<CaptureEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -1797,6 +1807,46 @@ export function GlitchgrabLogPanel({
 									On the timeline now — adjust/trim it there, then export. The
 									video will include the narration.
 								</p>
+							)}
+
+							{/* Narration audio mute + volume — independent of the avatar, so the
+							    voiceover is controllable even when no avatar is used. */}
+							{narrationAdded && (onNarrationMutedChange || onNarrationVolumeChange) && (
+								<div className="flex flex-col gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.03] p-2">
+									<button
+										type="button"
+										onClick={() => onNarrationMutedChange?.(!narrationMuted)}
+										className="flex items-center gap-2 text-left"
+										title={narrationMuted ? "Unmute narration" : "Mute narration"}
+									>
+										<span
+											className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${narrationMuted ? "bg-foreground/15" : "bg-blue-500"}`}
+										>
+											<span
+												className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${narrationMuted ? "left-0.5" : "left-3.5"}`}
+											/>
+										</span>
+										<span className="flex-1 text-[11px] font-medium text-foreground/70">
+											{narrationMuted ? "Narration muted" : "Narration voice on"}
+										</span>
+									</button>
+									<div className="flex items-center gap-2">
+										<span className="text-[10px] text-foreground/40">Volume</span>
+										<input
+											type="range"
+											min={0}
+											max={1}
+											step={0.05}
+											value={narrationVolume}
+											disabled={narrationMuted}
+											onChange={(e) => onNarrationVolumeChange?.(Number(e.target.value))}
+											className="flex-1 disabled:opacity-40"
+										/>
+										<span className="w-8 text-right font-mono text-[10px] text-foreground/50">
+											{Math.round(narrationVolume * 100)}%
+										</span>
+									</div>
+								</div>
 							)}
 
 							<button
