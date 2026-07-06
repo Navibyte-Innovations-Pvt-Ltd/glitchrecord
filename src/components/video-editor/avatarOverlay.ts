@@ -9,6 +9,15 @@ import { getWebcamOverlayPosition, getWebcamOverlaySizePx } from "./webcamOverla
 // its own voice (unmuted) the export would be silent unless we mux the clip's audio.
 // Append the avatar clip as an audio region at t=0 (synced with its timeline-anchored
 // frames). When muted, the timeline narration carries the audio, so leave it untouched.
+// The narration track is silenced only by an explicit choice: the user muting
+// narration, OR the avatar playing its own voice (else the voice doubles). Drops
+// ONLY narration regions — manual audio + the music bed are never touched. Used
+// for BOTH preview and export so the editor mirrors the file.
+export function applyNarrationMute(audioRegions: AudioRegion[], silenceNarration: boolean): AudioRegion[] {
+	if (!silenceNarration) return audioRegions;
+	return audioRegions.filter((r) => !r.isNarration);
+}
+
 export function buildExportAudioRegions(
 	audioRegions: AudioRegion[],
 	avatar: AvatarOverlaySettings,
