@@ -215,7 +215,14 @@ export default function Item({
 						...(isClip ? { borderRadius: 0 } : {}),
 					}}
 					onClick={(event) => {
-						event.stopPropagation();
+						// Shift+click drops a speed marker (TimelineCanvas.handleTimelineClick)
+						// — it must bubble up to the canvas's click handler. Unconditionally
+						// stopping it here meant a shift+click landing on any clip/zoom item
+						// (the common case — items tile the row, leaving little bare canvas)
+						// never reached the carve handler, so nothing split. Plain clicks
+						// still stop here (this item owns its own select-on-pointerdown).
+						if (!event.shiftKey) event.stopPropagation();
+						else (window as unknown as Record<string, boolean>).__GG_SHIFT_ITEM_MARKER = true;
 					}}
 				>
 					<div
