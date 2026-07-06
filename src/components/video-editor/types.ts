@@ -675,6 +675,12 @@ export interface AudioRegion {
 	 * seamless rather than a hard cut/click. Only meaningful when `loop` is true.
 	 */
 	loopCrossfadeMs?: number;
+	/**
+	 * True for the generated TTS narration region (added via "Add to video"). Lets
+	 * preview/export mute JUST the narration independently — without touching manual
+	 * audio or the music bed — when the user mutes narration or turns on avatar voice.
+	 */
+	isNarration?: boolean;
 }
 
 /**
