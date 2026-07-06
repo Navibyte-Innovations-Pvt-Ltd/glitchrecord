@@ -54,7 +54,12 @@ describe("the real fix is in place (no fresh array literal to the audio hook)", 
 		expect(src).not.toMatch(/audioRegions:\s*[^?\n]*\?\s*\[\]\s*:/);
 	});
 
-	it("a stable EMPTY audio-regions constant exists and is used for the muted case", () => {
-		expect(src).toMatch(/EMPTY_AUDIO_REGIONS/);
+	it("previewAudioRegions is memoized (stable identity), so the muted case can't churn", () => {
+		// The freeze-safety guarantee is that what's fed to the audio hook has a
+		// STABLE reference between renders. previewAudioRegions must be a useMemo
+		// (recomputes only when its inputs change), and the narration filter it
+		// calls must be a useCallback — not a fresh function/array each render.
+		expect(src).toMatch(/const previewAudioRegions = useMemo<AudioRegion\[\]>\(/);
+		expect(src).toMatch(/const applyNarrationAudio = useCallback\(/);
 	});
 });
