@@ -2553,6 +2553,11 @@ export default function VideoEditor() {
 		setAnnotationRegions([]);
 		setAudioRegions([]);
 		setBackgroundMusic(null);
+		// Narration mute is a per-recording toggle, not a global editor preference —
+		// without this, muting narration in one project silently carried into the
+		// NEXT recording (new narration added there would be muted with zero
+		// indication why, since the flag predates that project entirely).
+		setNarrationMuted(false);
 		// Avatar PIP is source-scoped too — without this a generated avatar from the
 		// previous project stayed visible on the new one (restore re-adds it if the
 		// new source has its own saved clip).
