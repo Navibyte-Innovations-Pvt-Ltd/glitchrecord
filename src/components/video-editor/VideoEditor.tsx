@@ -4799,6 +4799,13 @@ export default function VideoEditor() {
 			const oldClip = clipRegions.find((c) => c.id === id);
 			const newStart = Math.round(span.start);
 			const newEnd = Math.round(span.end);
+			logEditorAction("clip-span-change", {
+				id,
+				oldStartMs: oldClip?.startMs ?? null,
+				oldEndMs: oldClip?.endMs ?? null,
+				newStartMs: newStart,
+				newEndMs: newEnd,
+			});
 
 			// Seam-drag reroute — MUST run first. The carved segment and its right
 			// neighbour render as one continuous bar, so a user "stretching the marked
@@ -4983,6 +4990,11 @@ export default function VideoEditor() {
 			if (!plan) return;
 
 			if ("blockedReason" in plan) {
+				logEditorAction("clip-speed-change-blocked", {
+					id: selectedClipId,
+					speed,
+					blockedReason: plan.blockedReason,
+				});
 				toast.warning(
 					plan.blockedReason === "clip-overlap"
 						? t(
@@ -4997,6 +5009,7 @@ export default function VideoEditor() {
 				return;
 			}
 
+			logEditorAction("clip-speed-change", { id: selectedClipId, speed });
 			setClipRegions(plan.clipRegions);
 			setZoomRegions(plan.zoomRegions);
 		},
