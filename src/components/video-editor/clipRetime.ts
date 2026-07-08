@@ -1,4 +1,10 @@
-import { type ClipRegion, getClipSourceSpans, sortClipRegions, sourceStartAtBoundary } from "./types";
+import {
+	type ClipRegion,
+	getClipSourceSpans,
+	sortClipRegions,
+	sourceStartAtBoundary,
+	trueSourceStartMs,
+} from "./types";
 
 // Shift+click drops two markers; the span between them is carved into its own
 // clip region at `speed`. Any region overlapping [a, b] is split so the carved
@@ -266,12 +272,13 @@ export function planRetimeDrag(params: {
 		if (clip.id === group.right.id) {
 			// The internal seam moves on the TIMELINE, but the right zone's footage
 			// still starts at the same fixed pivot source frame. Lock the anchor to
-			// its CURRENT startMs before overwriting it with the new boundary.
+			// its TRUE current position (not raw startMs — wrong for a legacy group
+			// created before sourceStartMs existed) before overwriting startMs.
 			return {
 				...clip,
 				startMs: boundaryMs,
 				speed: speedRight,
-				sourceStartMs: clip.sourceStartMs ?? clip.startMs,
+				sourceStartMs: clip.sourceStartMs ?? trueSourceStartMs(clips, clip.id),
 			};
 		}
 		return clip;
