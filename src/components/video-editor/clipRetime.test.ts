@@ -60,23 +60,28 @@ describe("carveSpeedRegion (shift+click two markers)", () => {
 	});
 
 	// The user-reported bug: "I add two markers and speed it up, but the part AFTER
-	// the second marker also plays fast / wrong." Root cause: carving at 2× in place
-	// makes the trailing clip's SOURCE start past where the carved part's source
-	// ended — and past the recording itself. These tests pin the bug and the fix.
-	it("REGRESSION: carving at 2× in place maps the trailing clip past the recording (the bleed)", () => {
+	// the second marker also plays fast / wrong." Root cause (historical): the
+	// trailing clip's source position used to be INFERRED by walking cumulative
+	// duration, so a faster carved middle pushed it past the recording. Each clip
+	// now carries an explicit `sourceStartMs` anchor (see sourceStartAtBoundary in
+	// types.ts) fixed at carve time — the trailing clip's footage no longer moves
+	// no matter what speed the carved middle gets, so the phantom-past-the-end
+	// bleed this test used to pin is gone (maxSourceEnd stays within the real
+	// 30s recording). Carving directly at a non-1× speed is still not the flow the
+	// editor actually uses (see the FIX test below) — real speed changes always go
+	// through planClipSpeedChange, which is where the reflow-safety fix lives.
+	it("carving at 2× in place no longer bleeds past the recording", () => {
 		n = 0;
 		const SOURCE = 30_000;
-		const bad = carveSpeedRegion(
+		const carved = carveSpeedRegion(
 			[{ id: "base", startMs: 0, endMs: SOURCE, speed: 1 }],
 			10_000,
 			20_000,
 			2,
 			newId,
 		);
-		const maxSourceEnd = Math.max(...getClipSourceSpans(bad).map((s) => s.sourceEndMs));
-		// 10s of PHANTOM footage beyond the real 30s recording → the player shows the
-		// wrong (skipped-ahead/frozen) frames after the 2nd marker.
-		expect(maxSourceEnd).toBe(40_000);
+		const maxSourceEnd = Math.max(...getClipSourceSpans(carved).map((s) => s.sourceEndMs));
+		expect(maxSourceEnd).toBe(SOURCE);
 	});
 
 	it("FIX: split at 1× then speed the carved middle (the editor flow) keeps source contiguous", () => {
