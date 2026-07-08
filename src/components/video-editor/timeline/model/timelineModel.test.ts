@@ -47,6 +47,52 @@ describe("timeline model", () => {
 		expect(items.find((i) => i.id === "au1")?.label).toBe("foo");
 	});
 
+	// User's report: an avatar silencing narration gave no visual indication on
+	// the timeline — the narration track looked like any other live audio clip,
+	// so there was no way to tell WHY it was silent short of the avatar detour.
+	it("marks the narration item muted when narrationSilenced, leaves other audio alone", () => {
+		const items = buildTimelineItems({
+			zoomRegions: [],
+			clipRegions: [],
+			annotationRegions: [],
+			audioRegions: [
+				{
+					id: "narr",
+					startMs: 0,
+					endMs: 2000,
+					audioPath: "/tmp/narration-1.wav",
+					volume: 1,
+					isNarration: true,
+				},
+				{ id: "music", startMs: 0, endMs: 2000, audioPath: "/tmp/bg.mp3", volume: 0.5 },
+			],
+			narrationSilenced: true,
+		});
+
+		expect(items.find((i) => i.id === "narr")?.muted).toBe(true);
+		// Non-narration audio must never be affected by narrationSilenced.
+		expect(items.find((i) => i.id === "music")?.muted).toBeUndefined();
+	});
+
+	it("does not mark the narration item muted when narrationSilenced is false/omitted", () => {
+		const items = buildTimelineItems({
+			zoomRegions: [],
+			clipRegions: [],
+			annotationRegions: [],
+			audioRegions: [
+				{
+					id: "narr",
+					startMs: 0,
+					endMs: 2000,
+					audioPath: "/tmp/narration-1.wav",
+					volume: 1,
+					isNarration: true,
+				},
+			],
+		});
+		expect(items.find((i) => i.id === "narr")?.muted).toBe(false);
+	});
+
 	it("exposes clip speed for non-default speed labels", () => {
 		const items = buildTimelineItems({
 			zoomRegions: [],
