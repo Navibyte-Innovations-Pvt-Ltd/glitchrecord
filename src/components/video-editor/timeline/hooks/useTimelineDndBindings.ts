@@ -26,6 +26,7 @@ interface UseTimelineDndBindingsParams {
 	onAnnotationSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onSpeedSpanChange?: (id: string, span: Span) => void;
 	onAudioSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
+	narrationSilenced?: boolean;
 }
 
 type TimelineItemKind = "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | null;
@@ -43,6 +44,7 @@ export function useTimelineDndBindings({
 	onAnnotationSpanChange,
 	onSpeedSpanChange,
 	onAudioSpanChange,
+	narrationSilenced,
 }: UseTimelineDndBindingsParams) {
 	const resolveItemKind = useCallback(
 		(id: string): TimelineItemKind => {
@@ -121,8 +123,9 @@ export function useTimelineDndBindings({
 				annotationRegions,
 				audioRegions,
 				speedRegions,
+				narrationSilenced,
 			}),
-		[zoomRegions, clipRegions, annotationRegions, audioRegions, speedRegions],
+		[zoomRegions, clipRegions, annotationRegions, audioRegions, speedRegions, narrationSilenced],
 	);
 
 	const allRegionSpans = useMemo(
