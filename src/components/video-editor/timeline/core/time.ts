@@ -73,6 +73,23 @@ export function createInitialRange(totalMs: number): Range {
 }
 
 /**
+ * Clamp a visible range against the current total duration WITHOUT re-fitting
+ * the user's chosen zoom when totalMs shrinks (a clip delete or speed-up).
+ * Only `start` is pulled back on-screen — `end` is left alone even past
+ * totalMs, which just shows blank timeline past the (now shorter) content,
+ * like a normal NLE ripple-delete. Letting `end` overshoot is already an
+ * expected state elsewhere (see computeScrollbarThumb's doc comment).
+ */
+export function clampTimelineRange(range: Range, totalMs: number): Range {
+	if (totalMs <= 0) {
+		return range;
+	}
+	const start = Math.max(0, Math.min(range.start, totalMs));
+	const end = Math.max(start, range.end);
+	return { start, end };
+}
+
+/**
  * Geometry for the horizontal pan scrollbar. The thumb's WIDTH is the visible
  * fraction of the timeline; its LEFT is how far the visible window has panned.
  * Derive this from the CLAMPED range (what's actually on screen) so the thumb
