@@ -310,6 +310,25 @@ export function sourceStartAtBoundary(parent: ClipRegion, boundary: number): num
 	return Math.round(parentSourceStart + (boundary - parent.startMs) * getSafeClipSpeed(parent));
 }
 
+/**
+ * The clip's ACTUAL current source position, computed the same way playback
+ * does — NOT `clip.sourceStartMs ?? clip.startMs`. Use this (not the raw
+ * fallback) whenever a WHOLE clip is being shifted/reflowed without its
+ * footage changing (ripple-delete, speed-change reflow, retime drag) and you
+ * need to lock its anchor before overwriting `startMs`. A legacy clip (no
+ * stored `sourceStartMs`) sitting after an earlier speed-changed clip has a
+ * true source position that is NOT its own raw `startMs` — locking to the raw
+ * value there reintroduces the exact "wrong footage after ripple" bug this
+ * field exists to prevent, just via a different edit path (confirmed live:
+ * slowing one clip made the FOLLOWING clip's footage lose exactly the amount
+ * of time the slow-down added).
+ */
+export function trueSourceStartMs(clips: ClipRegion[], clipId: string): number {
+	const span = getClipSourceSpans(clips).find((s) => s.clip.id === clipId);
+	if (span) return span.sourceStartMs;
+	return clips.find((c) => c.id === clipId)?.sourceStartMs ?? 0;
+}
+
 export interface ClipSourceSpan {
 	clip: ClipRegion;
 	/** Effective timeline range after clamping overlaps. Clips can overlap on the
