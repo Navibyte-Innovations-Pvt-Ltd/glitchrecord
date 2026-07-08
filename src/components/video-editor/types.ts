@@ -272,6 +272,16 @@ export interface ClipRegion {
 	muted?: boolean;
 	showSourceAudio?: boolean;
 	/**
+	 * Where this clip's footage actually begins in the ORIGINAL recording (ms).
+	 * `startMs`/`endMs` are the clip's TIMELINE position and get rewritten by
+	 * ripple-delete and speed-change reflow (shifting later clips to stay
+	 * adjacent) — `sourceStartMs` must NOT move when that happens, or a ripple
+	 * silently splices in the wrong footage (see getClipSourceSpans). Set once
+	 * when a clip is created (split/carve/restore); omitted only for a clip
+	 * that has never been split off from another — then it equals `startMs`.
+	 */
+	sourceStartMs?: number;
+	/**
 	 * Two contiguous clips sharing a `retimeGroupId` form one DaVinci-style "speed
 	 * point": a marker inside a single clip with two speed zones. Dragging the
 	 * internal boundary redistributes time between the zones while keeping the
@@ -283,8 +293,21 @@ export interface ClipRegion {
 
 export function getClipSourceEndMs(clip: ClipRegion): number {
 	const displayDurationMs = Math.max(0, clip.endMs - clip.startMs);
-	const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-	return Math.round(clip.startMs + displayDurationMs * speed);
+	const speed = getSafeClipSpeed(clip);
+	const sourceStartMs = clip.sourceStartMs ?? clip.startMs;
+	return Math.round(sourceStartMs + displayDurationMs * speed);
+}
+
+/**
+ * Where a NEW fragment cut from `parent` at TIMELINE position `boundary` truly
+ * lives in the original recording. Use this whenever an edit splits one clip
+ * into pieces (carve, split, speed-point insert, restore-tail) so the new
+ * fragment's `sourceStartMs` is anchored to the parent's real footage instead
+ * of defaulting to its (possibly already-rippled) timeline position.
+ */
+export function sourceStartAtBoundary(parent: ClipRegion, boundary: number): number {
+	const parentSourceStart = parent.sourceStartMs ?? parent.startMs;
+	return Math.round(parentSourceStart + (boundary - parent.startMs) * getSafeClipSpeed(parent));
 }
 
 export interface ClipSourceSpan {
@@ -301,18 +324,23 @@ export interface ClipSourceSpan {
 }
 
 /**
- * Walk clips in timeline order, accumulating their position in the SOURCE
- * recording. Each clip consumes `displayDuration * speed` of source. A timeline
- * GAP between clips (a cut) is treated as removed source at 1× — so the next
- * clip's source picks up past the removed footage. This single rule reconciles
- * cuts (gaps → source advances) with speed changes (slow-mo grows the clip on
- * the timeline but keeps source contiguous), so a slow-mo clip never leaves a
- * phantom gap that the player would try to skip.
+ * Walk clips in timeline order to derive their TIMELINE bounds (overlap-safe),
+ * and read each clip's SOURCE position from its own `sourceStartMs` (falling
+ * back to `startMs` for a clip that's never been split off another).
+ *
+ * This used to INFER source position by accumulating duration and treating a
+ * timeline gap as a cut — which conflated "no gap" with "contiguous source".
+ * That's true for a speed change (subsequent clips shift to stay adjacent, but
+ * their footage is untouched) but false for ripple-delete (a later clip shifts
+ * to close the gap, yet its footage is exactly as far away as before) — ripple
+ * made the deleted clip's absence undetectable and silently spliced in the
+ * wrong footage for everything after it. Reading `sourceStartMs` directly
+ * fixes both cases: it's preserved untouched through any shift (plain object
+ * spread carries it over) and only ever set explicitly when a clip is created.
  */
 export function getClipSourceSpans(clips: ClipRegion[]): ClipSourceSpan[] {
 	const sorted = sortClipRegions(clips);
 	let timelineCursor = 0;
-	let sourceCursor = 0;
 	return sorted.map((clip) => {
 		// Overlap-safe: a clip may start before the previous one ends (carving artifact).
 		// Clamp its visible range to start at the cursor and never move backward, else the
@@ -320,21 +348,16 @@ export function getClipSourceSpans(clips: ClipRegion[]): ClipSourceSpan[] {
 		// playhead back-and-forth at the overlap (the end-of-play marker jump).
 		const timelineStartMs = Math.max(clip.startMs, timelineCursor);
 		const timelineEndMs = Math.max(timelineStartMs, clip.endMs);
-		// A timeline gap before this clip's effective start is a cut → that source is removed.
-		if (timelineStartMs > timelineCursor) {
-			sourceCursor += timelineStartMs - timelineCursor;
-		}
-		const sourceStartMs = sourceCursor;
+		timelineCursor = timelineEndMs;
+		const sourceStartMs = clip.sourceStartMs ?? clip.startMs;
 		const sourceDurationMs =
 			Math.max(0, timelineEndMs - timelineStartMs) * getSafeClipSpeed(clip);
-		sourceCursor = sourceStartMs + sourceDurationMs;
-		timelineCursor = timelineEndMs;
 		return {
 			clip,
 			timelineStartMs: Math.round(timelineStartMs),
 			timelineEndMs: Math.round(timelineEndMs),
 			sourceStartMs: Math.round(sourceStartMs),
-			sourceEndMs: Math.round(sourceCursor),
+			sourceEndMs: Math.round(sourceStartMs + sourceDurationMs),
 		};
 	});
 }
@@ -360,7 +383,7 @@ export function sortClipRegions(clips: ClipRegion[]): ClipRegion[] {
 	return [...clips].sort((left, right) => left.startMs - right.startMs);
 }
 
-function getSafeClipSpeed(clip: ClipRegion) {
+export function getSafeClipSpeed(clip: ClipRegion) {
 	return Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
 }
 
@@ -483,14 +506,15 @@ export function extendAutoFullTrackClip(
 
 /**
  * Convert clip regions (kept segments) to trim regions (source ranges to remove).
- * Trims are emitted in SOURCE time. A timeline gap between two clips is a real cut
- * → the source it skipped is trimmed. Clips that are contiguous on the timeline
- * (e.g. a slow-mo clip and the next clip) leave NO source gap, so they produce no
- * trim — which is what stops the playback freeze at a slow-mo boundary.
+ * Trims are emitted in SOURCE time: any part of the original recording NOT
+ * covered by some clip's [sourceStartMs, sourceEndMs) is a trim. Spans are
+ * sorted by SOURCE position (not timeline position) — ripple-delete can leave
+ * clips timeline-adjacent while their footage sits far apart, and sorting by
+ * timeline order would hide that as "no gap, nothing to trim".
  */
 export function clipsToTrims(clips: ClipRegion[], totalDurationMs: number): TrimRegion[] {
 	if (clips.length === 0) return [];
-	const spans = getClipSourceSpans(clips);
+	const spans = [...getClipSourceSpans(clips)].sort((a, b) => a.sourceStartMs - b.sourceStartMs);
 	const trims: TrimRegion[] = [];
 	let cursor = 0;
 	let trimId = 1;
@@ -498,7 +522,7 @@ export function clipsToTrims(clips: ClipRegion[], totalDurationMs: number): Trim
 		if (sourceStartMs > cursor) {
 			trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: sourceStartMs });
 		}
-		cursor = sourceEndMs;
+		cursor = Math.max(cursor, sourceEndMs);
 	}
 	if (cursor < totalDurationMs) {
 		trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: totalDurationMs });
