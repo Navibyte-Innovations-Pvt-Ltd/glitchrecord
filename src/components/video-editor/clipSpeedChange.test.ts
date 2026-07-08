@@ -9,6 +9,7 @@ import {
 	SPEED_MIN,
 	SPEED_STEP,
 } from "./clipSpeedChange";
+import { getClipSourceSpans } from "./types";
 
 // Right-edge stretch → speed. Models the timeline gesture from the editor:
 // drag a clip's right handle wider to slow it down, squeeze it to speed up.
@@ -251,5 +252,41 @@ describe("planClipSpeedChange", () => {
 				{ id: "zoom-2", startMs: 10_500, endMs: 11_500, depth: 3, focus: { cx: 0.5, cy: 0.5 } },
 			],
 		});
+	});
+
+	// User's report: slowed one clip down (it grew ~45s on the timeline), and the
+	// clip AFTER it lost exactly that much footage — as if the added time was
+	// "stolen" from the neighbour instead of just shifting it. Root cause: the
+	// reflow branch locked the shifted clip's sourceStartMs to its own raw
+	// startMs — correct only for the first clip in a sequence. This project has
+	// an earlier 0.55x clip, so every later un-anchored clip's TRUE source start
+	// is the accumulated total, not its own startMs (same bug class as the
+	// ripple-delete fix, different code path). Fixed via trueSourceStartMs
+	// (types.ts), which computes the real value instead of assuming raw startMs.
+	it("reflow keeps the NEXT clip's own footage duration intact when an earlier legacy clip slows down", () => {
+		const clips = [
+			{ id: "clip-3", startMs: 0, endMs: 111, speed: 1 },
+			{ id: "clip-2", startMs: 111, endMs: 14_013, speed: 0.55 },
+			{ id: "clip-6", startMs: 14_013, endMs: 30_345, speed: 1 },
+			{ id: "clip-5", startMs: 30_345, endMs: 36_458, speed: 0.15 },
+		];
+		const before = getClipSourceSpans(clips).find((s) => s.clip.id === "clip-5")!;
+		const beforeDuration = before.sourceEndMs - before.sourceStartMs;
+
+		const plan = planClipSpeedChange({
+			clipRegions: clips,
+			zoomRegions: [],
+			selectedClipId: "clip-6",
+			speed: 0.5, // slow clip-6 down — it grows on the timeline, clip-5 reflows right
+		});
+		expect(plan && "clipRegions" in plan).toBe(true);
+		const nextClips = (plan as { clipRegions: typeof clips }).clipRegions;
+
+		const after = getClipSourceSpans(nextClips).find((s) => s.clip.id === "clip-5")!;
+		const afterDuration = after.sourceEndMs - after.sourceStartMs;
+
+		// clip-5's own footage duration must be UNCHANGED — only its timeline
+		// position shifts to stay adjacent to the now-wider clip-6.
+		expect(afterDuration).toBeCloseTo(beforeDuration, 0);
 	});
 });
