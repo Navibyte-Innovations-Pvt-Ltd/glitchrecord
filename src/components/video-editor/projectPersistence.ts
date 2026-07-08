@@ -537,6 +537,13 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 							typeof region.showSourceAudio === "boolean"
 								? region.showSourceAudio
 								: false,
+						// Must round-trip: it's what keeps a ripple-delete's footage mapping
+						// correct after the project is saved and reopened. Omitted (not 0) for
+						// legacy projects saved before this field existed — falls back to
+						// startMs, same as before.
+						...(isFiniteNumber(region.sourceStartMs)
+							? { sourceStartMs: Math.round(region.sourceStartMs) }
+							: {}),
 						...(typeof region.retimeGroupId === "string"
 							? { retimeGroupId: region.retimeGroupId }
 							: {}),
