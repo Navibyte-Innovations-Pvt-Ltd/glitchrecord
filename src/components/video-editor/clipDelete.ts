@@ -1,9 +1,10 @@
-import type {
-	AnnotationRegion,
-	AudioRegion,
-	ClipRegion,
-	SpeedRegion,
-	ZoomRegion,
+import {
+	type AnnotationRegion,
+	type AudioRegion,
+	type ClipRegion,
+	type SpeedRegion,
+	trueSourceStartMs,
+	type ZoomRegion,
 } from "./types";
 
 // Deleting a clip CUTS its footage out of the timeline. It does NOT revert the
@@ -83,14 +84,15 @@ export function planClipDelete(params: {
 		if (clip.id === clipId) continue;
 		if (clip.startMs >= endMs) {
 			// Ripple shifts TIMELINE position to close the gap, but the footage this
-			// clip shows must NOT move. Lock in its true source anchor (falling back
-			// to its CURRENT startMs, before the shift below) so a later derivation
-			// can't mistake the shifted startMs for source position.
+			// clip shows must NOT move. Lock in its TRUE current source position
+			// (computed the same way playback does — NOT its raw startMs, which is
+			// wrong for a legacy clip sitting after an earlier speed change) before
+			// the shift below overwrites startMs.
 			nextClips.push({
 				...clip,
 				startMs: clip.startMs - shift,
 				endMs: clip.endMs - shift,
-				sourceStartMs: clip.sourceStartMs ?? clip.startMs,
+				sourceStartMs: clip.sourceStartMs ?? trueSourceStartMs(clipRegions, clip.id),
 			});
 		} else {
 			nextClips.push(clip);
