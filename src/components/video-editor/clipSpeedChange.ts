@@ -86,7 +86,14 @@ export function planClipSpeedChange(params: {
 			return { ...candidate, speed, endMs: newEndMs };
 		}
 		if (candidate.startMs >= oldEndMs) {
-			return { ...candidate, startMs: candidate.startMs + delta, endMs: candidate.endMs + delta };
+			// Reflowed to stay adjacent after the resize — footage is untouched, so
+			// lock the source anchor to its CURRENT startMs before shifting it.
+			return {
+				...candidate,
+				startMs: candidate.startMs + delta,
+				endMs: candidate.endMs + delta,
+				sourceStartMs: candidate.sourceStartMs ?? candidate.startMs,
+			};
 		}
 		return candidate;
 	});
