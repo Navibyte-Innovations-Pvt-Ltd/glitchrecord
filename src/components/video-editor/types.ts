@@ -324,23 +324,32 @@ export interface ClipSourceSpan {
 }
 
 /**
- * Walk clips in timeline order to derive their TIMELINE bounds (overlap-safe),
- * and read each clip's SOURCE position from its own `sourceStartMs` (falling
- * back to `startMs` for a clip that's never been split off another).
+ * Walk clips in timeline order to derive their TIMELINE bounds (overlap-safe)
+ * and each clip's SOURCE position.
  *
- * This used to INFER source position by accumulating duration and treating a
- * timeline gap as a cut — which conflated "no gap" with "contiguous source".
- * That's true for a speed change (subsequent clips shift to stay adjacent, but
- * their footage is untouched) but false for ripple-delete (a later clip shifts
- * to close the gap, yet its footage is exactly as far away as before) — ripple
- * made the deleted clip's absence undetectable and silently spliced in the
- * wrong footage for everything after it. Reading `sourceStartMs` directly
- * fixes both cases: it's preserved untouched through any shift (plain object
- * spread carries it over) and only ever set explicitly when a clip is created.
+ * Two source rules, applied per clip:
+ *  - If `sourceStartMs` is explicitly set (carve/split/restore-tail/ripple-lock
+ *    since that field was introduced), use it directly — it's the one place we
+ *    know true footage position for certain, independent of timeline position.
+ *    This is what fixes ripple-delete: the clip after a deleted one shifts on
+ *    the timeline to close the gap, but its LOCKED anchor keeps pointing at its
+ *    real footage instead of silently splicing in whatever the gap closure now
+ *    lines up with.
+ *  - Otherwise (a clip that predates this field, or was never split/rippled),
+ *    fall BACK to the legacy cumulative-walk inference: source advances by
+ *    `duration * speed` each clip, and a timeline gap (a real cut) advances it
+ *    further. This is NOT simply "use startMs" — a project with an early
+ *    speed-changed clip (e.g. 0.55×) needs every later un-anchored clip's
+ *    source position computed from the accumulated total, not its own raw
+ *    timeline position, or everything after that speed change maps to the
+ *    wrong footage (confirmed against a real pre-existing project: an early
+ *    0.55× clip made a later un-anchored clip's "correct" source position
+ *    7757ms, nowhere near its own startMs of 14013ms).
  */
 export function getClipSourceSpans(clips: ClipRegion[]): ClipSourceSpan[] {
 	const sorted = sortClipRegions(clips);
 	let timelineCursor = 0;
+	let sourceCursor = 0;
 	return sorted.map((clip) => {
 		// Overlap-safe: a clip may start before the previous one ends (carving artifact).
 		// Clamp its visible range to start at the cursor and never move backward, else the
@@ -348,16 +357,29 @@ export function getClipSourceSpans(clips: ClipRegion[]): ClipSourceSpan[] {
 		// playhead back-and-forth at the overlap (the end-of-play marker jump).
 		const timelineStartMs = Math.max(clip.startMs, timelineCursor);
 		const timelineEndMs = Math.max(timelineStartMs, clip.endMs);
-		timelineCursor = timelineEndMs;
-		const sourceStartMs = clip.sourceStartMs ?? clip.startMs;
+
+		let sourceStartMs: number;
+		if (clip.sourceStartMs !== undefined) {
+			sourceStartMs = clip.sourceStartMs;
+		} else {
+			// Legacy path: a timeline gap before this clip's effective start (measured
+			// against the cursor BEFORE this clip) is a real cut → source skips it.
+			if (timelineStartMs > timelineCursor) {
+				sourceCursor += timelineStartMs - timelineCursor;
+			}
+			sourceStartMs = sourceCursor;
+		}
+
 		const sourceDurationMs =
 			Math.max(0, timelineEndMs - timelineStartMs) * getSafeClipSpeed(clip);
+		sourceCursor = sourceStartMs + sourceDurationMs;
+		timelineCursor = timelineEndMs;
 		return {
 			clip,
 			timelineStartMs: Math.round(timelineStartMs),
 			timelineEndMs: Math.round(timelineEndMs),
 			sourceStartMs: Math.round(sourceStartMs),
-			sourceEndMs: Math.round(sourceStartMs + sourceDurationMs),
+			sourceEndMs: Math.round(sourceCursor),
 		};
 	});
 }
