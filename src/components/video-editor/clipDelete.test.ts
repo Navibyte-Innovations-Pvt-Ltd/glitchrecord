@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { planClipDelete } from "./clipDelete";
-import type {
-	AnnotationRegion,
-	AudioRegion,
-	ClipRegion,
-	SpeedRegion,
-	ZoomRegion,
+import { carveSpeedRegion } from "./clipRetime";
+import {
+	type AnnotationRegion,
+	type AudioRegion,
+	type ClipRegion,
+	clipsToTrims,
+	getClipSourceSpans,
+	type SpeedRegion,
+	type ZoomRegion,
 } from "./types";
 
 // Reproduces the user's report: a sped-up clip (21.55×) could not be deleted —
@@ -178,5 +181,44 @@ describe("planClipDelete — reflows clip-scoped effects and audio", () => {
 		expect(ids).not.toContain("snippet"); // snippet fully inside is dropped
 		// The spanning narration starts before the clip → not rippled (startMs < endMs).
 		expect(plan!.audioRegions.find((r) => r.id === "narration")!.startMs).toBe(0);
+	});
+});
+
+// User's report: carve a middle clip via shift+click, select it, delete it —
+// the timeline shows it gone, but PLAYBACK/EXPORT still show the old footage.
+// Root cause: ripple-delete shifts the trailing clip's TIMELINE position to
+// close the gap. getClipSourceSpans/clipsToTrims used to INFER that clip's
+// SOURCE position from the (now-closed) gap, so closing the gap made the cut
+// undetectable — the trailing clip's footage was silently reassigned to
+// whatever the deleted clip's old timeline slot maps to in the source, and the
+// deleted clip's TRUE range was never actually cut. See sourceStartMs in
+// types.ts (ClipRegion) — the fix anchors each clip's footage independently of
+// its timeline position, so ripple can move the box without moving the video.
+describe("planClipDelete — ripple-delete must not corrupt playback/export mapping", () => {
+	it("deleting a carved middle clip trims exactly that footage, not the tail", () => {
+		const original: ClipRegion[] = [{ id: "base", startMs: 0, endMs: 20_020, speed: 1 }];
+		const carved = carveSpeedRegion(original, 6_006, 14_014, 1, () => `x-${Math.random()}`, "middle");
+
+		const plan = planClipDelete({
+			clipRegions: carved,
+			zoomRegions: [],
+			annotationRegions: [],
+			speedRegions: [],
+			audioRegions: [],
+			clipId: "middle",
+			ripple: true,
+		});
+		expect(plan).not.toBeNull();
+
+		// The trim must be exactly the deleted middle span — NOT the untouched tail.
+		const trims = clipsToTrims(plan!.clipRegions, 20_020);
+		expect(trims).toEqual([{ id: "trim-gap-1", startMs: 6_006, endMs: 14_014 }]);
+
+		// The surviving trailing clip must still map to ITS true original footage
+		// (14014–20020), regardless of where ripple moved it on the timeline.
+		const spans = getClipSourceSpans(plan!.clipRegions);
+		const survivor = spans.find((s) => s.timelineStartMs > 0);
+		expect(survivor?.sourceStartMs).toBe(14_014);
+		expect(survivor?.sourceEndMs).toBe(20_020);
 	});
 });
