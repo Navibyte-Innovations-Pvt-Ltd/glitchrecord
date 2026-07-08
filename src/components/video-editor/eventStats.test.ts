@@ -84,4 +84,41 @@ describe("computeSilentGaps", () => {
 		const times = gaps.map((g) => g.tMs);
 		expect([...times].sort((a, b) => a - b)).toEqual(times);
 	});
+
+	// The outro/wrap-up bug: a 10-minute video where the last captured event is
+	// at ~6m — without a trailing gap, script-gen has zero signal for the final
+	// ~4 minutes and silently stops narrating there.
+	it("flags a trailing gap after the last event when the video runs on well past it", () => {
+		const gaps = computeSilentGaps(
+			[{ t: 0 }, { t: 369000 }], // last event at 6m09s
+			623000, // video is 10m23s
+		);
+		const trailing = gaps.find((g) => g.kind === "trailing");
+		expect(trailing).toBeDefined();
+		expect(trailing?.tMs).toBe(369000 + Math.round((623000 - 369000) / 2));
+	});
+
+	it("does not flag a trailing gap when videoDurationMs is omitted (backward compatible)", () => {
+		const gaps = computeSilentGaps([{ t: 0 }, { t: 369000 }]);
+		expect(gaps.some((g) => g.kind === "trailing")).toBe(false);
+	});
+
+	it("ignores a trivial tail (video ends right after the last event)", () => {
+		const gaps = computeSilentGaps([{ t: 0 }, { t: 100000 }], 102000); // 2s tail
+		expect(gaps.some((g) => g.kind === "trailing")).toBe(false);
+	});
+
+	it("keeps BOTH lead-in and trailing as priority endpoints over idle pauses when capping", () => {
+		const events: StatEvent[] = [{ t: 60000 }]; // 60s lead-in
+		let t = 60000;
+		for (let i = 0; i < 12; i++) {
+			t += 15000; // 15s idle gaps, well beyond MAX_SILENT_FRAMES capacity
+			events.push({ t });
+		}
+		const videoDurationMs = t + 60000; // 60s trailing tail
+		const gaps = computeSilentGaps(events, videoDurationMs);
+		expect(gaps.length).toBeLessThanOrEqual(8);
+		expect(gaps[0].kind).toBe("lead-in");
+		expect(gaps[gaps.length - 1].kind).toBe("trailing");
+	});
 });
