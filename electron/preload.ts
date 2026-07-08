@@ -176,6 +176,8 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 	recordingStart: () => ipcRenderer.invoke("glitchbridge:recording-start"),
 	recordingStop: (sessionId: string, meta: unknown) =>
 		ipcRenderer.invoke("glitchbridge:recording-stop", sessionId, meta),
+	logEditorAction: (action: string, details?: unknown) =>
+		ipcRenderer.send("glitchbridge:log-editor-action", action, details),
 	onAuthChanged: (cb: (status: unknown) => void) => {
 		const handler = (_e: unknown, status: unknown) => cb(status);
 		ipcRenderer.on("glitchgrab:auth-changed", handler);
