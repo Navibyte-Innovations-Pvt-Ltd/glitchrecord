@@ -22,7 +22,7 @@ function getDebugLogPath() {
 }
 
 let debugLogResetDone = false;
-export function appendDebugLog(source: "ext" | "rec", text: string) {
+export function appendDebugLog(source: "ext" | "rec" | "editor", text: string) {
   try {
     const ts = new Date().toISOString();
     const line = `[${ts}] [${source}] ${text}\n`;
