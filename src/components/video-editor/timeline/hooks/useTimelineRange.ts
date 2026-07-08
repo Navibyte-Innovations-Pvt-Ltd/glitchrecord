@@ -1,6 +1,6 @@
 import type { Range } from "dnd-timeline";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
+import { clampTimelineRange, createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
 
 interface UseTimelineRangeParams {
 	totalMs: number;
@@ -55,15 +55,10 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 		}
 	}, [totalMs]);
 
-	const clampedRange = useMemo<Range>(() => {
-		if (totalMs === 0) {
-			return range;
-		}
-		return {
-			start: Math.max(0, Math.min(range.start, totalMs)),
-			end: Math.min(range.end, totalMs),
-		};
-	}, [range, totalMs]);
+	const clampedRange = useMemo<Range>(
+		() => clampTimelineRange(range, totalMs),
+		[range, totalMs],
+	);
 
 	const panTimelineRange = useCallback(
 		(deltaMs: number) => {
