@@ -184,7 +184,9 @@ describe("planClipSpeedChange", () => {
 		expect(result).toEqual({
 			clipRegions: [
 				{ id: "clip-1", startMs: 0, endMs: 10_000, speed: 0.5 },
-				{ id: "clip-2", startMs: 10_000, endMs: 15_000, speed: 1 },
+				// Reflowed to stay adjacent — its footage didn't move, so its source
+				// anchor is locked to where it WAS (5000) before the shift.
+				{ id: "clip-2", startMs: 10_000, endMs: 15_000, speed: 1, sourceStartMs: 5_000 },
 			],
 			zoomRegions: [],
 		});
