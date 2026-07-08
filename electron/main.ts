@@ -1037,6 +1037,15 @@ app.whenReady().then(async () => {
 		broadcastRecordingStop(sessionId, meta as Parameters<typeof broadcastRecordingStop>[1]);
 	});
 
+	// Editor activity log — fire-and-forget from the renderer (video-editor UI
+	// actions: delete/split/carve/play etc.) into the SAME unified debug log the
+	// capture pipeline uses, so a bug report can be diagnosed from real logged
+	// user actions instead of asking them to reproduce it live.
+	ipcMain.on("glitchbridge:log-editor-action", (_e, action: string, details?: unknown) => {
+		const suffix = details === undefined ? "" : ` ${JSON.stringify(details)}`;
+		appendDebugLog("editor", `${action}${suffix}`);
+	});
+
 	// On-demand: generate a DeepSeek narration script from the CURRENT captured
 	// events (no recording stop needed). Used by the Narration tab's "Generate
 	// script from events" button. Requires login (web endpoint is token-gated).
