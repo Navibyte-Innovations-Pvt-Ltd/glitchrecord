@@ -35,6 +35,7 @@ export function planRestoreTrimmedTail(params: {
 	const { clipRegions, sourceDurationMs, newClipId, minTailMs = 1 } = params;
 	const spans = getClipSourceSpans(clipRegions);
 	const lastTimelineEnd = spans.length > 0 ? spans[spans.length - 1].timelineEndMs : 0;
+	const lastSourceEnd = spans.length > 0 ? spans[spans.length - 1].sourceEndMs : 0;
 	const tailMs = getTrimmedTailMs(clipRegions, sourceDurationMs);
 	if (tailMs < minTailMs) {
 		return null;
@@ -44,6 +45,10 @@ export function planRestoreTrimmedTail(params: {
 		startMs: lastTimelineEnd,
 		endMs: lastTimelineEnd + tailMs,
 		speed: 1,
+		// Appended at the TIMELINE tail, but its footage is whatever source the
+		// last clip didn't cover — which may differ from lastTimelineEnd if an
+		// earlier ripple-delete already desynced timeline position from source.
+		sourceStartMs: lastSourceEnd,
 	};
 	return [...clipRegions, restored];
 }
