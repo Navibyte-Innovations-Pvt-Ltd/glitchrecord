@@ -44,8 +44,15 @@ describe("planRestoreTrimmedTail", () => {
 		expect(next).toHaveLength(2);
 		// Original clip untouched.
 		expect(next?.[0]).toEqual(clip("a", 0, 6_000));
-		// New clip starts at the timeline end (6000) and runs the leftover 4000ms at 1×.
-		expect(next?.[1]).toEqual({ id: "restore-1", startMs: 6_000, endMs: 10_000, speed: 1 });
+		// New clip starts at the timeline end (6000) and runs the leftover 4000ms at
+		// 1×; its footage anchor (sourceStartMs) is the leftover source start (6000).
+		expect(next?.[1]).toEqual({
+			id: "restore-1",
+			startMs: 6_000,
+			endMs: 10_000,
+			speed: 1,
+			sourceStartMs: 6_000,
+		});
 	});
 
 	it("appends past the timeline end even when clips slowed the footage", () => {
@@ -57,7 +64,13 @@ describe("planRestoreTrimmedTail", () => {
 			sourceDurationMs: 10_000,
 			newClipId: "restore-1",
 		});
-		expect(next?.[1]).toEqual({ id: "restore-1", startMs: 3_000, endMs: 7_000, speed: 1 });
+		expect(next?.[1]).toEqual({
+			id: "restore-1",
+			startMs: 3_000,
+			endMs: 7_000,
+			speed: 1,
+			sourceStartMs: 6_000,
+		});
 	});
 
 	it("restores the whole recording as one clip when empty", () => {
@@ -66,7 +79,9 @@ describe("planRestoreTrimmedTail", () => {
 			sourceDurationMs: 10_000,
 			newClipId: "restore-1",
 		});
-		expect(next).toEqual([{ id: "restore-1", startMs: 0, endMs: 10_000, speed: 1 }]);
+		expect(next).toEqual([
+			{ id: "restore-1", startMs: 0, endMs: 10_000, speed: 1, sourceStartMs: 0 },
+		]);
 	});
 
 	it("returns null when there is nothing to restore", () => {
