@@ -261,6 +261,7 @@ import {
 	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime as resolveTimelineTimeToSourceTime,
 	type SpeedRegion,
+	sourceStartAtBoundary,
 	type TrimRegion,
 	trimsToClips,
 	type WebcamOverlaySettings,
@@ -452,6 +453,22 @@ function shiftRegionsBy<T extends { startMs: number; endMs: number }>(arr: T[], 
 	return by === 0
 		? arr
 		: arr.map((r) => ({ ...r, startMs: r.startMs + by, endMs: r.endMs + by }));
+}
+
+// Fire-and-forget editor activity log — forwards to the SAME unified debug
+// log the capture pipeline uses (glitchgrab-debug.log), so a bug report can be
+// read from real logged actions instead of asking the user to reproduce it
+// live. Never throws — logging must not affect the edit itself.
+function logEditorAction(action: string, details?: Record<string, unknown>) {
+	try {
+		(
+			window as unknown as {
+				glitchgrab?: { logEditorAction?: (action: string, details?: unknown) => void };
+			}
+		).glitchgrab?.logEditorAction?.(action, details);
+	} catch {
+		/* logging must never throw */
+	}
 }
 
 export default function VideoEditor() {
@@ -4641,6 +4658,7 @@ export default function VideoEditor() {
 				);
 				setClipRegions(split);
 				handleSelectClip(carvedId);
+				logEditorAction("clip-carve", { carvedId, startMs: a, endMs: b });
 			}
 		},
 		[handleSelectClip, clipRegions, setClipRegions],
@@ -4679,23 +4697,27 @@ export default function VideoEditor() {
 				if (!target) return prev;
 				const leftId = `clip-${nextClipIdRef.current++}`;
 				const rightId = `clip-${nextClipIdRef.current++}`;
+				const splitPoint = Math.round(splitMs);
 				const left: ClipRegion = {
 					id: leftId,
 					startMs: target.startMs,
-					endMs: Math.round(splitMs),
+					endMs: splitPoint,
 					speed: target.speed,
 					muted: target.muted,
+					sourceStartMs: target.sourceStartMs ?? target.startMs,
 				};
 				const right: ClipRegion = {
 					id: rightId,
-					startMs: Math.round(splitMs),
+					startMs: splitPoint,
 					endMs: target.endMs,
 					speed: target.speed,
 					muted: target.muted,
+					sourceStartMs: sourceStartAtBoundary(target, splitPoint),
 				};
 				if (selectedClipId === target.id) {
 					setSelectedClipId(leftId);
 				}
+				logEditorAction("clip-split", { splitMs: splitPoint, leftId, rightId });
 				return prev.flatMap((c) => (c.id === target.id ? [left, right] : [c]));
 			});
 		},
@@ -4756,6 +4778,7 @@ export default function VideoEditor() {
 				if (selectedClipId === target.id) {
 					setSelectedClipId(result.left.id);
 				}
+				logEditorAction("clip-add-speed-point", { markerMs, groupId });
 				return prev.flatMap((c) =>
 					c.id === target.id ? [result.left, result.right] : [c],
 				);
@@ -4999,6 +5022,13 @@ export default function VideoEditor() {
 		(id: string) => {
 			const deletedClip = clipRegions.find((clip) => clip.id === id);
 			if (!deletedClip) return;
+			logEditorAction("clip-delete", {
+				id,
+				startMs: deletedClip.startMs,
+				endMs: deletedClip.endMs,
+				speed: deletedClip.speed,
+				retimeGroupId: deletedClip.retimeGroupId ?? null,
+			});
 			// Delete CUTS the clip's footage out and ripples the rest left to close the
 			// gap. It never reverts a sped clip to 1× — the Speed panel's "1×" button
 			// does that; reverting on delete ballooned the clip back to full width and
