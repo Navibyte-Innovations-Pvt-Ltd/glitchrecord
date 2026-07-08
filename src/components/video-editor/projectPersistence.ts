@@ -698,22 +698,30 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
 					const endMs = Math.max(startMs + 1, rawEnd);
 
+					const audioPath = typeof region.audioPath === "string" ? region.audioPath : "";
+					// Must round-trip: without it, a reopened project loses the narration
+					// mute toggle (SettingsPanel gates it on this flag) and avatar-mutes-
+					// narration silencing stops recognizing which track is the voiceover.
+					// Projects saved before this flag existed have neither — the narration
+					// pipeline always writes `narration-<timestamp>.<ext>` (main.ts), so
+					// infer it from the filename rather than leaving old projects stuck
+					// with no way to ever unmute a pre-existing narration track.
+					const isNarration =
+						typeof region.isNarration === "boolean"
+							? region.isNarration
+							: /(^|[/\\])narration-/i.test(audioPath) || undefined;
+
 					return {
 						id: region.id,
 						startMs,
 						endMs,
-						audioPath: typeof region.audioPath === "string" ? region.audioPath : "",
+						audioPath,
 						volume: isFiniteNumber(region.volume) ? clamp(region.volume, 0, 1) : 1,
 						normalize: Boolean(region.normalize),
 						trackIndex: isFiniteNumber(region.trackIndex)
 							? Math.max(0, Math.floor(region.trackIndex))
 							: 0,
-						// Must round-trip: without it, a reopened project loses the narration
-						// mute toggle (SettingsPanel gates it on this flag) and avatar-mutes-
-						// narration silencing stops recognizing which track is the voiceover.
-						...(typeof region.isNarration === "boolean"
-							? { isNarration: region.isNarration }
-							: {}),
+						...(isNarration !== undefined ? { isNarration } : {}),
 					};
 				})
 		: [];
