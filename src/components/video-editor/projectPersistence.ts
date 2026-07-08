@@ -708,6 +708,12 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						trackIndex: isFiniteNumber(region.trackIndex)
 							? Math.max(0, Math.floor(region.trackIndex))
 							: 0,
+						// Must round-trip: without it, a reopened project loses the narration
+						// mute toggle (SettingsPanel gates it on this flag) and avatar-mutes-
+						// narration silencing stops recognizing which track is the voiceover.
+						...(typeof region.isNarration === "boolean"
+							? { isNarration: region.isNarration }
+							: {}),
 					};
 				})
 		: [];
