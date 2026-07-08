@@ -7965,6 +7965,7 @@ export default function VideoEditor() {
 						onAudioDelete={handleAudioDelete}
 						selectedAudioId={selectedAudioId}
 						onSelectAudio={handleSelectAudio}
+						narrationSilenced={silenceNarration}
 						annotationRegions={shiftRegionsBy(annotationRegions, leadInMs)}
 						onAnnotationAdded={(span, trackIndex) =>
 							handleAnnotationAdded(shiftSpan(span, -leadInMs), trackIndex)
