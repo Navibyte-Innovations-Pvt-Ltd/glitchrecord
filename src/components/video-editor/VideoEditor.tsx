@@ -767,6 +767,13 @@ export default function VideoEditor() {
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
 	const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
+	useEffect(() => {
+		if (!selectedAudioId) return;
+		logEditorAction("debug-audio-selection", {
+			selectedAudioId,
+			regions: audioRegions.map((r) => ({ id: r.id, isNarration: r.isNarration ?? null })),
+		});
+	}, [selectedAudioId, audioRegions]);
 	const [sourceAudioTrackSettingsByClip, setSourceAudioTrackSettingsByClip] = useState<
 		Record<string, SourceAudioTrackSettings>
 	>({});
