@@ -38,8 +38,19 @@ export function buildTimelineItems(params: {
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
 	speedRegions?: SpeedRegion[];
+	/** Narration silenced by an explicit mute OR the avatar's own unmuted voice —
+	 * shows the narration track's item as disabled so it's clear WHY it's silent,
+	 * instead of looking like a normal live track with no sound. */
+	narrationSilenced?: boolean;
 }): TimelineRenderItem[] {
-	const { zoomRegions, clipRegions, annotationRegions, audioRegions, speedRegions = [] } = params;
+	const {
+		zoomRegions,
+		clipRegions,
+		annotationRegions,
+		audioRegions,
+		speedRegions = [],
+		narrationSilenced = false,
+	} = params;
 	const zooms: TimelineRenderItem[] = zoomRegions.map((region, index) => ({
 		id: region.id,
 		rowId: ZOOM_ROW_ID,
@@ -95,6 +106,7 @@ export function buildTimelineItems(params: {
 		audioPath: region.audioPath,
 		audioGain: region.volume,
 		audioNormalize: Boolean(region.normalize),
+		muted: region.isNarration ? narrationSilenced : undefined,
 		variant: "audio",
 	}));
 
