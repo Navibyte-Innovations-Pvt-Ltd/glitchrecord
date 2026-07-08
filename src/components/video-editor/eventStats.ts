@@ -72,16 +72,24 @@ export function computeProfileTimes(events: StatEvent[]): ProfileTime[] {
 }
 
 // Stretches where the presenter talked with NO captured clicks — the recording's
-// lead-in (before the extension caught up) and long idle pauses. A screenshot is
-// grabbed at each so the AI can narrate what's on screen where events are silent.
+// lead-in (before the extension caught up), long idle pauses, AND the trailing
+// stretch after the LAST event to the actual end of the video (an outro/wrap-up
+// with no clicks is otherwise invisible to script-gen — it only sees events, so
+// it silently stops narrating right where the last event was, even if the video
+// keeps running for minutes more). A screenshot is grabbed at each so the AI can
+// narrate what's on screen where events are silent.
 export const LEAD_IN_MIN_MS = 6000; // ignore a trivial lead-in
 export const SILENT_GAP_MIN_MS = 10000; // a pause this long between events = worth a frame
+export const TRAILING_MIN_MS = 6000; // ignore a trivial tail
 export const MAX_SILENT_FRAMES = 8; // cost cap on vision frames per generate
 
-export function computeSilentGaps(events: StatEvent[]): Array<{ tMs: number; kind: "lead-in" | "idle" }> {
+export function computeSilentGaps(
+	events: StatEvent[],
+	videoDurationMs?: number,
+): Array<{ tMs: number; kind: "lead-in" | "idle" | "trailing" }> {
 	if (events.length === 0) return [];
 	const sorted = [...events].sort((a, b) => a.t - b.t);
-	const gaps: Array<{ tMs: number; kind: "lead-in" | "idle"; span: number }> = [];
+	const gaps: Array<{ tMs: number; kind: "lead-in" | "idle" | "trailing"; span: number }> = [];
 	const firstT = sorted[0].t;
 	if (firstT > LEAD_IN_MIN_MS) gaps.push({ tMs: Math.round(firstT / 2), kind: "lead-in", span: firstT });
 	for (let i = 0; i < sorted.length - 1; i++) {
@@ -89,9 +97,20 @@ export function computeSilentGaps(events: StatEvent[]): Array<{ tMs: number; kin
 		if (span > SILENT_GAP_MIN_MS)
 			gaps.push({ tMs: sorted[i].t + Math.round(span / 2), kind: "idle", span });
 	}
-	// Keep the lead-in + the largest pauses, capped; then restore timeline order.
+	const lastT = sorted[sorted.length - 1].t;
+	if (videoDurationMs !== undefined && videoDurationMs - lastT > TRAILING_MIN_MS) {
+		const span = videoDurationMs - lastT;
+		gaps.push({ tMs: lastT + Math.round(span / 2), kind: "trailing", span });
+	}
+	// Keep the lead-in/trailing endpoints + the largest pauses, capped; then
+	// restore timeline order.
 	return gaps
-		.sort((a, b) => (a.kind === "lead-in" ? -1 : b.kind === "lead-in" ? 1 : b.span - a.span))
+		.sort((a, b) => {
+			const aEnd = a.kind !== "idle" ? 1 : 0;
+			const bEnd = b.kind !== "idle" ? 1 : 0;
+			if (aEnd !== bEnd) return bEnd - aEnd; // endpoints (lead-in/trailing) first
+			return b.span - a.span;
+		})
 		.slice(0, MAX_SILENT_FRAMES)
 		.sort((a, b) => a.tMs - b.tMs)
 		.map(({ tMs, kind }) => ({ tMs, kind }));
