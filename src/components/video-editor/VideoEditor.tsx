@@ -7223,6 +7223,7 @@ export default function VideoEditor() {
 								view={activeEffectSection === "avatar" ? "avatar" : "log"}
 								playbackRef={narrationPlaybackRef}
 								timelineDurationSec={timelineDuration}
+								videoDurationSec={duration}
 								onCaptureFrame={captureFrameAtMs}
 								onSeekTimeline={handleSeek}
 								onTogglePlay={togglePlayPause}
