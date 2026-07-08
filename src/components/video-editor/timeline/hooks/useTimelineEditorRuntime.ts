@@ -62,6 +62,7 @@ interface UseTimelineEditorRuntimeParams {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	narrationSilenced?: boolean;
 	isMac: boolean;
 	keyShortcuts: TimelineShortcutBindings;
 	isTimelineFocusedRef: RefObject<boolean>;
@@ -109,6 +110,7 @@ export function useTimelineEditorRuntime({
 	onAudioDelete,
 	selectedAudioId,
 	onSelectAudio,
+	narrationSilenced,
 	isMac,
 	keyShortcuts,
 	isTimelineFocusedRef,
@@ -187,6 +189,7 @@ export function useTimelineEditorRuntime({
 		onAnnotationSpanChange,
 		onSpeedSpanChange,
 		onAudioSpanChange,
+		narrationSilenced,
 	});
 
 	const {
