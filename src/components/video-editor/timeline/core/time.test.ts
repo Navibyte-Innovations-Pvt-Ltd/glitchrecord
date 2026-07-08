@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	calculateAxisScale,
 	calculateTimelineScale,
+	clampTimelineRange,
 	computeScrollbarThumb,
 	createInitialRange,
 	formatPlayheadTime,
@@ -105,6 +106,46 @@ describe("timeline core/time", () => {
 			const thumb = computeScrollbarThumb(range, 60_000);
 			// Window at the right edge ⇒ thumb's right edge touches 1.
 			expect(thumb.leftFraction + thumb.widthFraction).toBeCloseTo(1, 5);
+		});
+	});
+
+	// Regression: deleting a carved middle clip correctly shrinks the edited
+	// timeline's total duration. clampedRange used to clamp `end` down to the
+	// new (smaller) totalMs, re-fitting the viewport and making every remaining
+	// clip visually WIDEN to fill it — read by users as "the wrong clip got
+	// deleted" even though the right footage was removed. Only `start` should
+	// ever be pulled back; `end` may overshoot totalMs (blank space after the
+	// shorter content), same as a normal NLE ripple-delete.
+	describe("clampTimelineRange — no re-fit when an edit shrinks totalMs", () => {
+		it("leaves the range untouched when it already fits", () => {
+			expect(clampTimelineRange({ start: 0, end: 60_000 }, 60_000)).toEqual({
+				start: 0,
+				end: 60_000,
+			});
+		});
+
+		it("does NOT shrink `end` when totalMs drops below it (the bug)", () => {
+			// User was zoomed to see the whole 60s timeline; a delete shrinks the
+			// edit to 40s. The viewport must NOT re-fit to 40s.
+			const clamped = clampTimelineRange({ start: 0, end: 60_000 }, 40_000);
+			expect(clamped.end).toBe(60_000);
+			expect(clamped.start).toBe(0);
+		});
+
+		it("pulls `start` back if it now sits entirely past the shrunk content", () => {
+			const clamped = clampTimelineRange({ start: 50_000, end: 55_000 }, 40_000);
+			expect(clamped.start).toBe(40_000);
+			// end never drops below the (possibly clamped) start.
+			expect(clamped.end).toBeGreaterThanOrEqual(clamped.start);
+		});
+
+		it("is a no-op while totalMs is still unknown (0)", () => {
+			expect(clampTimelineRange({ start: 10, end: 20 }, 0)).toEqual({ start: 10, end: 20 });
+		});
+
+		it("still lets `end` grow past totalMs when content GROWS (unaffected)", () => {
+			const clamped = clampTimelineRange({ start: 0, end: 40_000 }, 60_000);
+			expect(clamped).toEqual({ start: 0, end: 40_000 });
 		});
 	});
 });
