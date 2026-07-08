@@ -289,6 +289,7 @@ function AudioItemWithWaveform({
 			waveformSegmentSpan={normalizedWaveformSpan}
 			waveformGain={Math.max(0, Math.min(1, item.audioGain ?? 1))}
 			waveformNormalize={Boolean(item.audioNormalize)}
+			muted={item.muted}
 		>
 			{item.label}
 		</Item>
