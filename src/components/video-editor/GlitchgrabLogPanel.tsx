@@ -77,7 +77,7 @@ interface GlitchgrabAPI {
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 		noteAnswers?: Array<{ label: string; answer: string }>;
-		visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }>;
+		visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle" | "trailing"; dataUrl: string }>;
 	}) => Promise<{ ok: boolean; script?: string; error?: string }>;
 	refineScript?: (opts: {
 		messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -232,6 +232,12 @@ interface GlitchgrabLogPanelProps {
 	/** Live playhead in TIMELINE seconds + play state, updated each frame by the editor. */
 	playbackRef?: { current: { timelineTime: number; isPlaying: boolean } };
 	timelineDurationSec?: number;
+	/** RAW recording duration (seconds) — unlike timelineDurationSec, unaffected by
+	 * trims/speed edits. Capture events' `t` and onCaptureFrame both operate in raw
+	 * recording time, so the trailing-silent-gap check needs THIS, not the edited
+	 * timeline length (a slow-mo speed region can make the edited timeline much
+	 * longer than the raw recording, which would misfire the check). */
+	videoDurationSec?: number;
 	/** Seek the video to a timeline-time position (seconds). */
 	onSeekTimeline?: (sec: number) => void;
 	/** Grab a still frame (JPEG data URL) from the raw recording at a recording-time (ms). */
@@ -298,6 +304,7 @@ type AvatarPositionPreset =
 export function GlitchgrabLogPanel({
 	playbackRef,
 	timelineDurationSec,
+	videoDurationSec,
 	onSeekTimeline,
 	onCaptureFrame,
 	onTogglePlay,
@@ -919,7 +926,7 @@ export function GlitchgrabLogPanel({
 	const runGenerate = useCallback(
 		async (
 			answers?: Array<{ label: string; answer: string }>,
-			visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }>,
+			visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle" | "trailing"; dataUrl: string }>,
 		) => {
 			const api = gg();
 			if (!api?.generateScript) return;
@@ -935,15 +942,19 @@ export function GlitchgrabLogPanel({
 					cx: z.focus?.cx,
 					cy: z.focus?.cy,
 				}));
-				// Grab screenshots of silent stretches (lead-in + long pauses) so the AI
-				// narrates what's on screen where no clicks were captured — e.g. the
-				// dashboard the presenter talks over before the first click.
+				// Grab screenshots of silent stretches (lead-in + long pauses + the
+				// trailing outro after the last event) so the AI narrates what's on
+				// screen where no clicks were captured — e.g. the dashboard the
+				// presenter talks over before the first click, or wraps up after the last.
 				let visual = visualContext;
 				if (!visual && onCaptureFrame) {
-					const gaps = computeSilentGaps(events);
+					const gaps = computeSilentGaps(
+						events,
+						videoDurationSec != null ? videoDurationSec * 1000 : undefined,
+					);
 					if (gaps.length > 0) {
 						setVisionProgress(`📸 Capturing ${gaps.length} silent moment${gaps.length === 1 ? "" : "s"}…`);
-						const captured: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }> = [];
+						const captured: Array<{ tMs: number; kind: "lead-in" | "idle" | "trailing"; dataUrl: string }> = [];
 						for (const g of gaps) {
 							const dataUrl = await onCaptureFrame(g.tMs);
 							if (dataUrl) captured.push({ tMs: g.tMs, kind: g.kind, dataUrl });
@@ -973,7 +984,7 @@ export function GlitchgrabLogPanel({
 				setScriptLoading(false);
 			}
 		},
-		[engine, voice, lang, timelineDurationSec, zoomRegions, events, onCaptureFrame],
+		[engine, voice, lang, timelineDurationSec, videoDurationSec, zoomRegions, events, onCaptureFrame],
 	);
 
 	// Generate from events: if there are shift-marked notes, ASK what to explain
