@@ -1,4 +1,4 @@
-import type { ClipRegion, PlaybackSpeed, ZoomRegion } from "./types";
+import { type ClipRegion, type PlaybackSpeed, type ZoomRegion, trueSourceStartMs } from "./types";
 
 export type ClipSpeedChangeBlockReason = "clip-overlap" | "zoom-overlap";
 
@@ -87,12 +87,16 @@ export function planClipSpeedChange(params: {
 		}
 		if (candidate.startMs >= oldEndMs) {
 			// Reflowed to stay adjacent after the resize — footage is untouched, so
-			// lock the source anchor to its CURRENT startMs before shifting it.
+			// lock the source anchor to its TRUE current position (computed the same
+			// way playback does) before shifting it. NOT its raw startMs — a legacy
+			// clip after an earlier speed change has a true source position that
+			// differs from its own startMs.
 			return {
 				...candidate,
 				startMs: candidate.startMs + delta,
 				endMs: candidate.endMs + delta,
-				sourceStartMs: candidate.sourceStartMs ?? candidate.startMs,
+				sourceStartMs:
+					candidate.sourceStartMs ?? trueSourceStartMs(clipRegions, candidate.id),
 			};
 		}
 		return candidate;
