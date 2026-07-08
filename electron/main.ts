@@ -1083,7 +1083,7 @@ app.whenReady().then(async () => {
 					cy?: number;
 				}>;
 				noteAnswers?: Array<{ label: string; answer: string }>;
-				visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle"; dataUrl: string }>;
+				visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle" | "trailing"; dataUrl: string }>;
 			},
 		) => {
 			const user = getCurrentUser();
