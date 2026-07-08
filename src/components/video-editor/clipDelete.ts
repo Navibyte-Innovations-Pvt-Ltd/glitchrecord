@@ -82,7 +82,16 @@ export function planClipDelete(params: {
 	for (const clip of clipRegions) {
 		if (clip.id === clipId) continue;
 		if (clip.startMs >= endMs) {
-			nextClips.push({ ...clip, startMs: clip.startMs - shift, endMs: clip.endMs - shift });
+			// Ripple shifts TIMELINE position to close the gap, but the footage this
+			// clip shows must NOT move. Lock in its true source anchor (falling back
+			// to its CURRENT startMs, before the shift below) so a later derivation
+			// can't mistake the shifted startMs for source position.
+			nextClips.push({
+				...clip,
+				startMs: clip.startMs - shift,
+				endMs: clip.endMs - shift,
+				sourceStartMs: clip.sourceStartMs ?? clip.startMs,
+			});
 		} else {
 			nextClips.push(clip);
 		}
