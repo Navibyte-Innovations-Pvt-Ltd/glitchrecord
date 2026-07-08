@@ -40,4 +40,25 @@ describe("normalizeProjectEditor — round-trips fields added after initial shap
 		expect(normalized.audioRegions.find((r) => r.id === "n1")?.isNarration).toBe(true);
 		expect(normalized.audioRegions.find((r) => r.id === "music")?.isNarration).toBeUndefined();
 	});
+
+	it("infers isNarration from the filename for projects saved before the flag existed", () => {
+		// The narration pipeline always writes narration-<timestamp>.<ext> (see
+		// main.ts). A project saved before isNarration was introduced has NO such
+		// field at all — without this inference it's stuck forever with no mute
+		// toggle, since there's nothing to "preserve" on reload.
+		const normalized = normalizeProjectEditor({
+			audioRegions: [
+				{
+					id: "old-narration",
+					startMs: 0,
+					endMs: 5_000,
+					audioPath: "/Users/x/GlitchRecord/narration-1783418782122.wav",
+					volume: 1,
+				},
+				{ id: "music", startMs: 0, endMs: 5_000, audioPath: "bg-music.mp3", volume: 0.5 },
+			],
+		});
+		expect(normalized.audioRegions.find((r) => r.id === "old-narration")?.isNarration).toBe(true);
+		expect(normalized.audioRegions.find((r) => r.id === "music")?.isNarration).toBeUndefined();
+	});
 });
