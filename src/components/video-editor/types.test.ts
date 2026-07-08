@@ -207,6 +207,76 @@ describe("clip timeline mapping", () => {
 		expect(clipsFromTrims.map((clip) => clip.id)).toEqual(["clip-1", "clip-2", "clip-3"]);
 		expect(deriveNextId("clip", clipsFromTrims.map((clip) => clip.id))).toBe(4);
 	});
+
+	// REGRESSION: adding sourceStartMs (the ripple-delete fix) broke every
+	// PRE-EXISTING project. Legacy clips (created before that field existed)
+	// have no sourceStartMs, and the fix's naive fallback (`?? startMs`) trusted
+	// each clip's own raw timeline position as its source position — correct
+	// only for the very first clip. Once an EARLIER clip runs at a non-1×
+	// speed, every later un-anchored clip's true source position is the
+	// ACCUMULATED total, not its own startMs — using raw startMs there mapped
+	// playback to the wrong footage (reported live: "the between clip is gone,
+	// jumps straight to another shot"). Confirmed against this exact real
+	// project's saved clipRegions.
+	it("legacy clips (no sourceStartMs) after an early speed change still use cumulative inference, not raw startMs", () => {
+		const clips = [
+			{ id: "clip-3", startMs: 0, endMs: 111, speed: 1 },
+			{ id: "clip-2", startMs: 111, endMs: 14_013, speed: 0.55 },
+			{ id: "clip-6", startMs: 14_013, endMs: 30_345, speed: 1 },
+		];
+		const spans = getClipSourceSpans(clips);
+		const clip6 = spans.find((s) => s.clip.id === "clip-6")!;
+		// clip-2 (13902ms @ 0.55x) consumes 7646.1ms of source starting at 111 →
+		// clip-6's TRUE source start is 111 + 7646.1 ≈ 7757, NOT its own raw
+		// startMs of 14013 (which is what the regression produced).
+		expect(clip6.sourceStartMs).toBeCloseTo(7757, 0);
+		expect(clip6.sourceStartMs).not.toBe(14_013);
+	});
+
+	// Same real project, but through the PLAYER-FACING functions (what actually
+	// drives playback + the moving playhead), not just the internal span calc —
+	// proving the user-visible symptoms (footage jump, stuck marker) are gone,
+	// not just that the math looks right in isolation.
+	it("playhead advances continuously through a legacy multi-speed sequence (no stuck marker, no jump)", () => {
+		const clips = [
+			{ id: "clip-3", startMs: 0, endMs: 111, speed: 1 },
+			{ id: "clip-2", startMs: 111, endMs: 14_013, speed: 0.55 },
+			{ id: "clip-6", startMs: 14_013, endMs: 30_345, speed: 1 },
+			{ id: "clip-5", startMs: 30_345, endMs: 36_458, speed: 0.15 },
+		];
+		let previousSource = -1;
+		let stuckOrBackwardSteps = 0;
+		for (let t = 0; t <= 36_458; t += 50) {
+			const source = mapTimelineTimeToSourceTime(t, clips);
+			if (source <= previousSource) stuckOrBackwardSteps++;
+			previousSource = source;
+			// Round-trip: the source time this timeline position maps to must map
+			// back to a timeline position that's actually IN the same clip, not
+			// off in a different clip's territory.
+			const backToTimeline = mapSourceTimeToTimelineTime(source, clips);
+			expect(Math.abs(backToTimeline - t)).toBeLessThan(200);
+		}
+		// A few flat/adjacent steps are fine (sub-ms rounding at 50ms resolution);
+		// the marker "stuck" bug looked like MANY consecutive non-advancing steps.
+		expect(stuckOrBackwardSteps).toBeLessThan(5);
+	});
+
+	// Mixed legacy + explicit-anchor clips (the common real-world shape once a
+	// project has some history predating the fix and some edits done after):
+	// anchored clips must win outright; un-anchored ones on either side keep
+	// using cumulative inference relative to the nearest known position.
+	it("explicit sourceStartMs wins outright; legacy clips around it keep cumulative inference", () => {
+		const clips = [
+			{ id: "a", startMs: 0, endMs: 1_000, speed: 1 }, // legacy: source [0,1000]
+			{ id: "b", startMs: 1_000, endMs: 2_000, speed: 1, sourceStartMs: 5_000 }, // anchored: source [5000,6000]
+			{ id: "c", startMs: 2_000, endMs: 3_000, speed: 1 }, // legacy: continues from b's sourceEnd
+		];
+		const spans = getClipSourceSpans(clips);
+		expect(spans.find((s) => s.clip.id === "a")?.sourceStartMs).toBe(0);
+		expect(spans.find((s) => s.clip.id === "b")?.sourceStartMs).toBe(5_000);
+		expect(spans.find((s) => s.clip.id === "b")?.sourceEndMs).toBe(6_000);
+		expect(spans.find((s) => s.clip.id === "c")?.sourceStartMs).toBe(6_000);
+	});
 });
 
 describe("getTimelineDurationMs", () => {
