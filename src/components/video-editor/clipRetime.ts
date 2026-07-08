@@ -1,4 +1,4 @@
-import { type ClipRegion, getClipSourceSpans, sortClipRegions } from "./types";
+import { type ClipRegion, getClipSourceSpans, sortClipRegions, sourceStartAtBoundary } from "./types";
 
 // Shift+click drops two markers; the span between them is carved into its own
 // clip region at `speed`. Any region overlapping [a, b] is split so the carved
@@ -20,13 +20,26 @@ export function carveSpeedRegion(
 			out.push(r);
 			continue;
 		}
-		if (r.startMs < start) out.push({ ...r, id: newId(), endMs: start });
-		if (r.endMs > end) out.push({ ...r, id: newId(), startMs: end });
+		// Fragments keep the PARENT's real footage, anchored at the boundary — not
+		// the parent's own (possibly already-rippled) startMs. See sourceStartAtBoundary.
+		if (r.startMs < start) {
+			out.push({ ...r, id: newId(), endMs: start, sourceStartMs: r.sourceStartMs ?? r.startMs });
+		}
+		if (r.endMs > end) {
+			out.push({ ...r, id: newId(), startMs: end, sourceStartMs: sourceStartAtBoundary(r, end) });
+		}
 	}
 	// The carved region's id is returned to the caller (via `carvedId`) so it can
 	// be auto-selected — selection is what lets the seam-drag reroute know which
 	// segment the user means to re-speed. See handleClipSpanChange.
-	out.push({ id: carvedId ?? newId(), startMs: start, endMs: end, speed });
+	const carvedParent = regions.find((r) => r.startMs <= start && r.endMs >= end) ?? regions[0];
+	out.push({
+		id: carvedId ?? newId(),
+		startMs: start,
+		endMs: end,
+		speed,
+		sourceStartMs: carvedParent ? sourceStartAtBoundary(carvedParent, start) : start,
+	});
 	out.sort((x, y) => x.startMs - y.startMs);
 	return out;
 }
@@ -108,6 +121,7 @@ export function planSpeedPointInsert(params: {
 		...clip,
 		id: rightClipId,
 		startMs: markerMs,
+		sourceStartMs: sourceStartAtBoundary(clip, markerMs),
 		retimeGroupId: groupId,
 	};
 	return { left, right };
@@ -250,7 +264,15 @@ export function planRetimeDrag(params: {
 			return { ...clip, endMs: boundaryMs, speed: speedLeft };
 		}
 		if (clip.id === group.right.id) {
-			return { ...clip, startMs: boundaryMs, speed: speedRight };
+			// The internal seam moves on the TIMELINE, but the right zone's footage
+			// still starts at the same fixed pivot source frame. Lock the anchor to
+			// its CURRENT startMs before overwriting it with the new boundary.
+			return {
+				...clip,
+				startMs: boundaryMs,
+				speed: speedRight,
+				sourceStartMs: clip.sourceStartMs ?? clip.startMs,
+			};
 		}
 		return clip;
 	});
