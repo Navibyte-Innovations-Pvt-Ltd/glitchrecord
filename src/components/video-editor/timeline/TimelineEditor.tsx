@@ -92,6 +92,10 @@ export interface TimelineEditorProps {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	/** Narration silenced by an explicit mute OR an active avatar's own voice —
+	 * shows the narration track's timeline clip in a disabled/muted state so it's
+	 * clear WHY there's no sound, instead of looking like a normal, live track. */
+	narrationSilenced?: boolean;
 	videoPath?: string | null;
 	videoSourcePath?: string | null;
 	cursorTelemetrySourcePath?: string | null;
@@ -176,6 +180,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			narrationSilenced = false,
 			videoPath,
 			videoSourcePath,
 			cursorTelemetrySourcePath,
@@ -411,6 +416,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			narrationSilenced,
 			isMac,
 			keyShortcuts,
 			isTimelineFocusedRef,
