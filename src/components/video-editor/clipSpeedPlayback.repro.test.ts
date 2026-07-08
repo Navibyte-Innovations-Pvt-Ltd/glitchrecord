@@ -28,7 +28,12 @@ describe("slow-mo clip playback (repro)", () => {
 	// source — nothing is dropped.
 	const clips: ClipRegion[] = [
 		{ id: "c1", startMs: 0, endMs: 20000, speed: 0.75 }, // source [0..15000]
-		{ id: "c2", startMs: 20000, endMs: 113000, speed: 1 }, // source [15000..108000]
+		// c2's footage genuinely starts at source 15000 (right after c1's), even
+		// though planClipSpeedChange's reflow moved its TIMELINE position to 20000
+		// to stay adjacent to the now-wider c1. sourceStartMs is what that reflow
+		// locks in (see clipSpeedChange.ts) — without it this fixture can't
+		// distinguish "shifted to stay adjacent" from "actually a cut".
+		{ id: "c2", startMs: 20000, endMs: 113000, speed: 1, sourceStartMs: 15000 }, // source [15000..108000]
 	];
 
 	it("does NOT create a skip/trim gap for a contiguous slow-mo clip", () => {
