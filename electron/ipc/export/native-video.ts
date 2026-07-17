@@ -687,13 +687,13 @@ async function persistNvidiaCudaExportDiagnostics(params: {
 				const sourcePath = getCliArgValue(params.args, argName);
 				return sourcePath
 					? {
-							argName,
-							sourcePath,
-							outputPath: path.join(
-								artifactsDirectory,
-								`${getSafeDiagnosticsFileSegment(argName.replace(/^--/, ""))}-${path.basename(sourcePath)}`,
-							),
-						}
+						argName,
+						sourcePath,
+						outputPath: path.join(
+							artifactsDirectory,
+							`${getSafeDiagnosticsFileSegment(argName.replace(/^--/, ""))}-${path.basename(sourcePath)}`,
+						),
+					}
 					: null;
 			})
 			.filter((artifact): artifact is NonNullable<typeof artifact> => Boolean(artifact));
@@ -1410,7 +1410,7 @@ async function runFfmpegAudioMux(
 				reject(
 					new Error(
 						`FFmpeg audio mux exited with code ${code ?? "unknown"}${suffix}` +
-							(stderr.trim() ? `\nSTDERR:\n${stderr.trim()}` : ""),
+						(stderr.trim() ? `\nSTDERR:\n${stderr.trim()}` : ""),
 					),
 				);
 				return;
@@ -1635,8 +1635,8 @@ function getStaticLayoutChunkOutputPath(directory: string, index: number) {
 function shouldUsePrecompositedStaticLayout(options: NativeStaticLayoutExportOptions) {
 	return Boolean(
 		options.backgroundImagePath ||
-			(options.borderRadius ?? 0) > 0.5 ||
-			(options.shadowIntensity ?? 0) > 0,
+		(options.borderRadius ?? 0) > 0.5 ||
+		(options.shadowIntensity ?? 0) > 0,
 	);
 }
 
@@ -1687,9 +1687,9 @@ function hasNativeStaticLayoutTimeline(options: NativeStaticLayoutExportOptions)
 function hasNativeStaticLayoutSourceCrop(options: NativeStaticLayoutExportOptions) {
 	return Boolean(
 		Number.isFinite(options.sourceCropWidth) &&
-			Number.isFinite(options.sourceCropHeight) &&
-			(options.sourceCropWidth ?? 0) >= 2 &&
-			(options.sourceCropHeight ?? 0) >= 2,
+		Number.isFinite(options.sourceCropHeight) &&
+		(options.sourceCropWidth ?? 0) >= 2 &&
+		(options.sourceCropHeight ?? 0) >= 2,
 	);
 }
 
@@ -2909,8 +2909,8 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				const elapsedMs = Math.max(0, getNowMs() - startedAt);
 				const averageFps =
 					typeof progress.averageFps === "number" &&
-					Number.isFinite(progress.averageFps) &&
-					progress.averageFps > 0
+						Number.isFinite(progress.averageFps) &&
+						progress.averageFps > 0
 						? progress.averageFps
 						: elapsedMs > 0 && progress.currentFrame > 0
 							? (progress.currentFrame * 1000) / elapsedMs
@@ -2981,9 +2981,9 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				fs.writeFile(path.join(chunkDirectory, "nvidia-cuda-export.stderr.log"), stderr),
 				summary
 					? fs.writeFile(
-							path.join(chunkDirectory, "nvidia-cuda-export.summary.json"),
-							`${JSON.stringify(summary, null, 2)}\n`,
-						)
+						path.join(chunkDirectory, "nvidia-cuda-export.summary.json"),
+						`${JSON.stringify(summary, null, 2)}\n`,
+					)
 					: Promise.resolve(),
 			]);
 			await persistNvidiaCudaExportDiagnostics({
@@ -3006,8 +3006,8 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 						(stallTimedOut && stallTimeoutMs
 							? `Experimental NVIDIA CUDA exporter stalled for ${stallTimeoutMs}ms without progress`
 							: stderr.trim()) ||
-							stdout.trim() ||
-							`Experimental NVIDIA CUDA exporter exited with code ${code ?? "unknown"}${suffix}`,
+						stdout.trim() ||
+						`Experimental NVIDIA CUDA exporter exited with code ${code ?? "unknown"}${suffix}`,
 					),
 				);
 				return;
@@ -3169,8 +3169,8 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 						(stallTimedOut && stallTimeoutMs
 							? `Experimental Windows GPU exporter stalled for ${stallTimeoutMs}ms without progress`
 							: stderr.trim()) ||
-							stdout.trim() ||
-							`Experimental Windows GPU exporter exited with code ${code ?? "unknown"}${suffix}`,
+						stdout.trim() ||
+						`Experimental Windows GPU exporter exited with code ${code ?? "unknown"}${suffix}`,
 					),
 				);
 				return;
@@ -3258,7 +3258,7 @@ export async function exportNativeStaticLayoutVideo(
 			metrics.staticAssetExecMs = (metrics.staticAssetExecMs ?? 0) + sourceInput.elapsedMs;
 		}
 		if (sourceInput.inputPath !== options.inputPath) {
-			console.info("[native-static-layout-export] Prepared H.264 source proxy", {
+			console.info("[native-static-layout-export] Prepared H.264 source proxy ", {
 				sourceCodec: sourceInput.sourceCodec,
 				proxyCodec: sourceInput.proxyCodec,
 				elapsedMs: sourceInput.elapsedMs,
