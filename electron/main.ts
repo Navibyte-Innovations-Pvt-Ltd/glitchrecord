@@ -24,7 +24,6 @@ import { registerExtensionIpcHandlers } from "./extensions/extensionIpc";
 import {
 	BASE as GLITCHGRAB_URL,
 	createIssue,
-	createTesterReport,
 	generateScript,
 	getNoteQuestions,
 	refineScript,
@@ -1183,31 +1182,18 @@ app.whenReady().then(async () => {
 		},
 	);
 
-	// Create the GitHub issue from the current session's script. If a tester is
-	// logged into the Chrome extension, route through THEIR gg_ token so the
-	// Report is tagged source=EXTENSION_TESTER (#297) instead of the account
-	// logged into GlitchRecord itself.
+	// Create the GitHub issue from the current session's script, always through
+	// the GlitchRecord account's own repo/token. If a tester is logged into the
+	// Chrome extension (manual paste OR QA magic-link auto-login, #297), their
+	// name/email ride along so the web API also tags a Report as theirs
+	// (source=EXTENSION_TESTER) — pure attribution, doesn't change where the
+	// issue is filed.
 	ipcMain.handle(
 		"glitchbridge:create-issue",
 		async (_e, opts: { title: string; body: string }) => {
 			if (!opts?.title?.trim()) return { ok: false, error: "Title required." };
 			const session = getCurrentSession();
 			if (!session?.repoId) return { ok: false, error: "No repo selected for this recording." };
-
-			if (session.tester) {
-				const pageUrl = session.events.find((ev) => ev.url)?.url;
-				const result = await createTesterReport({
-					testerToken: session.tester.token,
-					testerName: session.tester.name,
-					testerEmail: session.tester.email,
-					title: opts.title,
-					body: opts.body,
-					pageUrl,
-				});
-				if (!result) return { ok: false, error: "Failed to create issue as tester." };
-				appendDebugLog("rec", `create-issue: created as tester ${session.tester.name} → ${result.url}`);
-				return { ok: true, issueUrl: result.url, issueNumber: result.number };
-			}
 
 			const user = getCurrentUser();
 			if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
@@ -1216,9 +1202,14 @@ app.whenReady().then(async () => {
 				repoId: session.repoId,
 				title: opts.title,
 				body: opts.body,
+				testerName: session.tester?.name,
+				testerEmail: session.tester?.email,
 			});
 			if (!result) return { ok: false, error: "Failed to create issue." };
-			appendDebugLog("rec", `create-issue: created → ${result.url}`);
+			appendDebugLog(
+				"rec",
+				`create-issue: created${session.tester ? ` (tester: ${session.tester.name})` : ""} → ${result.url}`,
+			);
 			return { ok: true, issueUrl: result.url, issueNumber: result.number };
 		},
 	);
