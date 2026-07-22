@@ -237,7 +237,7 @@ export function startBridgeServer(callbacks: {
       // Tester logged into the extension (or reconnected) — remember their
       // identity so it can be stamped onto the next recording session (#297).
       if (msg.type === "tester:identity") {
-        currentTesterIdentity = { token: msg.token, name: msg.name, email: msg.email, sessionId: msg.sessionId };
+        currentTesterIdentity = { name: msg.name, email: msg.email, sessionId: msg.sessionId };
         if (currentSession) currentSession.tester = currentTesterIdentity;
         appendDebugLog("rec", `tester:identity — ${msg.name}`);
         return;
