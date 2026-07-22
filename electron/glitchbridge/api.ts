@@ -62,6 +62,47 @@ export async function createIssue(params: {
   } catch { return null; }
 }
 
+// Create the GitHub issue via the tester's OWN gg_ token instead of the
+// GlitchRecord account's GlitchRecordToken (#297). Routes through the same
+// /api/v1/sdk/report pipeline the SDK uses (dedup/screenshot/webhook logic
+// already lives there) so the Report is tagged source=EXTENSION_TESTER and
+// attributed to the tester logged into the Chrome extension, not whoever is
+// logged into GlitchRecord itself.
+export async function createTesterReport(params: {
+  testerToken: string;
+  testerName: string;
+  testerEmail?: string;
+  title: string;
+  body: string;
+  pageUrl?: string;
+}): Promise<{ url: string; number: number } | null> {
+  try {
+    const res = await fetch(`${BASE}/api/v1/sdk/report`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.testerToken}`,
+      },
+      body: JSON.stringify({
+        source: "EXTENSION_TESTER",
+        description: `${params.title}\n\n${params.body}`,
+        pageUrl: params.pageUrl,
+        metadata: {
+          sessionUserId: params.testerEmail ?? params.testerName,
+          sessionUserName: params.testerName,
+          sessionUserEmail: params.testerEmail ?? "",
+        },
+      }),
+    });
+    const data = await res.json() as {
+      success: boolean;
+      data?: { issueUrl?: string; issueNumber?: number };
+    };
+    if (!data.success || !data.data?.issueUrl || !data.data.issueNumber) return null;
+    return { url: data.data.issueUrl, number: data.data.issueNumber };
+  } catch { return null; }
+}
+
 // Create a DB capture session with the events, returns its id (cuid)
 export async function uploadSession(params: {
   events: unknown[];
