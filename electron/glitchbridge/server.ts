@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
 import { WebSocketServer, WebSocket } from "ws";
-import type { Session, WsMsg, RecordingMeta, CaptureEvent } from "./types";
+import type { Session, WsMsg, RecordingMeta, CaptureEvent, TesterIdentity } from "./types";
 import { validateToken, getRepos, generateScript, uploadSession } from "./api";
 import { loadAuth } from "./auth";
 
@@ -75,6 +75,11 @@ let wss: WebSocketServer | null = null;
 let currentUser: { id: string; name: string; token: string } | null = null;
 let currentSession: Session | null = null;
 let recordingActive = false; // true between recording start and stop
+
+// Last tester identity the extension sent (login can happen before or after
+// Record is pressed — this survives until the next recording:start, when it's
+// stamped onto the new Session). Cleared on tester:logout (#297).
+let currentTesterIdentity: TesterIdentity | null = null;
 
 // Load token from disk (set during GlitchRecord login) so the bridge is
 // authenticated without needing a WS auth handshake.
@@ -229,6 +234,22 @@ export function startBridgeServer(callbacks: {
         return;
       }
 
+      // Tester logged into the extension (or reconnected) — remember their
+      // identity so it can be stamped onto the next recording session (#297).
+      if (msg.type === "tester:identity") {
+        currentTesterIdentity = { token: msg.token, name: msg.name, email: msg.email, sessionId: msg.sessionId };
+        if (currentSession) currentSession.tester = currentTesterIdentity;
+        appendDebugLog("rec", `tester:identity — ${msg.name}`);
+        return;
+      }
+
+      if (msg.type === "tester:logout") {
+        currentTesterIdentity = null;
+        if (currentSession) currentSession.tester = undefined;
+        appendDebugLog("rec", "tester:logout");
+        return;
+      }
+
       // Auth
       if (msg.type === "auth") {
         const user = await validateToken(msg.token);
@@ -311,6 +332,7 @@ export function broadcastRecordingStart(repoId: string, repoName: string): strin
     repoId, repoName,
     events: [], meta: null, script: null, issueUrl: null,
     createdAt: Date.now(),
+    tester: currentTesterIdentity ?? undefined,
   };
   sessions.set(sessionId, session);
   currentSession = session;
