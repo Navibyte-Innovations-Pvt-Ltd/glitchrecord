@@ -22,6 +22,17 @@ export interface Session {
   uploadedClients?: Set<string>; // clientIds that already uploaded — dedups double-stop, merges distinct profiles
   mergeTimer?: ReturnType<typeof setTimeout>; // open merge window: late uploads from other profiles merge before processing
   liveByClient?: Map<string, CaptureEvent[]>; // events streamed live per profile — survives SW death + missed stop on idle secondary profiles
+  /** Set when the Chrome extension has a tester logged in (#297) — routes the
+   *  eventual "Create Issue" through the tester's own gg_ token so the Report
+   *  is tagged source=EXTENSION_TESTER instead of the GlitchRecord account's. */
+  tester?: TesterIdentity;
+}
+
+export interface TesterIdentity {
+  token: string;
+  name: string;
+  email?: string;
+  sessionId: string;
 }
 
 export interface CaptureEvent {
@@ -45,6 +56,8 @@ export type WsMsg =
   | { type: "recording:start"; sessionId: string; repoId: string; repoName: string; startedAt: number }
   | { type: "recording:stop"; sessionId: string; meta: RecordingMeta }
   | { type: "events:upload"; sessionId: string; events: CaptureEvent[]; clientId?: string }
+  | { type: "tester:identity"; token: string; name: string; email?: string; sessionId: string }
+  | { type: "tester:logout" }
   | { type: "event:live"; event: CaptureEvent }
   | { type: "script:ready"; sessionId: string; script: string }
   | { type: "issue:created"; sessionId: string; issueUrl: string; issueNumber: number }
