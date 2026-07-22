@@ -368,4 +368,56 @@ describe("GlitchGrab bridge protocol", () => {
 		expect(stopCount).toBe(1);
 		chrome.close();
 	});
+
+	// #297 — a tester logged into the extension should have their identity
+	// stamped onto the session so the eventual issue is attributed to them.
+	it("stamps tester identity (sent before recording:start) onto the new session", async () => {
+		const chrome = await connectChrome();
+		chrome.ws.send(JSON.stringify({
+			type: "tester:identity",
+			token: "gg_testertoken",
+			name: "Priya QA",
+			email: "priya@example.com",
+			sessionId: "ext-session-1",
+		}));
+		await tick();
+
+		const startP = chrome.waitFor("recording:start");
+		const sessionId = broadcastRecordingStart("repo6", "Repo Six");
+		await startP;
+
+		const s = getCurrentSession();
+		expect(s?.tester).toEqual({
+			token: "gg_testertoken",
+			name: "Priya QA",
+			email: "priya@example.com",
+			sessionId: "ext-session-1",
+		});
+
+		chrome.close();
+		broadcastRecordingStop(sessionId, {} as never);
+	});
+
+	it("tester:logout clears the identity from the current session", async () => {
+		const chrome = await connectChrome();
+		chrome.ws.send(JSON.stringify({
+			type: "tester:identity",
+			token: "gg_testertoken2",
+			name: "Rahul QA",
+			sessionId: "ext-session-2",
+		}));
+		await tick();
+
+		const startP = chrome.waitFor("recording:start");
+		const sessionId = broadcastRecordingStart("repo7", "Repo Seven");
+		await startP;
+		expect(getCurrentSession()?.tester?.name).toBe("Rahul QA");
+
+		chrome.ws.send(JSON.stringify({ type: "tester:logout" }));
+		await tick();
+		expect(getCurrentSession()?.tester).toBeUndefined();
+
+		chrome.close();
+		broadcastRecordingStop(sessionId, {} as never);
+	});
 });
