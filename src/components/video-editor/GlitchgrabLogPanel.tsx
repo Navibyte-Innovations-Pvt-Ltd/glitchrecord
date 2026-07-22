@@ -87,6 +87,12 @@ interface GlitchgrabAPI {
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 	}) => Promise<{ ok: boolean; reply?: string; script?: string | null; error?: string }>;
+	createIssue?: (opts: { title: string; body: string }) => Promise<{
+		ok: boolean;
+		issueUrl?: string;
+		issueNumber?: number;
+		error?: string;
+	}>;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -383,6 +389,12 @@ export function GlitchgrabLogPanel({
 	const [narrationStage, setNarrationStage] = useState("");
 	const [narrationElapsed, setNarrationElapsed] = useState(0);
 	const [tab, setTab] = useState<"events" | "narration">("events");
+	// Create GitHub issue from the script (#297) — routed through the tester's
+	// own gg_ token when one is logged into the extension, else the GlitchRecord
+	// account. Kept simple (no re-create) once an issue exists for this session.
+	const [issueBusy, setIssueBusy] = useState(false);
+	const [issueUrl, setIssueUrl] = useState<string | null>(null);
+	const [issueError, setIssueError] = useState<string | null>(null);
 
 	// ── Avatar (HeyGen talking head) state ──────────────────────
 	// Source: your own photo, or a preset from HeyGen's avatar library.
@@ -862,6 +874,8 @@ export function GlitchgrabLogPanel({
 	const hydratedKeyRef = useRef<string | undefined>(undefined);
 	useEffect(() => {
 		hydratedKeyRef.current = undefined;
+		setIssueUrl(null);
+		setIssueError(null);
 		if (!storageKey) return;
 		try {
 			const raw = localStorage.getItem(`gg.script.${storageKey}`);
@@ -1193,6 +1207,23 @@ export function GlitchgrabLogPanel({
 			setNarrating(false);
 		}
 	}, [narrationText, engine, lang, voice, apiKey, pace, hasSavedKey]);
+
+	const createIssue = useCallback(async () => {
+		const api = gg();
+		if (!api?.createIssue || !narrationText.trim()) return;
+		setIssueBusy(true);
+		setIssueError(null);
+		try {
+			const title = narrationText.trim().split("\n")[0].slice(0, 80);
+			const res = await api.createIssue({ title, body: narrationText.trim() });
+			if (res.ok && res.issueUrl) setIssueUrl(res.issueUrl);
+			else setIssueError(res.error ?? "Failed to create issue");
+		} catch (e) {
+			setIssueError(e instanceof Error ? e.message : "Failed to create issue");
+		} finally {
+			setIssueBusy(false);
+		}
+	}, [narrationText]);
 
 	const copyAll = useCallback(() => {
 		if (events.length === 0) return;
@@ -2572,6 +2603,39 @@ export function GlitchgrabLogPanel({
 								>
 									<Sparkle className="h-3 w-3" /> Use AI script
 								</button>
+							)}
+							{issueUrl ? (
+								<a
+									href={issueUrl}
+									target="_blank"
+									rel="noreferrer"
+									data-testid="gg-issue-link"
+									className="flex items-center gap-1.5 self-start rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-300 transition-colors hover:bg-emerald-500/20"
+								>
+									<Check className="h-3 w-3" /> Issue created — view on GitHub
+								</a>
+							) : (
+								<div className="flex items-center gap-1.5 self-start">
+									<button
+										type="button"
+										data-testid="gg-create-issue"
+										onClick={() => void createIssue()}
+										disabled={issueBusy || !narrationText.trim() || !loggedIn}
+										title={!loggedIn ? "Log in to Glitchgrab first" : undefined}
+										className="flex items-center gap-1.5 rounded-md border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/70 transition-colors hover:bg-foreground/[0.08] disabled:opacity-40"
+									>
+										{issueBusy ? (
+											<>
+												<ArrowClockwise className="h-3 w-3 animate-spin" /> Creating…
+											</>
+										) : (
+											"Create GitHub Issue"
+										)}
+									</button>
+									{issueError && (
+										<span className="text-[10px] text-red-400">{issueError}</span>
+									)}
+								</div>
 							)}
 							<textarea
 								ref={narrationTaRef}
