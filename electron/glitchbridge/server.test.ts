@@ -375,7 +375,6 @@ describe("GlitchGrab bridge protocol", () => {
 		const chrome = await connectChrome();
 		chrome.ws.send(JSON.stringify({
 			type: "tester:identity",
-			token: "gg_testertoken",
 			name: "Priya QA",
 			email: "priya@example.com",
 			sessionId: "ext-session-1",
@@ -388,7 +387,6 @@ describe("GlitchGrab bridge protocol", () => {
 
 		const s = getCurrentSession();
 		expect(s?.tester).toEqual({
-			token: "gg_testertoken",
 			name: "Priya QA",
 			email: "priya@example.com",
 			sessionId: "ext-session-1",
@@ -402,7 +400,6 @@ describe("GlitchGrab bridge protocol", () => {
 		const chrome = await connectChrome();
 		chrome.ws.send(JSON.stringify({
 			type: "tester:identity",
-			token: "gg_testertoken2",
 			name: "Rahul QA",
 			sessionId: "ext-session-2",
 		}));
