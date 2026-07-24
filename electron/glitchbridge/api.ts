@@ -18,6 +18,26 @@ export async function validateToken(token: string): Promise<GlitchUser | null> {
   } catch { return null; }
 }
 
+// Backfills the tester/admin ExtensionSession's repoId once a recording
+// actually starts (#297) — auto-login doesn't know a repo up front (a
+// dashboard owner may have dozens; a QA tester may be assigned several).
+// Requires the GlitchRecord account's own token — the route verifies repoId
+// actually belongs to that account before writing (IDOR fix). Best-effort: a
+// failure here only affects Tester Activity bookkeeping, not event capture
+// or issue creation.
+export async function setTesterSessionRepo(params: { token: string; sessionId: string; repoId: string }): Promise<void> {
+  try {
+    await fetch(`${BASE}/api/v1/extension/session/${params.sessionId}/repo`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.token}`,
+      },
+      body: JSON.stringify({ repoId: params.repoId }),
+    });
+  } catch { /* best-effort */ }
+}
+
 export async function getRepos(token: string): Promise<GlitchRepo[]> {
   try {
     const res = await fetch(`${BASE}/api/v1/repos`, {
