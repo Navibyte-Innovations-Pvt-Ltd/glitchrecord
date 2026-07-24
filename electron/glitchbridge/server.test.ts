@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
 	uploadSession: vi.fn(async () => "db-session-id"),
 	validateToken: vi.fn(async () => ({ id: "u1", name: "Tester", email: "t@x.com" })),
 	getRepos: vi.fn(async () => []),
+	setTesterSessionRepo: vi.fn(async () => {}),
 	loadAuth: vi.fn(() => null), // not logged in → capture/persist path, no AI/issue
 }));
 vi.mock("./api", () => ({
@@ -40,6 +41,7 @@ vi.mock("./api", () => ({
 	uploadSession: mocks.uploadSession,
 	validateToken: mocks.validateToken,
 	getRepos: mocks.getRepos,
+	setTesterSessionRepo: mocks.setTesterSessionRepo,
 	BASE: "http://localhost:3000",
 }));
 vi.mock("./auth", () => ({ loadAuth: mocks.loadAuth }));
