@@ -5,7 +5,7 @@ import path from "node:path";
 import { app } from "electron";
 import { WebSocketServer, WebSocket } from "ws";
 import type { Session, WsMsg, RecordingMeta, CaptureEvent, TesterIdentity } from "./types";
-import { validateToken, getRepos, generateScript, uploadSession } from "./api";
+import { validateToken, getRepos, generateScript, uploadSession, setTesterSessionRepo } from "./api";
 import { loadAuth } from "./auth";
 
 function getSessionCachePath() {
@@ -340,6 +340,14 @@ export function broadcastRecordingStart(repoId: string, repoName: string): strin
   broadcastChrome({ type: "recording:start", sessionId, repoId, repoName, startedAt: session.createdAt });
   console.log(`[GlitchBridge] Recording started: ${sessionId} → ${repoName}`);
   appendDebugLog("rec", `Recording started: ${sessionId} → ${repoName} (chromeClients=${chromeClients.size})`);
+
+  // Backfill the tester/admin ExtensionSession's repoId now that a real repo
+  // is known — auto-login didn't know it up front (#297). Needs the account's
+  // own token so the route can verify repoId actually belongs to them.
+  if (session.tester && currentUser) {
+    void setTesterSessionRepo({ token: currentUser.token, sessionId: session.tester.sessionId, repoId });
+  }
+
   return sessionId;
 }
 
