@@ -40,6 +40,57 @@ Platform notes:
 
 ---
 
+# GlitchGrab Integration
+
+This fork adds the **GlitchGrab bridge** — a WebSocket server (port 7337, see
+`electron/glitchbridge/`) that pairs with the **Chrome extension**
+(`packages/extension`) to turn a recording into a narrated tutorial and
+auto-created GitHub issue. Everything below in this README describes the
+underlying Recordly recorder/editor this is forked from; this section covers
+what GlitchGrab specifically added on top.
+
+## Flow
+
+1. Press Record → the bridge broadcasts `recording:start` over WS.
+2. The extension's content script captures click/input/navigate/scroll events
+   on every open tab.
+3. Events stream live into the editor's event log; on stop, they're sorted
+   into one timeline and uploaded.
+4. If logged in: events → AI-generated narration script (Gemini 2.5 Pro,
+   DeepSeek fallback) → the editor's **Create GitHub Issue** button posts
+   through the account's own repo/token.
+5. If a tester is logged into the extension (QA magic-link or the dashboard
+   owner's own session, #297), their name/email ride along purely for
+   attribution — the `Report` created alongside the issue gets tagged
+   `source=EXTENSION_TESTER`, without changing which repo/token the issue
+   actually posts through.
+
+See the repo-root `CLAUDE.md` for the full event model and capture-chain
+gotchas (pages that load mid-recording, orphaned content scripts on reload,
+idempotent stop handling, multi-profile merging).
+
+## Commands (GlitchGrab-specific)
+
+```bash
+bun run test              # lane 1: deterministic unit/integration (vitest, CI-safe)
+bun run test:e2e:capture   # lane 2: real Chromium + extension → bridge (headed)
+bun run test:e2e:ui        # lane 3: Playwright _electron clicks the real app (headed)
+```
+
+Headed lanes (2 & 3) need the dev app **closed** first — the single-instance
+lock + bridge port 7337 mean a second launch just focuses the running window.
+
+Full testing methodology lives in `docs/TESTING.md`.
+
+## Gotchas
+
+- Dev userData + unified debug log:
+  `~/Library/Application Support/GlitchRecord-dev/` (not `Recordly-dev`).
+- Electron main/preload changes need a full quit + relaunch, not just a reload.
+- `GLITCHBRIDGE_PORT` overrides the fixed 7337 for isolated unit tests.
+
+---
+
 # Core Features
 
 ## Auto-zooms, cursor polish, and styled frames
