@@ -1144,3 +1144,75 @@ export function closeCountdownWindow(): void {
 		countdownWindow = null;
 	}
 }
+
+let reportWindow: BrowserWindow | null = null;
+
+export function getReportWindow(): BrowserWindow | null {
+	return reportWindow && !reportWindow.isDestroyed() ? reportWindow : null;
+}
+
+/**
+ * The "Report Bug" window — the shared @glitchgrab/report-ui dialog (same one
+ * the npm SDK renders) hosted in the desktop app, so a tester can file a bug
+ * from whatever browser or native app they were actually testing in. A real
+ * window, not a transient popup: an in-progress report must survive losing
+ * focus while the reporter goes back to the app to re-check something.
+ */
+export function createReportWindow(): BrowserWindow {
+	const existing = getReportWindow();
+	if (existing) {
+		if (existing.isMinimized()) existing.restore();
+		existing.show();
+		existing.focus();
+		return existing;
+	}
+
+	const isMac = process.platform === "darwin";
+	const { workAreaSize } = getScreen().getPrimaryDisplay();
+
+	const win = new BrowserWindow({
+		width: Math.min(560, workAreaSize.width - 40),
+		height: Math.min(780, workAreaSize.height - 60),
+		minWidth: 420,
+		minHeight: 520,
+		...(process.platform !== "darwin" && { icon: WINDOW_ICON_PATH }),
+		...(isMac && {
+			titleBarStyle: "hiddenInset",
+			trafficLightPosition: { x: 12, y: 14 },
+		}),
+		autoHideMenuBar: !isMac,
+		transparent: false,
+		resizable: true,
+		// Stays above the app being tested so the reporter can look at the bug
+		// and describe it at the same time.
+		alwaysOnTop: true,
+		title: "Report a bug",
+		show: false,
+		backgroundColor: "#0b0b0d",
+		webPreferences: {
+			preload: path.join(electronWindowsDir, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true,
+			// Deliberately NOT `webSecurity: false` — unlike the editor/home
+			// windows, this one loads no local media over file:// and makes no
+			// direct network calls (everything goes through IPC to main). Its
+			// only images are data: URLs, which don't taint a canvas, so
+			// annotation still works with web security on.
+			backgroundThrottling: false,
+		},
+	});
+	reportWindow = win;
+
+	win.once("ready-to-show", () => win.show());
+	win.on("closed", () => {
+		if (reportWindow === win) reportWindow = null;
+	});
+
+	if (VITE_DEV_SERVER_URL) {
+		win.loadURL(`${VITE_DEV_SERVER_URL}?windowType=report`);
+	} else {
+		win.loadFile(path.join(RENDERER_DIST, "index.html"), { query: { windowType: "report" } });
+	}
+
+	return win;
+}
