@@ -41,8 +41,13 @@
   "publish": [
     {
       "provider": "github",
-      "owner": "webadderall",
-      "repo": "GlitchRecord",
+      // Drives the in-app AUTO-UPDATER (publishAutoUpdate below) — release.yml
+      // builds with `--publish never` and uploads assets itself, so this block
+      // is not what ships a release. It must still point at the repo releases
+      // are cut in, or every installed app checks a repo that doesn't exist:
+      // "webadderall/GlitchRecord" is the upstream fork and 404s.
+      "owner": "Navibyte-Innovations-Pvt-Ltd",
+      "repo": "glitchrecord",
       "tagNamePrefix": "v",
       "publishAutoUpdate": true
     }
