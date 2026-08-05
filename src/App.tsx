@@ -4,6 +4,8 @@ import { HomeWindow } from "./components/launch/HomeWindow";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
 import { SourceSelector } from "./components/launch/SourceSelector";
 import { UpdateToastWindow } from "./components/launch/UpdateToastWindow";
+import { ReportWindow } from "./components/report/ReportWindow";
+import "./components/report/ReportWindow.css";
 import { Toaster } from "./components/ui/sonner";
 import { ShortcutsConfigDialog } from "./components/video-editor/ShortcutsConfigDialog";
 import VideoEditor from "./components/video-editor/VideoEditor";
@@ -78,6 +80,13 @@ export default function App() {
 			return <CountdownOverlay />;
 		case "update-toast":
 			return <UpdateToastWindow />;
+		case "report":
+			return (
+				<>
+					<ReportWindow />
+					<Toaster className="pointer-events-auto" />
+				</>
+			);
 		case "editor":
 			return (
 				<ShortcutsProvider>
