@@ -28,6 +28,19 @@ Full methodology, lanes, and the bug→test→scenario workflow live in
   the running window and exits. The e2e harness preflights this and fails with a
   clear message.
 
+## Report Bug window
+
+`windowType=report` renders `src/components/report/ReportWindow.tsx`, which
+hosts the **shared** report dialog from `packages/report-ui` — vendored into
+`src/vendor/report-ui/` by `scripts/sync-report-ui.mjs` on every `dev`/`build`.
+`src/vendor/` is generated: **never hand-edit it**, edit `packages/report-ui`
+and re-run `npm run sync:report-ui`. (It's a copy, not a dependency, because
+this app is a standalone submodule — see that package's README.)
+
+Screenshots come from `desktopCapturer` (whole screen, our own windows hidden
+first), so reporting works from any browser or native app. Identity is an
+`ExtensionSession` held in the main process — see the repo-root `CLAUDE.md`.
+
 ## Gotchas
 
 - Dev userData + unified debug log:
