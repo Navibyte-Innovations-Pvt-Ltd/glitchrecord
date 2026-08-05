@@ -1,0 +1,68 @@
+/* Chrome around the shared ReportDialog in the desktop Report Bug window.
+   The dialog itself ships its own styles from packages/report-ui — only the
+   host frame (title, repo picker, empty/error states) is styled here. */
+
+/* This window renders standalone (windowType=report), so it can't inherit a
+   background from the editor/home shells — it has to set its own, or the
+   light-text-on-light-background case is unreadable. */
+:root[data-window-type="report"],
+:root[data-window-type="report"] body,
+:root[data-window-type="report"] #root {
+	background: #0b0b0d;
+	min-height: 100%;
+}
+
+.gg-report-window {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 16px;
+	padding-top: 34px; /* clears the macOS hidden-inset traffic lights */
+	color: #e5e5e5;
+	font-size: 13px;
+}
+
+.gg-report-header {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.gg-report-title {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.gg-report-reporter {
+	font-size: 11px;
+	color: #888;
+}
+
+.gg-report-field {
+	display: block;
+	font-size: 11px;
+	color: #aaa;
+}
+
+.gg-report-field select {
+	display: block;
+	width: 100%;
+	margin-top: 4px;
+	padding: 6px;
+	background: #141414;
+	color: #e5e5e5;
+	border: 1px solid #2a2a2a;
+	border-radius: 4px;
+	font-size: 13px;
+}
+
+.gg-report-msg {
+	padding: 34px 24px 24px;
+	font-size: 13px;
+	line-height: 1.5;
+	color: #888;
+}
+
+.gg-report-msg--error {
+	color: #f87171;
+}
