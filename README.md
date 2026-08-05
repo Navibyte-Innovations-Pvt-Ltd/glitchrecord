@@ -221,9 +221,32 @@ Browse and install community extensions from the [Recordly Marketplace](https://
 
 ## Download a build
 
-Prebuilt releases are available at:
+**Testers and non-developers: use [glitchgrab.dev/download](https://glitchgrab.dev/download)**
+— it detects your OS and gives you a single button, plus the macOS unquarantine
+step. Full walkthrough (sign-in, first bug report) is in the
+[monorepo README](https://github.com/webnaresh/glitchgrab#for-testers--installing-glitchrecord).
 
-https://github.com/webadderallorg/Recordly/releases
+Raw builds, if you'd rather pick one yourself:
+
+https://github.com/Navibyte-Innovations-Pvt-Ltd/glitchrecord/releases
+
+| Platform        | Asset                             |
+| --------------- | --------------------------------- |
+| Mac (M1–M4)     | `GlitchRecord-arm64.dmg`          |
+| Mac (Intel)     | `GlitchRecord-x64.dmg`            |
+| Windows 10 / 11 | `GlitchRecord-windows-x64.exe`    |
+| Linux           | `GlitchRecord-linux-x64.AppImage` |
+
+> **macOS:** builds are **not** Apple-notarized, so macOS reports the app as
+> *"damaged"*. Run `xattr -cr /Applications/GlitchRecord.app` once after
+> installing. Note that right-click → Open no longer works around this on
+> Apple Silicon — the `xattr` command is required.
+
+Asset names come from the `artifactName` templates in `electron-builder.json5`.
+`release.yml` builds with `--publish never` and uploads assets to whichever
+repo it runs in; the `publish` block in `electron-builder.json5` separately
+tells the **in-app auto-updater** where to look, so it must point at the same
+repo or installed apps check a 404.
 
 ---
 
