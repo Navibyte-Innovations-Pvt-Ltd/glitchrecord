@@ -13,6 +13,7 @@ import {
 	Menu,
 	Notification,
 	nativeImage,
+	screen,
 	session,
 	shell,
 	systemPreferences,
@@ -22,15 +23,19 @@ import { RECORDINGS_DIR } from "./appPaths";
 import { showCursor } from "./cursorHider";
 import { registerExtensionIpcHandlers } from "./extensions/extensionIpc";
 import {
-	BASE as GLITCHGRAB_URL,
 	createIssue,
+	BASE as GLITCHGRAB_URL,
 	generateScript,
 	getNoteQuestions,
+	getReporterRepos,
+	mintReporterSession,
 	refineScript,
+	resolveReporterSession,
+	submitReport,
 	uploadSession,
 	validateToken,
 } from "./glitchbridge/api";
-import { clearAuth, saveAuth, setSelectedRepo } from "./glitchbridge/auth";
+import { clearAuth, loadAuth, saveAuth, setSelectedRepo } from "./glitchbridge/auth";
 import {
 	type AvatarTier,
 	generateAvatar,
@@ -88,9 +93,11 @@ import {
 	createEditorWindow,
 	createHomeWindow,
 	createHudOverlayWindow,
+	createReportWindow,
 	createSourceSelectorWindow,
 	getHomeWindow,
 	getHudOverlayWindow,
+	getReportWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
@@ -952,11 +959,90 @@ app.on("activate", () => {
 	}
 });
 
+// Who the desktop "Report Bug" window files as. An ExtensionSession id — the
+// same identity primitive the Chrome extension uses, so both surfaces hit the
+// same repo-scoping and the same report endpoint (see glitchbridge/api.ts).
+//
+// A QA tester's session (arriving via the glitchrecord://tester-auth deep link
+// from the QA page, in whatever browser they use) OUTRANKS the owner's: if a
+// tester armed this app, the bug is theirs, not the machine owner's.
+let reporterSession: { sessionId: string; name: string; isTester: boolean } | null = null;
+
+/** Owner fallback — mints a session from the app's own login, once. */
+async function ensureReporterSession(): Promise<{ sessionId: string; name: string } | null> {
+	if (reporterSession) return reporterSession;
+	const auth = loadAuth();
+	if (!auth?.token) return null;
+	const minted = await mintReporterSession(auth.token);
+	if (!minted) return null;
+	reporterSession = { sessionId: minted.sessionId, name: minted.testerName, isTester: false };
+	return reporterSession;
+}
+
 // ── Glitchgrab deep-link token handler ───────────────────────
 async function handleGlitchgrabDeepLink(url: string) {
 	if (!url.startsWith("glitchrecord://")) return;
 	try {
 		const parsed = new URL(url);
+
+		// glitchrecord://tester-auth?sessionId=… — a QA tester opened their magic
+		// link in ANY browser and handed this app their reporter session.
+		//
+		// SECURITY: a custom-protocol URL can be fired by any local app or any
+		// web page the user visits — this handler is reachable by an attacker,
+		// not just by our own QA page. Accepting the link's contents at face
+		// value would let a drive-by repoint "Report Bug" at the ATTACKER's
+		// repo, and since every report carries a full-screen screenshot, that
+		// is a screen-exfiltration channel, not merely identity spoofing.
+		//
+		// So: the id is resolved against the server (the link's own `name` is
+		// ignored entirely), and the user must explicitly confirm the identity
+		// switch against what the SERVER reported.
+		if (parsed.host === "tester-auth") {
+			const sessionId = parsed.searchParams.get("sessionId");
+			if (!sessionId) return;
+
+			const resolved = await resolveReporterSession(sessionId);
+			if (!resolved) {
+				appendDebugLog("rec", "report: tester-auth link rejected (unknown/ended session)");
+				await dialog.showMessageBox({
+					type: "error",
+					message: "That sign-in link is no longer valid.",
+					detail: "Reopen your QA link and press “Open in GlitchRecord” again.",
+					buttons: ["OK"],
+				});
+				return;
+			}
+
+			const repoList = resolved.repos.map((r) => r.fullName).join("\n") || "(none yet)";
+			const { response } = await dialog.showMessageBox({
+				type: "question",
+				message: `Report bugs as ${resolved.testerName}?`,
+				detail:
+					`${resolved.testerEmail ? `${resolved.testerEmail}\n\n` : ""}` +
+					`Bug reports — including full-screen screenshots — will be filed to:\n${repoList}\n\n` +
+					"Only continue if you just pressed “Open in GlitchRecord” yourself.",
+				buttons: ["Cancel", `Report as ${resolved.testerName}`],
+				defaultId: 0,
+				cancelId: 0,
+			});
+			if (response !== 1) {
+				appendDebugLog("rec", "report: tester-auth link declined by user");
+				return;
+			}
+
+			reporterSession = { sessionId, name: resolved.testerName, isTester: true };
+			appendDebugLog("rec", `report: tester session armed (${resolved.testerName})`);
+			const home = getHomeWindow() ?? BrowserWindow.getAllWindows()[0];
+			home?.show();
+			home?.focus();
+			home?.webContents.send("glitchgrab:reporter-changed", {
+				name: resolved.testerName,
+				isTester: true,
+			});
+			return;
+		}
+
 		const token = parsed.searchParams.get("token");
 		const userId = parsed.searchParams.get("userId");
 		if (!token || !userId) return;
@@ -979,6 +1065,15 @@ async function handleGlitchgrabDeepLink(url: string) {
 app.on("open-url", (event, url) => {
 	event.preventDefault();
 	void handleGlitchgrabDeepLink(url);
+});
+
+// Windows/Linux COLD start: the deep link is in our own argv, and
+// "second-instance" never fires because we ARE the first instance. Without
+// this, a tester pressing "Open in GlitchRecord" with the app closed launches
+// it but arrives unauthenticated.
+void app.whenReady().then(() => {
+	const link = process.argv.find((a) => a.startsWith("glitchrecord://"));
+	if (link) void handleGlitchgrabDeepLink(link);
 });
 
 app.on("second-instance", (_event, argv) => {
@@ -1093,7 +1188,11 @@ app.whenReady().then(async () => {
 					cy?: number;
 				}>;
 				noteAnswers?: Array<{ label: string; answer: string }>;
-				visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle" | "trailing"; dataUrl: string }>;
+				visualContext?: Array<{
+					tMs: number;
+					kind: "lead-in" | "idle" | "trailing";
+					dataUrl: string;
+				}>;
 			},
 		) => {
 			const user = getCurrentUser();
@@ -1193,7 +1292,8 @@ app.whenReady().then(async () => {
 		async (_e, opts: { title: string; body: string }) => {
 			if (!opts?.title?.trim()) return { ok: false, error: "Title required." };
 			const session = getCurrentSession();
-			if (!session?.repoId) return { ok: false, error: "No repo selected for this recording." };
+			if (!session?.repoId)
+				return { ok: false, error: "No repo selected for this recording." };
 
 			const user = getCurrentUser();
 			if (!user) return { ok: false, error: "Log in to Glitchgrab first." };
@@ -1541,8 +1641,108 @@ app.whenReady().then(async () => {
 		return { ok: true };
 	});
 
+	// ── Report Bug (desktop) ─────────────────────────────────
+	// Captures the whole screen, not a browser tab: the reporter may have been
+	// testing in Firefox, Safari, a native app or a terminal. That's the entire
+	// reason this lives in the desktop app rather than the Chrome extension.
+	async function captureScreen(): Promise<string | null> {
+		try {
+			const display = screen.getPrimaryDisplay();
+			const { width, height } = display.size;
+			const scale = display.scaleFactor || 1;
+			const sources = await desktopCapturer.getSources({
+				types: ["screen"],
+				thumbnailSize: {
+					width: Math.round(width * scale),
+					height: Math.round(height * scale),
+				},
+			});
+			const shot = sources[0]?.thumbnail;
+			if (!shot || shot.isEmpty()) return null;
+			return shot.toDataURL();
+		} catch (err) {
+			appendDebugLog("rec", `report: screen capture failed — ${String(err)}`);
+			return null;
+		}
+	}
+
+	/** Hides our own windows so they don't photobomb the screenshot. */
+	async function captureScreenWithoutSelf(): Promise<string | null> {
+		const hidden = [getReportWindow(), getHomeWindow()].filter(
+			(w): w is BrowserWindow => !!w && !w.isDestroyed() && w.isVisible(),
+		);
+		for (const w of hidden) w.hide();
+		// One frame for the compositor to actually drop them off-screen.
+		await new Promise((r) => setTimeout(r, 180));
+		try {
+			return await captureScreen();
+		} finally {
+			for (const w of hidden) w.show();
+		}
+	}
+
+	let pendingScreenshot: string | null = null;
+
+	ipcMain.handle("glitchgrab:open-report", async () => {
+		pendingScreenshot = await captureScreenWithoutSelf();
+		createReportWindow();
+		return { ok: true };
+	});
+
+	// Everything the report window needs to render, in one round trip.
+	ipcMain.handle("glitchgrab:report-payload", async () => {
+		const session = reporterSession ?? (await ensureReporterSession());
+		if (!session) {
+			return {
+				sessionId: null,
+				reporterName: null,
+				repos: [],
+				screenshotDataUrl: pendingScreenshot,
+			};
+		}
+		return {
+			sessionId: session.sessionId,
+			reporterName: session.name,
+			// Server-authoritative: a QA tester gets only their assigned repos,
+			// an owner gets the ones they own. Never derived on this side.
+			repos: await getReporterRepos(session.sessionId),
+			screenshotDataUrl: pendingScreenshot,
+		};
+	});
+
+	ipcMain.handle("glitchgrab:recapture-screen", () => captureScreenWithoutSelf());
+
+	ipcMain.handle(
+		"glitchgrab:submit-report",
+		async (
+			_e,
+			payload: {
+				repoId: string;
+				type: string;
+				description: string;
+				metadata?: Record<string, string>;
+			},
+		) => {
+			const session = reporterSession ?? (await ensureReporterSession());
+			if (!session) return { ok: false, error: "Not signed in" };
+			const result = await submitReport({ sessionId: session.sessionId, ...payload });
+			appendDebugLog(
+				"rec",
+				`report: submit ${result.ok ? `ok #${result.issueNumber}` : `FAIL ${result.error}`}`,
+			);
+			return result;
+		},
+	);
+
+	ipcMain.handle("glitchgrab:close-report", () => {
+		getReportWindow()?.close();
+		pendingScreenshot = null;
+		return { ok: true };
+	});
+
 	ipcMain.handle("glitchgrab:logout", () => {
 		clearAuth();
+		reporterSession = null;
 		refreshCurrentUserFromStorage();
 		BrowserWindow.getAllWindows()[0]?.webContents.send(
 			"glitchgrab:auth-changed",
