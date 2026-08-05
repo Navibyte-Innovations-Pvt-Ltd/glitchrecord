@@ -171,6 +171,22 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 	setRepo: (repoId: string, repoName: string) =>
 		ipcRenderer.invoke("glitchgrab:set-repo", repoId, repoName),
 	logout: () => ipcRenderer.invoke("glitchgrab:logout"),
+	// Report Bug — desktop-hosted twin of the SDK's report dialog.
+	openReport: () => ipcRenderer.invoke("glitchgrab:open-report"),
+	reportPayload: () => ipcRenderer.invoke("glitchgrab:report-payload"),
+	recaptureScreen: () => ipcRenderer.invoke("glitchgrab:recapture-screen"),
+	submitReport: (payload: {
+		repoId: string;
+		type: string;
+		description: string;
+		metadata?: Record<string, string>;
+	}) => ipcRenderer.invoke("glitchgrab:submit-report", payload),
+	closeReport: () => ipcRenderer.invoke("glitchgrab:close-report"),
+	onReporterChanged: (cb: (info: unknown) => void) => {
+		const handler = (_e: unknown, info: unknown) => cb(info);
+		ipcRenderer.on("glitchgrab:reporter-changed", handler);
+		return () => ipcRenderer.removeListener("glitchgrab:reporter-changed", handler);
+	},
 	setHudFocusable: (focusable: boolean) =>
 		ipcRenderer.send("hud-overlay-set-focusable", focusable),
 	recordingStart: () => ipcRenderer.invoke("glitchbridge:recording-start"),
@@ -207,7 +223,11 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		durationSec?: number;
 		zooms?: Array<{ startMs: number; endMs: number; depth?: number; cx?: number; cy?: number }>;
 		noteAnswers?: Array<{ label: string; answer: string }>;
-		visualContext?: Array<{ tMs: number; kind: "lead-in" | "idle" | "trailing"; dataUrl: string }>;
+		visualContext?: Array<{
+			tMs: number;
+			kind: "lead-in" | "idle" | "trailing";
+			dataUrl: string;
+		}>;
 	}) => ipcRenderer.invoke("glitchbridge:generate-script", opts),
 	refineScript: (opts: {
 		messages: Array<{ role: "user" | "assistant"; content: string }>;
