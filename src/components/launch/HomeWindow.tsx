@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
-	VideoCamera,
 	ArrowClockwise,
-	Trash,
+	BugIcon,
+	CaretDownIcon,
+	GitBranchIcon,
 	SignOut,
 	SparkleIcon,
-	GitBranchIcon,
-	CaretDownIcon,
+	Trash,
+	VideoCamera,
 } from "@phosphor-icons/react";
-import { toFileUrl } from "../video-editor/projectPersistence";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectLibraryEntry } from "../video-editor/ProjectBrowserDialog";
+import { toFileUrl } from "../video-editor/projectPersistence";
 import { bareName } from "./repoName";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
@@ -29,6 +30,8 @@ interface GlitchgrabAPI {
 	status: () => Promise<AuthStatus>;
 	logout: () => Promise<{ ok: boolean }>;
 	onAuthChanged: (cb: (status: AuthStatus) => void) => () => void;
+	openReport?: () => Promise<{ ok: boolean }>;
+	onReporterChanged?: (cb: (info: unknown) => void) => () => void;
 }
 
 function gg(): GlitchgrabAPI | null {
@@ -43,6 +46,46 @@ function fmtSize(bytes: number): string {
 function api() {
 	return (window as unknown as { electronAPI?: Record<string, (...a: unknown[]) => unknown> })
 		.electronAPI;
+}
+
+/**
+ * Files a bug without recording anything — the desktop twin of the SDK's
+ * ReportButton. Lives here rather than in the Chrome extension so a tester
+ * can report from whichever browser (or native app) they were testing in.
+ */
+function ReportBugButton() {
+	const [reporter, setReporter] = useState<string | null>(null);
+	const [opening, setOpening] = useState(false);
+
+	useEffect(() => {
+		const unsub = gg()?.onReporterChanged?.((info) => {
+			setReporter((info as { name?: string } | null)?.name ?? null);
+		});
+		return () => unsub?.();
+	}, []);
+
+	if (!gg()) return null;
+
+	return (
+		<button
+			type="button"
+			disabled={opening}
+			onClick={() => {
+				setOpening(true);
+				// The main process screenshots the screen BEFORE the window opens,
+				// so this brief disable is the reporter's only "did it work?" signal.
+				void gg()
+					?.openReport?.()
+					?.finally(() => setOpening(false));
+			}}
+			style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+			className="flex items-center gap-2 rounded-xl border border-foreground/15 bg-foreground/5 px-3 py-2 text-[12px] font-semibold text-foreground/80 transition hover:bg-foreground/10 disabled:opacity-50"
+			title={reporter ? `Reporting as ${reporter}` : "Report a bug"}
+		>
+			<BugIcon className="h-4 w-4" />
+			{opening ? "Opening…" : "Report Bug"}
+		</button>
+	);
 }
 
 /** Login button when signed out; avatar + name pill with a logout menu when signed in. */
@@ -111,7 +154,9 @@ function AuthControl() {
 
 			{menuOpen && (
 				<div className="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[200px] rounded-xl border border-foreground/10 bg-editor-dialog-alt p-1 shadow-[0_14px_34px_rgba(0,0,0,0.45)]">
-					<div className="px-2.5 py-1.5 text-[12px] font-semibold text-foreground/85">{name}</div>
+					<div className="px-2.5 py-1.5 text-[12px] font-semibold text-foreground/85">
+						{name}
+					</div>
 					<div className="flex items-center gap-1.5 px-2.5 pb-2 text-[11px] text-foreground/45">
 						<GitBranchIcon className="h-3.5 w-3.5 shrink-0" />
 						<span className="truncate">{repo ?? "No repo selected"}</span>
@@ -205,37 +250,33 @@ export function HomeWindow() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [recordings]);
 
-	const deleteRecording = useCallback(
-		async (path: string) => {
-			const a = api();
-			const res = (await a?.deleteRecording?.(path)) as { success: boolean } | undefined;
-			if (res?.success) {
-				setRecordings((prev) => prev.filter((r) => r.path !== path));
-			}
-		},
-		[],
-	);
+	const deleteRecording = useCallback(async (path: string) => {
+		const a = api();
+		const res = (await a?.deleteRecording?.(path)) as { success: boolean } | undefined;
+		if (res?.success) {
+			setRecordings((prev) => prev.filter((r) => r.path !== path));
+		}
+	}, []);
 
-	const deleteProject = useCallback(
-		async (path: string) => {
-			const a = api();
-			const res = (await a?.deleteProject?.(path)) as { success: boolean } | undefined;
-			if (res?.success) {
-				setProjects((prev) => prev.filter((p) => p.path !== path));
-			}
-		},
-		[],
-	);
+	const deleteProject = useCallback(async (path: string) => {
+		const a = api();
+		const res = (await a?.deleteProject?.(path)) as { success: boolean } | undefined;
+		if (res?.success) {
+			setProjects((prev) => prev.filter((p) => p.path !== path));
+		}
+	}, []);
 
 	return (
 		<div className="flex h-screen w-screen flex-col bg-editor-bg text-foreground">
 			{/* Header — draggable title bar; left padding clears the macOS traffic lights */}
 			<div
 				className="flex items-center gap-3 border-b border-foreground/10 py-4 pr-5"
-				style={{
-					WebkitAppRegion: "drag",
-					paddingLeft: IS_MAC ? 88 : 20,
-				} as React.CSSProperties}
+				style={
+					{
+						WebkitAppRegion: "drag",
+						paddingLeft: IS_MAC ? 88 : 20,
+					} as React.CSSProperties
+				}
 			>
 				<img
 					src="/glitchgrab-logo.png"
@@ -264,6 +305,7 @@ export function HomeWindow() {
 				>
 					<ArrowClockwise className="h-4 w-4" />
 				</button>
+				<ReportBugButton />
 				<AuthControl />
 			</div>
 
@@ -274,9 +316,12 @@ export function HomeWindow() {
 				) : projects.length === 0 && recordings.length === 0 ? (
 					<div className="flex flex-col items-center justify-center gap-4 pt-20 text-center">
 						<VideoCamera className="h-12 w-12 text-foreground/15" weight="duotone" />
-						<div className="text-[14px] font-semibold text-foreground/70">No recordings yet</div>
+						<div className="text-[14px] font-semibold text-foreground/70">
+							No recordings yet
+						</div>
 						<p className="max-w-[320px] text-[12px] leading-relaxed text-foreground/45">
-							Press <span className="font-medium text-foreground/70">New Recording</span> to
+							Press{" "}
+							<span className="font-medium text-foreground/70">New Recording</span> to
 							capture your screen. It'll show up here afterwards.
 						</p>
 						<button
@@ -361,7 +406,8 @@ export function HomeWindow() {
 												tabIndex={0}
 												onClick={() => void openRecording(r.path)}
 												onKeyDown={(e) => {
-													if (e.key === "Enter") void openRecording(r.path);
+													if (e.key === "Enter")
+														void openRecording(r.path);
 												}}
 												className="relative flex aspect-[16/10] cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(180deg,_rgba(37,99,235,0.18),_rgba(13,17,23,0.94))] shadow-[0_8px_18px_rgba(0,0,0,0.28)] transition group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_28px_rgba(0,0,0,0.4)]"
 											>
@@ -393,9 +439,13 @@ export function HomeWindow() {
 												</button>
 											</div>
 											<span className="truncate text-[12px] font-medium tracking-tight">
-												{r.name.replace(/^recording-/, "").replace(/\.mp4$/, "")}
+												{r.name
+													.replace(/^recording-/, "")
+													.replace(/\.mp4$/, "")}
 											</span>
-											<span className="text-[10px] text-foreground/40">{fmtSize(r.sizeBytes)}</span>
+											<span className="text-[10px] text-foreground/40">
+												{fmtSize(r.sizeBytes)}
+											</span>
 										</div>
 									))}
 								</div>
