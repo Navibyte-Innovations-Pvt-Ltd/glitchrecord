@@ -15,7 +15,15 @@ import { AnnotationCanvas } from "./annotation-canvas";
 import { getShortcutLabel } from "./shortcut";
 import { ATTACHMENT_ACCEPT } from "./attachments";
 import { encodeScreenshot } from "./image-encode";
-import type { ReportType, ReportSeverity, ReportFn, EnhanceTextFn } from "./types";
+import type {
+  ReportType,
+  ReportSeverity,
+  DialogTile,
+  ReportFn,
+  FeedbackFn,
+  EnhanceTextFn,
+  ReportReporter,
+} from "./types";
 
 /** Detect if the host page uses a dark or light theme */
 function useIsDark(): boolean {
@@ -161,6 +169,111 @@ function detectHostAccent(): { accent: string; accentText: string } | null {
   }
 }
 
+/** First letters of the first two words — "Naresh Bhosale" → "NB". */
+function initialsOf(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+/**
+ * Who this report will be filed as. Anonymous is shown, never hidden — a
+ * reporter who assumes they're signed in and isn't would otherwise file
+ * something nobody can follow up on, and find out only when no one replies.
+ */
+function ReporterChip({
+  reporter,
+  t,
+}: {
+  reporter: ReportReporter | null | undefined;
+  t: ReturnType<typeof getTheme>;
+}) {
+  // An avatar URL that 404s, or one a host's CSP blocks, must not leave an empty
+  // circle — fall back to the same initials/glyph as if none had been given.
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const avatarUrl = reporter?.avatarUrl || "";
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarUrl]);
+
+  const name = reporter?.name?.trim() || "";
+  const isAnonymous = !name;
+  const initials = isAnonymous ? "" : initialsOf(name);
+  // "Anonymous", not "Not signed in": `session` is optional in the SDK and many
+  // report surfaces are public, so an unauthenticated reporter is a normal state,
+  // not an error to flag on every single report.
+  const label = isAnonymous ? "Anonymous" : name;
+  const title = isAnonymous
+    ? "No reporter identity was passed to Glitchgrab — this report won't be attributed to anyone"
+    : [name, reporter?.email, reporter?.role].filter(Boolean).join(" · ");
+  const showAvatarImage = !!avatarUrl && !avatarFailed;
+
+  return (
+    <span
+      title={title}
+      style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: "18px",
+          height: "18px",
+          flexShrink: 0,
+          borderRadius: "50%",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "8px",
+          fontWeight: 700,
+          letterSpacing: "0.02em",
+          background: isAnonymous ? t.inputBg : t.accent,
+          color: isAnonymous ? t.textMuted : t.accentText,
+          border: `1px solid ${isAnonymous ? t.inputBorder : "transparent"}`,
+        }}
+      >
+        {showAvatarImage ? (
+          <img
+            src={avatarUrl}
+            alt=""
+            width={18}
+            height={18}
+            onError={() => setAvatarFailed(true)}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : initials ? (
+          initials
+        ) : (
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="5.5" r="2.75" stroke="currentColor" strokeWidth="1.4" />
+            <path
+              d="M2.75 13.5c0-2.35 2.35-3.75 5.25-3.75s5.25 1.4 5.25 3.75"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+          </svg>
+        )}
+      </span>
+      <span
+        style={{
+          fontSize: "11px",
+          color: t.textMuted,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+        {reporter?.role ? ` · ${reporter.role}` : ""}
+      </span>
+    </span>
+  );
+}
+
 function getTheme(dark: boolean) {
   const hostAccent = detectHostAccent();
   const defaults = dark
@@ -258,6 +371,14 @@ function isLowQualityText(text: string): string | null {
 
 interface ReportDialogProps {
   report: ReportFn;
+  /**
+   * Saves a star rating. Passing it adds the `RATING` tile to step 1 — a
+   * testimonial lives in the same dialog as a bug report because from the
+   * user's side it's the same question ("what's on your mind?"), even though it
+   * takes a completely different path server-side (feedback row, never a GitHub
+   * issue). Omit it and the tile never appears.
+   */
+  sendFeedback?: FeedbackFn;
   enhanceText?: EnhanceTextFn;
   transcribeAudio?: (blob: Blob) => Promise<string>;
   types?: ReportType[];
@@ -273,6 +394,12 @@ interface ReportDialogProps {
    * Return `null` to open without a screenshot.
    */
   captureScreenshot?: () => Promise<string | null>;
+  /**
+   * Who the report will be attributed to. Omit or pass `null` and the footer
+   * says "Not signed in" rather than showing nothing — silence there reads as
+   * "you're signed in", which is the failure worth preventing.
+   */
+  reporter?: ReportReporter | null;
 }
 
 async function captureViaHtml2Canvas(): Promise<string | null> {
@@ -305,11 +432,13 @@ async function captureViaHtml2Canvas(): Promise<string | null> {
  */
 export function ReportDialog({
   report,
+  sendFeedback,
   enhanceText,
   transcribeAudio,
   types,
   showSeverity = true,
   captureScreenshot = captureViaHtml2Canvas,
+  reporter,
 }: ReportDialogProps) {
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isEnhanced, setIsEnhanced] = useState(false);
@@ -399,20 +528,100 @@ export function ReportDialog({
 
   // Stepper state
   const [step, setStep] = useState<1 | 2>(1);
-  const [reportType, setReportType] = useState<ReportType>("BUG");
+  const [reportType, setReportType] = useState<DialogTile>("BUG");
   const [severity, setSeverity] = useState<ReportSeverity>("medium");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  /** 0 = nothing picked yet. Only meaningful while the RATING tile is selected. */
+  const [rating, setRating] = useState(0);
+  const [hoveredStar, setHoveredStar] = useState(0);
 
-  const availableTypes: ReportType[] = types ?? [
+  const isRating = reportType === "RATING";
+
+  // A rating is gated on the stars, not the words — the message is optional.
+  const submitDisabled = isSubmitting || (isRating ? rating < 1 : !description.trim());
+
+  // RATING is deliberately NOT a tile: it gets the hero row above the grid, so
+  // the stars are one click away instead of three, and its icon can't be
+  // confused with Feature Request's star.
+  // OTHER is gone from the default set: the rating hero is now the home for
+  // "general feedback", and the two side by side asked the same question twice.
+  // Hosts that still want it can pass it explicitly via `types`.
+  const availableTypes: DialogTile[] = types ?? [
     "BUG",
     "FEATURE_REQUEST",
     "UI_IMPROVEMENT",
     "PERFORMANCE",
     "SECURITY",
     "QUESTION",
-    "OTHER",
   ];
+
+  const tileGridRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Step-1 shortcuts. Digits 1–5 set the rating and go straight to the message
+   * box; letters jump to the tile they start with (b=bug, f=feature, u=ui,
+   * p=performance, s=security, q=question).
+   *
+   * Digits are the rating rather than the tiles because the two would collide,
+   * and the hero is the primary action — tiles are still one keystroke away by
+   * letter, plus arrows and Tab.
+   */
+  useEffect(() => {
+    if (!isOpen || step !== 1) return;
+    const onKey = (e: KeyboardEvent) => {
+      // Never hijack a key someone is typing into a field.
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (sendFeedback && /^[1-5]$/.test(e.key)) {
+        e.preventDefault();
+        setRating(Number(e.key));
+        setReportType("RATING");
+        setStep(2);
+        return;
+      }
+
+      const letter = e.key.toLowerCase();
+      if (!/^[a-z]$/.test(letter)) return;
+      const match = availableTypes.find(
+        (type) => getTypeLabel(type).toLowerCase().startsWith(letter)
+      );
+      if (match) {
+        e.preventDefault();
+        setReportType(match);
+        setStep(2);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // `availableTypes` is rebuilt each render; its contents are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, step, sendFeedback, availableTypes.join(",")]);
+
+  /**
+   * Arrow keys walk the tile grid, so the whole picker works without a mouse.
+   * Two columns, so up/down is ±2 and left/right is ±1; Enter and Space are
+   * left to the buttons themselves.
+   */
+  const handleTileGridKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const keys = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"];
+    if (!keys.includes(e.key)) return;
+    const tiles = Array.from(
+      tileGridRef.current?.querySelectorAll<HTMLButtonElement>("button[data-gg-type]") ?? []
+    );
+    if (tiles.length === 0) return;
+    e.preventDefault();
+    const current = tiles.indexOf(document.activeElement as HTMLButtonElement);
+    const delta =
+      e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : e.key === "ArrowDown" ? 2 : -2;
+    // From "nothing focused", the first arrow press should land on the first
+    // tile rather than jumping into the middle of the grid.
+    const next = current === -1 ? 0 : Math.min(Math.max(current + delta, 0), tiles.length - 1);
+    tiles[next]?.focus();
+  };
 
   const isDark = useIsDark();
   const t = getTheme(isDark);
@@ -640,6 +849,8 @@ export function ReportDialog({
     stopVoice();
     setIsOpen(false);
     setStep(1);
+    setRating(0);
+    setHoveredStar(0);
     setReportType("BUG");
     setSeverity("medium");
     setValidationError(null);
@@ -807,7 +1018,37 @@ export function ReportDialog({
 
   const handleSubmit = async () => {
     try {
-      if (!description.trim() || isSubmitting) return;
+      if (isSubmitting) return;
+
+      // A rating takes the feedback path: the stars are the payload, the words
+      // are optional, and nothing here reaches GitHub. The low-quality-text
+      // guard is deliberately skipped — "love it" is a fine testimonial and a
+      // useless bug report, and this branch is the former.
+      if (isRating) {
+        if (rating < 1) {
+          setValidationError("Pick a star rating first.");
+          return;
+        }
+        if (!sendFeedback) return;
+
+        setIsSubmitting(true);
+        const result = await sendFeedback(rating, description.trim() || undefined);
+        if (result?.success) {
+          setSubmitted(true);
+          setDescription("");
+          setRating(0);
+          setTimeout(() => {
+            setSubmitted(false);
+            handleClose();
+          }, 2000);
+        } else {
+          setValidationError("Could not send — please try again.");
+        }
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!description.trim()) return;
 
       const qualityError = isLowQualityText(description);
       if (qualityError) {
@@ -825,7 +1066,9 @@ export function ReportDialog({
       }
 
       const result = await report(
-        reportType,
+        // The RATING branch returned above, so anything reaching here is a real
+        // ReportType — the widened tile union can't leak into the report API.
+        reportType as ReportType,
         description.trim(),
         Object.keys(metadata).length > 0 ? metadata : undefined,
       );
@@ -875,6 +1118,18 @@ export function ReportDialog({
           button[data-gg-type="SECURITY"] > svg{animation:gg-shield-pulse 2.2s ease-in-out infinite;transform-origin:top}
           button[data-gg-type="QUESTION"] > svg{animation:gg-question-shake 2s ease-in-out infinite}
           button[data-gg-type="OTHER"] > svg{animation:gg-chat-tilt 2.2s ease-in-out infinite}
+          /* Lift on hover, settle on press. Cheaper and steadier than doing it
+             through React state, and :focus-visible keeps the ring off mouse users
+             while leaving it for the arrow-key path. */
+          button[data-gg-type]{transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
+          button[data-gg-type]:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.18)}
+          button[data-gg-type]:active{transform:translateY(0) scale(.985);box-shadow:none}
+          button[data-gg-type]:focus-visible{outline:2px solid ${t.accent};outline-offset:2px}
+          @keyframes gg-star-pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+          button[data-gg-star]{transition:transform .12s ease}
+          button[data-gg-star]:hover{transform:scale(1.18)}
+          button[data-gg-star]:active{transform:scale(.94)}
+          button[data-gg-star]:focus-visible{outline:2px solid #f59e0b;outline-offset:3px;border-radius:4px}
         `}</style>,
           document.body,
         )}
@@ -906,7 +1161,7 @@ export function ReportDialog({
               style={{
                 position: "relative",
                 zIndex: 2147483647,
-                width: "340px",
+                width: "420px",
                 maxWidth: "calc(100% - 32px)",
                 maxHeight: "calc(100dvh - 32px)",
                 display: "flex",
@@ -1082,7 +1337,7 @@ export function ReportDialog({
               {/* Body */}
               <div
                 style={{
-                  padding: "16px",
+                  padding: "18px",
                   overflowY: "auto",
                   flex: "1 1 auto",
                   minHeight: 0,
@@ -1103,12 +1358,148 @@ export function ReportDialog({
                 ) : (
                   <>
                     {/* Step 1: Category */}
-                    {step === 1 && (
+                    {/* Rating hero — a compliment is a different act from filing
+                        a bug, so it gets its own row instead of hiding as the
+                        8th identical tile. Clicking a star both sets it and
+                        advances, turning a 3-click flow into 1. */}
+                    {step === 1 && sendFeedback && (
                       <div
                         style={{
+                          border: "1px solid rgba(245,158,11,0.35)",
+                          background: "rgba(245,158,11,0.07)",
+                          borderRadius: "10px",
+                          padding: "14px 16px",
+                          marginBottom: "16px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "12px",
+                          flexWrap: "wrap",
+                        }}
+                        onMouseLeave={() => setHoveredStar(0)}
+                      >
+                        <span
+                          style={{ fontSize: "13px", fontWeight: 600, color: t.text }}
+                        >
+                          How are we doing?
+                        </span>
+                        <span style={{ display: "flex", gap: "4px" }}>
+                          {[1, 2, 3, 4, 5].map((star) => {
+                            // `rating` is normally 0 here; it only shows through
+                            // when someone rated, hit Back, and returned.
+                            const filled = star <= (hoveredStar || rating);
+                            return (
+                              <button
+                                key={star}
+                                type="button"
+                                data-gg-star={star}
+                                aria-label={`${star} star${star > 1 ? "s" : ""}`}
+                                onMouseEnter={() => setHoveredStar(star)}
+                                onFocus={() => setHoveredStar(star)}
+                                onClick={() => {
+                                  setRating(star);
+                                  setReportType("RATING");
+                                  setStep(2);
+                                }}
+                                style={{
+                                  border: "none",
+                                  background: "transparent",
+                                  padding: 0,
+                                  cursor: "pointer",
+                                  lineHeight: 0,
+                                }}
+                              >
+                                <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path
+                                    d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9L12 3z"
+                                    fill={filled ? "#f59e0b" : "transparent"}
+                                    stroke="#f59e0b"
+                                    strokeWidth="1.5"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                            );
+                          })}
+                        </span>
+                      </div>
+                    )}
+
+                    {step === 1 && sendFeedback && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          marginBottom: "16px",
+                        }}
+                      >
+                        <span style={{ flex: 1, height: "1px", background: t.border }} />
+                        <span style={{ fontSize: "11px", color: t.textMuted }}>
+                          or report something
+                        </span>
+                        <span style={{ flex: 1, height: "1px", background: t.border }} />
+                      </div>
+                    )}
+
+                    {/* The dialog screenshots the screen the moment it opens.
+                        Saying so here — with a way out — is the honest place to
+                        do it; step 2 was one screen too late to be a choice. */}
+                    {step === 1 && screenshots.length > 0 && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          marginBottom: "14px",
+                          padding: "8px 10px",
+                          border: `1px solid ${t.inputBorder}`,
+                          borderRadius: "8px",
+                          background: t.inputBg,
+                        }}
+                      >
+                        <img
+                          src={screenshots[0]}
+                          alt=""
+                          style={{
+                            width: "34px",
+                            height: "24px",
+                            objectFit: "cover",
+                            borderRadius: "4px",
+                            border: `1px solid ${t.border}`,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ fontSize: "11px", color: t.textMuted, flex: 1 }}>
+                          Screenshot attached
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setScreenshots([])}
+                          aria-label="Remove screenshot"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            color: t.textMuted,
+                            cursor: "pointer",
+                            fontSize: "15px",
+                            lineHeight: 1,
+                            padding: "2px 4px",
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+
+                    {step === 1 && (
+                      <div
+                        ref={tileGridRef}
+                        onKeyDown={handleTileGridKeyDown}
+                        style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: "8px",
+                          gridTemplateColumns: "1fr 1fr 1fr",
+                          gap: "10px",
                         }}
                       >
                         {availableTypes.map((type) => (
@@ -1124,15 +1515,14 @@ export function ReportDialog({
                               display: "flex",
                               flexDirection: "column",
                               alignItems: "center",
-                              gap: "8px",
-                              padding: "16px 8px",
+                              gap: "9px",
+                              padding: "18px 10px",
                               borderRadius: "8px",
                               border: `1px solid ${t.inputBorder}`,
                               background: t.inputBg,
                               cursor: "pointer",
                               color: t.text,
                               fontFamily: "inherit",
-                              transition: "border-color 0.15s ease",
                             }}
                             onMouseEnter={(e) => {
                               (
@@ -1145,18 +1535,16 @@ export function ReportDialog({
                               ).style.borderColor = t.inputBorder;
                             }}
                           >
-                            {getTypeIcon(type, t.accent)}
-                            <span style={{ fontSize: "13px", fontWeight: 600 }}>
-                              {getTypeLabel(type)}
-                            </span>
+                            {getTypeIcon(type, t.accent, 22)}
                             <span
                               style={{
-                                fontSize: "11px",
-                                color: t.textMuted,
-                                lineHeight: "1.3",
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                textAlign: "center",
+                                lineHeight: "1.2",
                               }}
                             >
-                              {getTypeSubtitle(type)}
+                              {getTypeLabel(type)}
                             </span>
                           </button>
                         ))}
@@ -1166,6 +1554,78 @@ export function ReportDialog({
                     {/* Step 2: Details */}
                     {step === 2 && (
                       <>
+                        {/* What you picked, still on screen and still changeable.
+                            Previously step 2 said only "Tell us more", so the
+                            only way to check or switch type was the Back arrow. */}
+                        <button
+                          type="button"
+                          onClick={() => setStep(1)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            marginBottom: "10px",
+                            padding: "4px 10px 4px 8px",
+                            borderRadius: "999px",
+                            border: `1px solid ${isRating ? "rgba(245,158,11,0.4)" : t.inputBorder}`,
+                            background: isRating ? "rgba(245,158,11,0.1)" : t.inputBg,
+                            color: t.text,
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            fontFamily: "inherit",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {getTypeIcon(reportType, isRating ? "#f59e0b" : t.accent, 13)}
+                          {getTypeLabel(reportType)}
+                          <span style={{ color: t.textMuted, fontWeight: 400 }}>· change</span>
+                        </button>
+
+                        {/* Stars carry the payload for a rating; the words below
+                            them are optional, so this sits above the textarea. */}
+                        {isRating && (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "6px",
+                              marginBottom: "12px",
+                            }}
+                            onMouseLeave={() => setHoveredStar(0)}
+                          >
+                            {[1, 2, 3, 4, 5].map((star) => {
+                              const filled = star <= (hoveredStar || rating);
+                              return (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  aria-label={`${star} star${star > 1 ? "s" : ""}`}
+                                  onClick={() => {
+                                    setRating(star);
+                                    if (validationError) setValidationError(null);
+                                  }}
+                                  onMouseEnter={() => setHoveredStar(star)}
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    padding: 0,
+                                    cursor: "pointer",
+                                    lineHeight: 0,
+                                  }}
+                                >
+                                  <svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path
+                                      d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9L12 3z"
+                                      fill={filled ? "#f59e0b" : "transparent"}
+                                      stroke={filled ? "#f59e0b" : t.inputBorder}
+                                      strokeWidth="1.5"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                         <div style={{ position: "relative" }}>
                           <textarea
                             ref={textareaRef}
@@ -1552,7 +2012,12 @@ export function ReportDialog({
                           </p>
                         )}
 
-                        {/* Screenshot section */}
+                        {/* Screenshot section — hidden for a rating. The dialog
+                            auto-captures the screen on open, and a testimonial
+                            has no reason to ship one (it may even be published
+                            publicly later). handleSubmit's rating branch never
+                            reads `screenshots`, so nothing leaks either way. */}
+                        {!isRating && (
                         <div style={{ marginTop: "10px" }}>
                           <span
                             style={{
@@ -1895,6 +2360,7 @@ export function ReportDialog({
                             )}
                           </div>
                         </div>
+                        )}
 
                         {showSeverity && reportType === "BUG" && (
                           <div style={{ marginTop: "10px" }}>
@@ -1953,32 +2419,29 @@ export function ReportDialog({
                         <button
                           type="button"
                           onClick={handleSubmit}
-                          disabled={!description.trim() || isSubmitting}
+                          disabled={submitDisabled}
                           style={{
                             marginTop: "12px",
                             width: "100%",
                             padding: "10px",
                             borderRadius: "8px",
                             border: "none",
-                            backgroundColor:
-                              !description.trim() || isSubmitting
-                                ? t.bgSecondary
-                                : t.accent,
-                            color:
-                              !description.trim() || isSubmitting
-                                ? t.textMuted
-                                : t.accentText,
+                            backgroundColor: submitDisabled
+                              ? t.bgSecondary
+                              : t.accent,
+                            color: submitDisabled ? t.textMuted : t.accentText,
                             fontSize: "14px",
                             fontWeight: 600,
-                            cursor:
-                              !description.trim() || isSubmitting
-                                ? "not-allowed"
-                                : "pointer",
+                            cursor: submitDisabled ? "not-allowed" : "pointer",
                             fontFamily: "inherit",
                             transition: "background-color 0.15s ease",
                           }}
                         >
-                          {isSubmitting ? "Sending..." : "Send Report"}
+                          {isSubmitting
+                            ? "Sending..."
+                            : isRating
+                              ? "Send Rating"
+                              : "Send Report"}
                         </button>
                       </>
                     )}
@@ -1986,15 +2449,26 @@ export function ReportDialog({
                 )}
               </div>
 
-              {/* Footer */}
+              {/* Footer — who's reporting, and the attribution */}
               <div
                 style={{
                   padding: "8px 16px 10px",
                   borderTop: `1px solid ${t.border}`,
-                  textAlign: "center",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
                 }}
               >
-                <span style={{ fontSize: "11px", color: t.textMuted }}>
+                <ReporterChip reporter={reporter} t={t} />
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: t.textMuted,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
                   Powered by Glitchgrab
                 </span>
               </div>
@@ -2191,8 +2665,10 @@ export function ReportDialog({
 
 /* ─── Helpers ─── */
 
-function getTypeLabel(type: ReportType): string {
+function getTypeLabel(type: DialogTile): string {
   switch (type) {
+    case "RATING":
+      return "Rating";
     case "BUG":
       return "Bug Report";
     case "FEATURE_REQUEST":
@@ -2210,26 +2686,8 @@ function getTypeLabel(type: ReportType): string {
   }
 }
 
-function getTypeSubtitle(type: ReportType): string {
-  switch (type) {
-    case "BUG":
-      return "Something isn't working";
-    case "FEATURE_REQUEST":
-      return "Suggest an improvement";
-    case "UI_IMPROVEMENT":
-      return "Something looks off";
-    case "PERFORMANCE":
-      return "Something is slow";
-    case "SECURITY":
-      return "Report a security concern";
-    case "QUESTION":
-      return "Ask a question";
-    case "OTHER":
-      return "General feedback";
-  }
-}
-
-function getPlaceholder(type: ReportType, idx = 0, hasVoice = false): string {
+function getPlaceholder(type: DialogTile, idx = 0, hasVoice = false): string {
+  if (type === "RATING") return "What made it good — or what let you down? (optional)";
   if (hasVoice && idx === 1) return "Hold Space to speak — we'll transcribe it";
   switch (type) {
     case "BUG":
@@ -2249,7 +2707,7 @@ function getPlaceholder(type: ReportType, idx = 0, hasVoice = false): string {
   }
 }
 
-function getTypeIcon(type: ReportType, color: string, size = 24): ReactNode {
+function getTypeIcon(type: DialogTile, color: string, size = 24): ReactNode {
   const props = {
     width: size,
     height: size,
@@ -2258,6 +2716,17 @@ function getTypeIcon(type: ReportType, color: string, size = 24): ReactNode {
     style: { flexShrink: 0 } as CSSProperties,
   };
   switch (type) {
+    case "RATING":
+      return (
+        <svg {...props}>
+          <path
+            d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9L12 3z"
+            stroke={color}
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
     case "BUG":
       return (
         <svg {...props}>
