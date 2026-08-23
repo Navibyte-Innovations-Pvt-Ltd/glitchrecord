@@ -137,6 +137,7 @@ export function AnnotationCanvas({ imageSrc, onSave, onCancel }: AnnotationCanva
 
   return (
     <div
+      data-glitchgrab-layer=""
       style={{
         position: "fixed",
         inset: 0,
