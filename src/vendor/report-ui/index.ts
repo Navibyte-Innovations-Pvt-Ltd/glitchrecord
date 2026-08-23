@@ -5,6 +5,7 @@
 
 export { ReportDialog } from "./report-dialog";
 export { AnnotationCanvas } from "./annotation-canvas";
+export { AssistSheet } from "./assist-sheet";
 export { ATTACHMENT_ACCEPT } from "./attachments";
 export {
   encodeScreenshot,
@@ -24,5 +25,8 @@ export type {
   ReportFn,
   FeedbackFn,
   EnhanceTextFn,
+  AssistFn,
+  AssistTurnParams,
+  AssistTurnResult,
   ReportReporter,
 } from "./types";
