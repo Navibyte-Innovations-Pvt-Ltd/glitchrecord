@@ -65,4 +65,14 @@ export type WsMsg =
   | { type: "error"; message: string };
 
 export interface GlitchUser { id: string; name: string; email: string; image?: string }
-export interface GlitchRepo { id: string; name: string; fullName: string }
+export interface GlitchRepo {
+  id: string;
+  name: string;
+  fullName: string;
+  /**
+   * Whether the repo owner turned the AI report assistant on (#330). Optional
+   * because the recording-side repo list (`getRepos`) doesn't carry it — only
+   * the reporter list does, and only the report window reads it.
+   */
+  aiAssistEnabled?: boolean;
+}
