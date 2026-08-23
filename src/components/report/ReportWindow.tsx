@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReportFn, ReportResult, ReportType } from "../../vendor/report-ui";
+import type { AssistFn, ReportFn, ReportResult, ReportType } from "../../vendor/report-ui";
 import { ReportDialog } from "../../vendor/report-ui";
 
 /**
@@ -20,6 +20,8 @@ import { ReportDialog } from "../../vendor/report-ui";
 interface RepoOption {
 	id: string;
 	fullName: string;
+	/** Owner's AI report assistant switch (#330), per repo. */
+	aiAssistEnabled?: boolean;
 }
 
 interface ReportPayload {
@@ -41,6 +43,18 @@ interface GlitchgrabReportAPI {
 		| { ok: true; issueUrl: string; issueNumber: number; title: string }
 		| { ok: false; error: string }
 	>;
+	assistReport: (payload: {
+		repoId: string;
+		messages: Array<{ role: "user" | "assistant"; content: string }>;
+		conversationId: string | null;
+		screenshot?: string | null;
+		context?: Record<string, unknown> | null;
+	}) => Promise<{
+		conversationId: string | null;
+		question: string | null;
+		report: string | null;
+		degraded: string | null;
+	}>;
 	closeReport: () => Promise<{ ok: boolean }>;
 }
 
@@ -127,6 +141,31 @@ export function ReportWindow() {
 		[repoId],
 	);
 
+	/**
+	 * One turn of the AI report assistant (#330), routed through the main
+	 * process so the reporter session stays out of the renderer. Wired only when
+	 * the selected repo has it switched on; the server re-checks anyway.
+	 */
+	const assist: AssistFn = useCallback(
+		async (params) => {
+			const api = gg();
+			const offline = {
+				conversationId: null,
+				question: null,
+				report: null,
+				degraded:
+					"The assistant is unavailable — write your report below and send it as normal.",
+			};
+			if (!api || !repoId) return offline;
+			try {
+				return await api.assistReport({ repoId, ...params });
+			} catch {
+				return offline;
+			}
+		},
+		[repoId],
+	);
+
 	if (error) {
 		return <div className="gg-report-msg gg-report-msg--error">{error}</div>;
 	}
@@ -170,7 +209,13 @@ export function ReportWindow() {
 				</select>
 			</label>
 
-			<ReportDialog report={report} captureScreenshot={captureScreenshot} />
+			<ReportDialog
+				report={report}
+				assist={
+					payload.repos.find((r) => r.id === repoId)?.aiAssistEnabled ? assist : undefined
+				}
+				captureScreenshot={captureScreenshot}
+			/>
 		</div>
 	);
 }
