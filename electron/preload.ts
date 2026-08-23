@@ -181,6 +181,13 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		description: string;
 		metadata?: Record<string, string>;
 	}) => ipcRenderer.invoke("glitchgrab:submit-report", payload),
+	assistReport: (payload: {
+		repoId: string;
+		messages: Array<{ role: "user" | "assistant"; content: string }>;
+		conversationId: string | null;
+		screenshot?: string | null;
+		context?: Record<string, unknown> | null;
+	}) => ipcRenderer.invoke("glitchgrab:assist-report", payload),
 	closeReport: () => ipcRenderer.invoke("glitchgrab:close-report"),
 	onReporterChanged: (cb: (info: unknown) => void) => {
 		const handler = (_e: unknown, info: unknown) => cb(info);
