@@ -307,12 +307,73 @@ export async function getReporterRepos(sessionId: string): Promise<GlitchRepo[]>
 		if (!res.ok) return [];
 		const data = (await res.json()) as {
 			success: boolean;
-			data?: Array<{ id: string; fullName: string }>;
+			data?: Array<{ id: string; fullName: string; aiAssistEnabled?: boolean }>;
 		};
 		if (!data.success || !data.data) return [];
-		return data.data.map((r) => ({ id: r.id, name: r.fullName, fullName: r.fullName }));
+		return data.data.map((r) => ({
+			id: r.id,
+			name: r.fullName,
+			fullName: r.fullName,
+			aiAssistEnabled: r.aiAssistEnabled === true,
+		}));
 	} catch {
 		return [];
+	}
+}
+
+/**
+ * One turn of the AI report assistant (#330).
+ *
+ * Same endpoint the SDK and the Chrome extension call, authenticated the same
+ * way the desktop report is — with the reporter's ExtensionSession id. The
+ * server decides whether the assistant is available for the chosen repo; this
+ * side only asks.
+ *
+ * Never throws. A failure comes back as `degraded`, the dialog closes the
+ * assistant and the plain form takes over — filing a bug must not depend on a
+ * model being up.
+ */
+export async function assistReportTurn(params: {
+	sessionId: string;
+	repoId: string;
+	messages: Array<{ role: "user" | "assistant"; content: string }>;
+	conversationId: string | null;
+	screenshot?: string | null;
+	context?: Record<string, unknown> | null;
+}): Promise<{
+	conversationId: string | null;
+	question: string | null;
+	report: string | null;
+	degraded: string | null;
+}> {
+	const offline = {
+		conversationId: null,
+		question: null,
+		report: null,
+		degraded: "The assistant is unavailable — write your report below and send it as normal.",
+	};
+	try {
+		const res = await fetch(`${BASE}/api/v1/ai/report-chat`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(params),
+		});
+		const data = (await res.json().catch(() => null)) as {
+			success?: boolean;
+			error?: string;
+			data?: { conversationId?: string; question?: string | null; report?: string | null };
+		} | null;
+		if (!res.ok || !data?.success) {
+			return { ...offline, degraded: data?.error ?? offline.degraded };
+		}
+		return {
+			conversationId: data.data?.conversationId ?? null,
+			question: data.data?.question ?? null,
+			report: data.data?.report ?? null,
+			degraded: null,
+		};
+	} catch {
+		return offline;
 	}
 }
 
