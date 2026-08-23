@@ -70,3 +70,36 @@ export type FeedbackFn = (
 
 /** Optional: polish description text. Never throws — returns original text on failure. */
 export type EnhanceTextFn = (text: string, screenshot?: string | null) => Promise<string>;
+
+/**
+ * One turn of the AI report assistant (#330).
+ *
+ * `question` and `report` are mutually exclusive: the assistant is either still
+ * asking, or it has written the description. `degraded` is set when the
+ * assistant cannot help right now — over the project's monthly cap, rate
+ * limited, model down, or simply switched off. That is not an error state: the
+ * panel closes, the message is shown once, and the plain form the dialog has
+ * always had takes over. Filing a report must never depend on a model.
+ */
+export interface AssistTurnResult {
+  conversationId: string | null;
+  question: string | null;
+  report: string | null;
+  degraded?: string | null;
+}
+
+export interface AssistTurnParams {
+  messages: { role: "user" | "assistant"; content: string }[];
+  conversationId: string | null;
+  /** The screenshot already attached to the report, so the model can read it. */
+  screenshot?: string | null;
+  /** Page URL, visited pages, breadcrumbs, report type. Host-supplied. */
+  context?: Record<string, unknown> | null;
+}
+
+/**
+ * Runs one assistant turn. Supplied by the host (SDK / extension /
+ * GlitchRecord), because only the host knows how to authenticate. Must never
+ * throw — a failure comes back as `degraded`.
+ */
+export type AssistFn = (params: AssistTurnParams) => Promise<AssistTurnResult>;
