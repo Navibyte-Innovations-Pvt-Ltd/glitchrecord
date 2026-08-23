@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AnnotationCanvas } from "./annotation-canvas";
+import { AssistSheet } from "./assist-sheet";
 import { getShortcutLabel } from "./shortcut";
 import { ATTACHMENT_ACCEPT } from "./attachments";
 import { encodeScreenshot } from "./image-encode";
@@ -22,6 +23,7 @@ import type {
   ReportFn,
   FeedbackFn,
   EnhanceTextFn,
+  AssistFn,
   ReportReporter,
 } from "./types";
 
@@ -380,6 +382,24 @@ interface ReportDialogProps {
    */
   sendFeedback?: FeedbackFn;
   enhanceText?: EnhanceTextFn;
+  /**
+   * Runs one turn of the AI report assistant (#330). Supplying it adds a
+   * "Describe it with AI" affordance above the description box; omitting it
+   * leaves the dialog exactly as it was. The assistant is an EXTRA mode, never
+   * a replacement — the plain form stays present and usable throughout, and
+   * the assistant closes itself the moment it cannot help.
+   *
+   * Hosts pass this only when the project has it switched on: the SDK reads
+   * `aiAssist` off /api/v1/sdk/project. The server re-checks the same column on
+   * every call, so this prop is a UI hint and not a permission.
+   */
+  assist?: AssistFn;
+  /**
+   * Session facts handed to the assistant — page URL, pages visited, recent
+   * clicks and API calls. The host owns this because only the host has it: the
+   * SDK keeps breadcrumbs, the extension has the tab, GlitchRecord has neither.
+   */
+  assistContext?: Record<string, unknown> | null;
   transcribeAudio?: (blob: Blob) => Promise<string>;
   types?: ReportType[];
   showSeverity?: boolean;
@@ -400,6 +420,24 @@ interface ReportDialogProps {
    * "you're signed in", which is the failure worth preventing.
    */
   reporter?: ReportReporter | null;
+  /**
+   * Called when the dialog closes itself (the × or Escape).
+   *
+   * Hosts that mount this inside something of their own — the extension puts it
+   * in a full-page iframe — otherwise have no way to know it is gone, and are
+   * left with an invisible overlay still swallowing every click on the page.
+   */
+  onClose?: () => void;
+  /**
+   * Rendered at the top of step 1, inside the dialog.
+   *
+   * For hosts that must ask something the dialog itself knows nothing about —
+   * the Chrome extension has to pick WHICH project a bug belongs to, because
+   * unlike an SDK embedded in one app it could be reporting on anything. Left
+   * outside, that question needed its own panel wrapped around this one, and
+   * two stacked cards read as a bug in the bug reporter.
+   */
+  headerSlot?: ReactNode;
 }
 
 async function captureViaHtml2Canvas(): Promise<string | null> {
@@ -434,13 +472,27 @@ export function ReportDialog({
   report,
   sendFeedback,
   enhanceText,
+  assist,
+  assistContext = null,
   transcribeAudio,
   types,
   showSeverity = true,
   captureScreenshot = captureViaHtml2Canvas,
   reporter,
+  onClose,
+  headerSlot,
 }: ReportDialogProps) {
   const [isEnhancing, setIsEnhancing] = useState(false);
+
+  /**
+   * AI assistant (#330). Closed until asked for, and one-way: once it degrades
+   * or hands over a description it does not reopen itself. `assistNotice` is
+   * why it went away, shown once under the box so the reporter is never left
+   * wondering where the button went.
+   */
+  const [assistOpen, setAssistOpen] = useState(false);
+  const [assistNotice, setAssistNotice] = useState<string | null>(null);
+  const [assistUsed, setAssistUsed] = useState(false);
   const [isEnhanced, setIsEnhanced] = useState(false);
   const [originalDescription, setOriginalDescription] = useState<string | null>(
     null,
@@ -513,17 +565,53 @@ export function ReportDialog({
   const spaceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushToTalkRef = useRef(false);
 
-  // When open, set inert on any host Radix/shadcn dialogs so their FocusScope
-  // doesn't steal focus back from GlitchGrab's textarea via focusout interception.
+  // A host focus trap — Radix `FocusScope` inside a Dialog, DropdownMenu, Select,
+  // or any other library doing the same — keeps document-level `focusin`/`focusout`
+  // listeners that yank focus straight back into its own container. While one is
+  // live, GlitchGrab's textarea is unusable: clicks land, but typing and
+  // drag-select do nothing, because focus never stays where the user put it.
+  //
+  // `inert` is the counter: focusing *into* an inert subtree is a no-op, so the
+  // trap's grab fails silently instead of fighting us for the caret. Re-applied
+  // by a MutationObserver rather than snapshotted once at open — a host layer
+  // that mounts after GlitchGrab (a prompt fired by a late query, a menu still
+  // mounted through its close animation) would otherwise keep its trap.
   useEffect(() => {
     if (!isOpen) return;
-    const dialogs = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        '[role="dialog"][data-state="open"]',
-      ),
-    );
-    dialogs.forEach((d) => d.setAttribute("inert", ""));
-    return () => dialogs.forEach((d) => d.removeAttribute("inert"));
+
+    const HOST_LAYERS =
+      '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]';
+    // Only the ones *we* set inert get it removed again on cleanup — a host that
+    // was already inert must stay that way.
+    const inerted = new Set<HTMLElement>();
+
+    const applyInert = () => {
+      document.querySelectorAll<HTMLElement>(HOST_LAYERS).forEach((el) => {
+        // Our own layers, and anything wrapping them, must stay interactive.
+        if (el.closest("[data-glitchgrab-layer]")) return;
+        if (el.querySelector("[data-glitchgrab-layer]")) return;
+        if (inerted.has(el) || el.hasAttribute("inert")) return;
+        el.setAttribute("inert", "");
+        inerted.add(el);
+      });
+    };
+
+    applyInert();
+
+    const observer = new MutationObserver((mutations) => {
+      // Attribute-only churn (a `data-state` flip, a class swap) can't introduce a
+      // layer we haven't seen, so skip the query unless nodes actually moved.
+      const structural = mutations.some(
+        (m) => m.addedNodes.length > 0 || m.removedNodes.length > 0,
+      );
+      if (structural) applyInert();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      inerted.forEach((el) => el.removeAttribute("inert"));
+    };
   }, [isOpen]);
 
   // Stepper state
@@ -662,6 +750,11 @@ export function ReportDialog({
 
   const handleOpen = async () => {
     setSubmitted(false);
+    // Belt to `handleClose`'s braces: every open starts on the form, never on a
+    // preview or annotator left over from last time. Asserted here rather than
+    // only on close so it holds however the dialog was dismissed.
+    closePreview();
+    setAnnotatingIndex(null);
     if (availableTypes.length === 1) {
       setReportType(availableTypes[0]);
       setStep(2);
@@ -692,15 +785,19 @@ export function ReportDialog({
     if (!isOpen) return;
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        // Escape unwinds one layer at a time: zoom → preview → dialog.
-        if (previewZoomed) setPreviewZoomed(false);
+        // Escape unwinds one layer at a time, topmost first:
+        // annotate → zoom → preview → dialog. Annotate has to lead — it renders
+        // above the preview, so skipping it would close the layer *underneath*
+        // the one the user is looking at and strand the canvas on screen.
+        if (annotatingIndex !== null) setAnnotatingIndex(null);
+        else if (previewZoomed) setPreviewZoomed(false);
         else if (previewIndex !== null) closePreview();
         else handleClose();
       }
     };
     document.addEventListener("keydown", handleEsc);
     return () => document.removeEventListener("keydown", handleEsc);
-  }, [isOpen, previewIndex, previewZoomed]);
+  }, [isOpen, previewIndex, previewZoomed, annotatingIndex]);
 
   // Close screenshot preview on outside click. Registered in the CAPTURE phase
   // so it fires before the host page's own outside-click handlers (e.g. Radix
@@ -845,9 +942,46 @@ export function ReportDialog({
     try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
   };
 
+  /**
+   * Is the AI sheet the surface in charge right now?
+   *
+   * When it is, the dialog is hidden outright rather than dimmed behind it. The
+   * two share `description` and `severity`, so leaving it on screen showed the
+   * same report text, the same severity buttons and a second Send Report behind
+   * a translucent overlay — one report wearing two faces. Nothing is lost by
+   * hiding it: the state is shared, so "Write it myself" brings it straight
+   * back with everything intact.
+   */
+  const sheetUp = !!assist && assistOpen && !isRating;
+
+  /**
+   * `display:none` already takes the dialog out of the tab order, but it is set
+   * by React on the overlay while `inert`/`aria-hidden` go on the card itself —
+   * so this also covers the frame where the sheet is mounting and the dialog
+   * has not yet been hidden.
+   */
+  useEffect(() => {
+    const el = modalRef.current;
+    if (!el) return;
+    if (sheetUp) {
+      el.setAttribute("inert", "");
+      el.setAttribute("aria-hidden", "true");
+    } else {
+      el.removeAttribute("inert");
+      el.removeAttribute("aria-hidden");
+    }
+  }, [sheetUp, isOpen]);
+
   const handleClose = () => {
     stopVoice();
     setIsOpen(false);
+    onClose?.();
+    // The preview and annotation overlays are full-viewport portals at the top of
+    // the stacking order. Leaving their indices set on close leaves one of them
+    // mounted over a dialog that is no longer there — the page stops accepting
+    // typing or selection entirely, and the next open renders *underneath* it.
+    closePreview();
+    setAnnotatingIndex(null);
     setStep(1);
     setRating(0);
     setHoveredStar(0);
@@ -857,6 +991,11 @@ export function ReportDialog({
     setVoiceError(null);
     setIsEnhanced(false);
     setOriginalDescription(null);
+    // A new report is a new conversation. Leaving `assistUsed` set would hide
+    // the assistant for the rest of the page's life after one use.
+    setAssistOpen(false);
+    setAssistUsed(false);
+    setAssistNotice(null);
   };
 
   const toggleVoice = async () => {
@@ -1137,12 +1276,16 @@ export function ReportDialog({
       {isOpen &&
         createPortal(
           <div
+            data-glitchgrab-layer=""
             style={{
               position: "fixed",
               inset: 0,
               zIndex: 2147483647,
               pointerEvents: "auto",
-              display: "flex",
+              // Hidden, not unmounted, while the AI sheet is in charge — the
+              // dialog's state IS the report, and unmounting would drop the
+              // screenshots, attachments and step the reporter is on.
+              display: sheetUp ? "none" : "flex",
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: "rgba(0,0,0,0.5)",
@@ -1362,6 +1505,10 @@ export function ReportDialog({
                         a bug, so it gets its own row instead of hiding as the
                         8th identical tile. Clicking a star both sets it and
                         advances, turning a 3-click flow into 1. */}
+                    {step === 1 && headerSlot ? (
+                      <div style={{ marginBottom: "14px" }}>{headerSlot}</div>
+                    ) : null}
+
                     {step === 1 && sendFeedback && (
                       <div
                         style={{
@@ -1625,6 +1772,47 @@ export function ReportDialog({
                               );
                             })}
                           </div>
+                        )}
+                        {/* Entry point to the AI sheet (#330). The sheet itself
+                            renders in its own portal at the bottom of this
+                            component, not inline: a conversation crammed into a
+                            420px card read like a form field, not a chat.
+                            Hidden for RATING — a star needs no help. */}
+                        {assist && !isRating && !assistUsed && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAssistNotice(null);
+                              setAssistOpen(true);
+                            }}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              marginBottom: "10px",
+                              // 8px vertical keeps the tap target at ~32px.
+                              padding: "8px 10px",
+                              borderRadius: "6px",
+                              border: `1px solid ${t.accent}`,
+                              background: "transparent",
+                              color: t.accent,
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              fontFamily: "inherit",
+                              cursor: "pointer",
+                            }}
+                            title="Answer a question or two and the assistant writes the report for you"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path
+                                d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3zM19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75L19 15z"
+                                stroke={t.accent}
+                                strokeWidth="1.5"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            Describe it with AI
+                          </button>
                         )}
                         <div style={{ position: "relative" }}>
                           <textarea
@@ -2009,6 +2197,25 @@ export function ReportDialog({
                             }}
                           >
                             {voiceError}
+                          </p>
+                        )}
+
+                        {/* Why the assistant went away — a draft it wrote, a
+                            cap it hit, or a model that was down. Sits directly
+                            under the box it is talking about: a notice about
+                            the description that renders below Severity reads as
+                            being about Severity. */}
+                        {assistNotice && (
+                          <p
+                            style={{
+                              color: t.textMuted,
+                              fontSize: "12px",
+                              marginTop: "6px",
+                              marginBottom: 0,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {assistNotice}
                           </p>
                         )}
 
@@ -2488,10 +2695,12 @@ export function ReportDialog({
       />
 
       {/* Full-screen screenshot preview */}
-      {previewIndex !== null &&
+      {isOpen &&
+        previewIndex !== null &&
         screenshots[previewIndex] &&
         createPortal(
           <div
+            data-glitchgrab-layer=""
             style={{
               position: "fixed",
               inset: 0,
@@ -2644,7 +2853,8 @@ export function ReportDialog({
         )}
 
       {/* Annotation overlay */}
-      {annotatingIndex !== null &&
+      {isOpen &&
+        annotatingIndex !== null &&
         screenshots[annotatingIndex] &&
         createPortal(
           <AnnotationCanvas
@@ -2659,6 +2869,56 @@ export function ReportDialog({
           />,
           document.body,
         )}
+
+      {/* The AI sheet (#330) — its own layer, above the dialog. It owns the
+          whole flow (chat → draft → Send) but NOT submission: `description`,
+          `severity` and `handleSubmit` are this component's own, so there is
+          exactly one submit path and the sheet cannot drift from it. */}
+      {isOpen && sheetUp && (
+        <AssistSheet
+          assist={assist}
+          theme={{
+            bg: t.bg,
+            bgSecondary: t.bgSecondary,
+            border: t.border,
+            text: t.text,
+            textMuted: t.textMuted,
+            inputBg: t.inputBg,
+            inputBorder: t.inputBorder,
+            accent: t.accent,
+            accentText: t.accentText,
+          }}
+          screenshot={screenshots[0] ?? null}
+          attachmentCount={screenshots.length + attachments.length}
+          context={{ ...(assistContext ?? {}), reportType }}
+          reportTypeLabel={getTypeLabel(reportType)}
+          projectSlot={headerSlot}
+          reporterName={reporter?.name ?? null}
+          description={description}
+          onDescriptionChange={(value) => {
+            setDescription(value);
+            if (validationError) setValidationError(null);
+          }}
+          severity={severity}
+          onSeverityChange={setSeverity}
+          showSeverity={showSeverity}
+          isSubmitting={isSubmitting}
+          submitted={submitted}
+          onSend={() => void handleSubmit()}
+          onDegrade={(message) => {
+            setAssistOpen(false);
+            setAssistUsed(true);
+            setAssistNotice(message);
+          }}
+          onClose={() => {
+            setAssistOpen(false);
+            // Closing by hand is not "used up" — someone who peeked and backed
+            // out should still find the button where they left it. Only a
+            // degrade (cap, outage) retires the assistant for this report.
+            requestAnimationFrame(() => textareaRef.current?.focus());
+          }}
+        />
+      )}
     </>
   );
 }
