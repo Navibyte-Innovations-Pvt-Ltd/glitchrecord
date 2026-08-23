@@ -31,6 +31,7 @@ import {
 	mintReporterSession,
 	refineScript,
 	resolveReporterSession,
+	assistReportTurn,
 	submitReport,
 	uploadSession,
 	validateToken,
@@ -1731,6 +1732,33 @@ app.whenReady().then(async () => {
 				`report: submit ${result.ok ? `ok #${result.issueNumber}` : `FAIL ${result.error}`}`,
 			);
 			return result;
+		},
+	);
+
+	// One AI-assistant turn for the report window (#330). The session id is
+	// added here, never accepted from the renderer — same rule as submit.
+	ipcMain.handle(
+		"glitchgrab:assist-report",
+		async (
+			_e,
+			payload: {
+				repoId: string;
+				messages: Array<{ role: "user" | "assistant"; content: string }>;
+				conversationId: string | null;
+				screenshot?: string | null;
+				context?: Record<string, unknown> | null;
+			},
+		) => {
+			const session = reporterSession ?? (await ensureReporterSession());
+			if (!session) {
+				return {
+					conversationId: null,
+					question: null,
+					report: null,
+					degraded: "Not signed in — write your report below and send it as normal.",
+				};
+			}
+			return assistReportTurn({ sessionId: session.sessionId, ...payload });
 		},
 	);
 
