@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { AnnotationCanvas } from "./annotation-canvas";
 import { AssistSheet } from "./assist-sheet";
 import { getShortcutLabel } from "./shortcut";
+import { getTypeLabel } from "./labels";
 import { ATTACHMENT_ACCEPT } from "./attachments";
 import { encodeScreenshot } from "./image-encode";
 import type {
@@ -493,6 +494,27 @@ export function ReportDialog({
   const [assistOpen, setAssistOpen] = useState(false);
   const [assistNotice, setAssistNotice] = useState<string | null>(null);
   const [assistUsed, setAssistUsed] = useState(false);
+  /**
+   * Has anyone actually said what this report is?
+   *
+   * `reportType` has always defaulted to "BUG", which was fine while the tile
+   * grid was the first thing anyone saw. Now that ⌘⇧G opens the assistant
+   * first, that default would silently file a rating request as a bug — so the
+   * sheet asks, and this is how it knows whether it still has to.
+   */
+  const [typeChosen, setTypeChosen] = useState(false);
+  /**
+   * The already-open issue the assistant matched this report to (#330
+   * follow-up). Held here rather than in the sheet because `handleSubmit` is
+   * the one submit path — the number rides in report metadata and the server
+   * re-validates it, so a comment replaces the second identical issue.
+   */
+  const [duplicateIssueNumber, setDuplicateIssueNumber] = useState<number | null>(null);
+  /**
+   * The assistant chat that produced this description, if one did. Rides along
+   * in metadata so the server can join the filed report back to the chat.
+   */
+  const [aiConversationId, setAiConversationId] = useState<string | null>(null);
   const [isEnhanced, setIsEnhanced] = useState(false);
   const [originalDescription, setOriginalDescription] = useState<string | null>(
     null,
@@ -564,6 +586,19 @@ export function ReportDialog({
   const sarvamChunksRef = useRef<Blob[]>([]);
   const spaceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushToTalkRef = useRef(false);
+  // Edits seen since the space that armed push-to-talk. The space itself lands
+  // as one native change; a second means the user is still typing, not holding.
+  const spaceEditsRef = useRef(0);
+  // Live mirror of `description` for the voice callbacks, which fire outside
+  // React's render and would otherwise read the value captured when listening
+  // started — see `rebaseVoiceOnUserEdits`.
+  const descriptionRef = useRef("");
+  // The exact text voice last wrote into the field. Anything else in there is
+  // the user's own typing.
+  const lastVoiceTextRef = useRef<string | null>(null);
+  // Did this run get a live Web Speech preview? Decides whether the Sarvam
+  // result replaces text on screen or defers to it.
+  const hadWebSpeechRef = useRef(false);
 
   // A host focus trap — Radix `FocusScope` inside a Dialog, DropdownMenu, Select,
   // or any other library doing the same — keeps document-level `focusin`/`focusout`
@@ -668,6 +703,7 @@ export function ReportDialog({
         e.preventDefault();
         setRating(Number(e.key));
         setReportType("RATING");
+        setTypeChosen(true);
         setStep(2);
         return;
       }
@@ -680,6 +716,7 @@ export function ReportDialog({
       if (match) {
         e.preventDefault();
         setReportType(match);
+        setTypeChosen(true);
         setStep(2);
       }
     };
@@ -757,10 +794,17 @@ export function ReportDialog({
     setAnnotatingIndex(null);
     if (availableTypes.length === 1) {
       setReportType(availableTypes[0]);
+      setTypeChosen(true);
       setStep(2);
     }
     const shot = await captureScreenshot();
     if (shot) setScreenshots([shot]);
+    // The assistant is the front door now, not a button inside the form: ⌘⇧G
+    // opens the sheet, which asks what this is before anything else. The tile
+    // grid is still exactly one tap away ("Write it myself"), and a project
+    // without the assistant — or one whose assistant degraded earlier in this
+    // page's life — opens on the grid the way it always did.
+    if (assist && !assistUsed) setAssistOpen(true);
     setIsOpen(true);
   };
 
@@ -772,6 +816,7 @@ export function ReportDialog({
       if (detail?.description) setDescription(detail.description);
       if (detail?.type) {
         setReportType(detail.type);
+        setTypeChosen(true);
         setStep(2);
       }
       handleOpen();
@@ -920,6 +965,38 @@ export function ReportDialog({
     return () => clearInterval(id);
   }, [isOpen, transcribeAudio]);
 
+  // Voice callbacks fire outside React's render, so they need the current text,
+  // not the text that was on screen when listening started.
+  useEffect(() => {
+    descriptionRef.current = description;
+  }, [description]);
+
+  /**
+   * Adopt the user's own typing as the base voice appends to.
+   *
+   * `voiceBaseRef` is a snapshot taken when listening started. Every speech
+   * result rewrote the whole field from that snapshot, so a sentence typed
+   * while the mic was open vanished on the next word recognised. If the field
+   * no longer holds what voice last wrote, the difference is the user's, and
+   * the next result appends to it instead of replacing it.
+   */
+  const rebaseVoiceOnUserEdits = () => {
+    const live = descriptionRef.current;
+    // Before voice has written anything, the field's own starting text is the
+    // baseline; after that it's whatever voice put there last.
+    const baseline = lastVoiceTextRef.current ?? textBeforeVoiceRef.current;
+    if (live === baseline) return;
+    voiceBaseRef.current = live;
+    textBeforeVoiceRef.current = live;
+  };
+
+  /** Write voice output and remember it, so later edits are detectable. */
+  const setDescriptionFromVoice = (text: string) => {
+    lastVoiceTextRef.current = text;
+    descriptionRef.current = text;
+    setDescription(text);
+  };
+
   const stopVoice = () => {
     usingWebSpeechRef.current = false;
     recognitionRef.current?.stop();
@@ -951,8 +1028,13 @@ export function ReportDialog({
    * a translucent overlay — one report wearing two faces. Nothing is lost by
    * hiding it: the state is shared, so "Write it myself" brings it straight
    * back with everything intact.
+   *
+   * RATING used to be excluded here. It no longer is: the sheet asks what this
+   * is, so "Rate us" is one of the answers it has to be able to handle, and
+   * bouncing someone back to the dialog for the one non-report tile would be a
+   * surface switch mid-sentence.
    */
-  const sheetUp = !!assist && assistOpen && !isRating;
+  const sheetUp = !!assist && assistOpen;
 
   /**
    * `display:none` already takes the dialog out of the tab order, but it is set
@@ -986,6 +1068,8 @@ export function ReportDialog({
     setRating(0);
     setHoveredStar(0);
     setReportType("BUG");
+    setTypeChosen(false);
+    setDuplicateIssueNumber(null);
     setSeverity("medium");
     setValidationError(null);
     setVoiceError(null);
@@ -1004,6 +1088,10 @@ export function ReportDialog({
       return;
     }
 
+    // Fresh run: nothing on screen came from voice yet.
+    lastVoiceTextRef.current = null;
+    hadWebSpeechRef.current = false;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRec: (new () => any) | undefined = (typeof window !== "undefined")
       ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
@@ -1021,7 +1109,7 @@ export function ReportDialog({
     if (stream && transcribeAudio) {
       streamRef.current = stream;
       sarvamChunksRef.current = [];
-      textBeforeVoiceRef.current = description;
+      textBeforeVoiceRef.current = descriptionRef.current;
 
       const rec = new MediaRecorder(stream);
       mediaRecorderRef.current = rec;
@@ -1038,12 +1126,29 @@ export function ReportDialog({
           const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
           const text = await transcribeAudio(blob);
           if (text.trim()) {
-            const sep = textBeforeVoiceRef.current.trim() ? " " : "";
-            // Replace live Web Speech preview with accurate Sarvam result
-            setDescription(textBeforeVoiceRef.current + sep + text.trim());
-            setValidationError(null);
-            setIsEnhanced(false);
-            setOriginalDescription(null);
+            const live = descriptionRef.current;
+            // No Web Speech (Firefox) means nothing has written a voice
+            // baseline, so compare against the text this run started with —
+            // otherwise typing during a Firefox recording is wiped here.
+            const baseline =
+              lastVoiceTextRef.current ?? textBeforeVoiceRef.current;
+            const userEdited = live !== baseline;
+            if (userEdited && hadWebSpeechRef.current) {
+              // The field already holds the Web Speech preview plus whatever
+              // the user typed around it. Overwriting from a snapshot would
+              // delete the typing; appending would say the sentence twice. A
+              // slightly rougher transcript is the better of the three.
+            } else {
+              // Replace the live Web Speech preview with the accurate Sarvam
+              // result. When the user typed and there was no preview to
+              // replace, their words are the base and Sarvam follows them.
+              const base = userEdited ? live : textBeforeVoiceRef.current;
+              const sep = base.trim() ? " " : "";
+              setDescriptionFromVoice(base + sep + text.trim());
+              setValidationError(null);
+              setIsEnhanced(false);
+              setOriginalDescription(null);
+            }
           }
         } catch { /* keep Web Speech result on failure */ }
         setIsTranscribing(false);
@@ -1054,8 +1159,9 @@ export function ReportDialog({
     if (SpeechRec) {
       setVoiceError(null);
       usingWebSpeechRef.current = true;
-      voiceBaseRef.current = description;
-      textBeforeVoiceRef.current = description;
+      hadWebSpeechRef.current = true;
+      voiceBaseRef.current = descriptionRef.current;
+      textBeforeVoiceRef.current = descriptionRef.current;
       const recognition = new SpeechRec();
       recognition.lang = "en-IN";
       recognition.interimResults = true;
@@ -1073,6 +1179,7 @@ export function ReportDialog({
           if (event.results[i].isFinal) finalText += text;
           else interimText += text;
         }
+        rebaseVoiceOnUserEdits();
         if (finalText) {
           const sep = voiceBaseRef.current.trim() ? " " : "";
           voiceBaseRef.current += sep + finalText.trim();
@@ -1080,7 +1187,7 @@ export function ReportDialog({
         const liveText = interimText
           ? voiceBaseRef.current + (voiceBaseRef.current.trim() ? " " : "") + interimText
           : voiceBaseRef.current;
-        setDescription(liveText);
+        setDescriptionFromVoice(liveText);
         setValidationError(null);
       };
 
@@ -1110,8 +1217,34 @@ export function ReportDialog({
     }
   };
 
+  /**
+   * Disarm a pending push-to-talk hold.
+   *
+   * Anything that proves the user is typing rather than holding cancels it: a
+   * second edit to the field, or a keystroke that isn't the space we armed on.
+   * Without this the timer fired mid-sentence, and the fix-up it ran then
+   * (delete a character, move the caret) landed on text the user had typed in
+   * the meantime — every following keystroke went into the middle of a word.
+   */
+  const cancelPushToTalkArm = () => {
+    if (!spaceTimerRef.current) return;
+    clearTimeout(spaceTimerRef.current);
+    spaceTimerRef.current = null;
+  };
+
+  /** Count edits during the hold window; the second one means "still typing". */
+  const notePushToTalkEdit = () => {
+    if (!spaceTimerRef.current) return;
+    spaceEditsRef.current += 1;
+    if (spaceEditsRef.current > 1) cancelPushToTalkArm();
+  };
+
   const handleSpaceDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.code !== "Space") return;
+    if (e.code !== "Space") {
+      // Any other key while armed — this is typing, not a hold.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) cancelPushToTalkArm();
+      return;
+    }
     // Recording or already-committed to push-to-talk — swallow the space
     if (isListening || isPushToTalkRef.current) {
       e.preventDefault();
@@ -1121,34 +1254,66 @@ export function ReportDialog({
     // type normally; we only care about the first keydown of a hold.
     if (e.repeat || !transcribeAudio || isTranscribing || spaceTimerRef.current)
       return;
+    // Only ever arm from an empty field.
+    //
+    // 400ms on the space bar is not a gesture, it's a pause: stopping to think
+    // mid-sentence held the key long enough to swallow the space AND open the
+    // mic, after which speech results rewrote what had been typed. Nobody
+    // "held space" — they wrote a bug report. The hint that advertises this
+    // ("Hold Space to speak") is a placeholder, so it is only on screen when
+    // the field is empty; arming only there is exactly what was promised, and
+    // it puts the trigger somewhere no sentence can reach it. Voice mid-report
+    // is still one tap away on the mic button.
+    if (e.currentTarget.value !== "") return;
 
     // Don't preventDefault: let the browser insert the space natively so the
     // cursor stays exactly where the user typed it. If the hold matures into
     // push-to-talk, strip that space back out below.
-    const pos = e.currentTarget.selectionStart ?? description.length;
+    //
+    // No offset is captured here on purpose. The timer used to remember where
+    // the caret was at keydown and edit there 400ms later; by then the user had
+    // often typed on, so it deleted an unrelated space and dragged the caret
+    // back into finished words. The hold now cancels the moment a second edit
+    // or another key arrives, and the strip below reads the live caret.
+    spaceEditsRef.current = 0;
     spaceTimerRef.current = setTimeout(() => {
       spaceTimerRef.current = null;
       isPushToTalkRef.current = true;
-      setDescription((prev) =>
-        prev[pos] === " " ? prev.slice(0, pos) + prev.slice(pos + 1) : prev,
-      );
-      requestAnimationFrame(() => {
-        if (textareaRef.current) {
-          textareaRef.current.selectionStart = pos;
-          textareaRef.current.selectionEnd = pos;
-        }
-      });
+      const el = textareaRef.current;
+      const caret = el?.selectionStart ?? null;
+      // Only touch the field when the caret is still sitting right after the
+      // space this hold typed. Anything else (a selection, a moved caret) is
+      // left alone — a stray space beats scrambled words.
+      if (
+        el &&
+        caret !== null &&
+        caret === el.selectionEnd &&
+        el.value[caret - 1] === " "
+      ) {
+        const cut = caret - 1;
+        setDescription((prev) =>
+          prev[cut] === " " ? prev.slice(0, cut) + prev.slice(cut + 1) : prev,
+        );
+        // toggleVoice() runs on this same tick and snapshots descriptionRef;
+        // the state update hasn't landed yet, so keep the mirror honest.
+        descriptionRef.current =
+          descriptionRef.current.slice(0, cut) +
+          descriptionRef.current.slice(cut + 1);
+        requestAnimationFrame(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = cut;
+            textareaRef.current.selectionEnd = cut;
+          }
+        });
+      }
       void toggleVoice();
     }, 400);
   };
 
   const handleSpaceUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.code !== "Space") return;
-    if (spaceTimerRef.current) {
-      // Quick tap — space was already typed natively, nothing to do.
-      clearTimeout(spaceTimerRef.current);
-      spaceTimerRef.current = null;
-    }
+    // Quick tap — space was already typed natively, nothing to do.
+    cancelPushToTalkArm();
     if (isPushToTalkRef.current) {
       isPushToTalkRef.current = false;
       stopListeningAndTranscribe();
@@ -1203,6 +1368,12 @@ export function ReportDialog({
       if (showSeverity && reportType === "BUG") {
         metadata.severity = severity;
       }
+      if (duplicateIssueNumber) {
+        metadata.duplicateIssueNumber = String(duplicateIssueNumber);
+      }
+      if (aiConversationId) {
+        metadata.aiConversationId = aiConversationId;
+      }
 
       const result = await report(
         // The RATING branch returned above, so anything reaching here is a real
@@ -1217,6 +1388,12 @@ export function ReportDialog({
         setDescription("");
         setScreenshots([]);
         setAttachments([]);
+        // The dialog outlives the report. Without this, a second bug typed by
+        // hand in the same session inherits the first one's chat and duplicate
+        // match — and "how many prompts per issue" is measured off a chat that
+        // wrote none of it.
+        setAiConversationId(null);
+        setDuplicateIssueNumber(null);
 
         setTimeout(() => {
           setSubmitted(false);
@@ -1546,6 +1723,7 @@ export function ReportDialog({
                                 onClick={() => {
                                   setRating(star);
                                   setReportType("RATING");
+                                  setTypeChosen(true);
                                   setStep(2);
                                 }}
                                 style={{
@@ -1656,6 +1834,7 @@ export function ReportDialog({
                             data-gg-type={type}
                             onClick={() => {
                               setReportType(type);
+                              setTypeChosen(true);
                               setStep(2);
                             }}
                             style={{
@@ -1783,6 +1962,7 @@ export function ReportDialog({
                             type="button"
                             onClick={() => {
                               setAssistNotice(null);
+                              setTypeChosen(true);
                               setAssistOpen(true);
                             }}
                             style={{
@@ -1819,6 +1999,7 @@ export function ReportDialog({
                             ref={textareaRef}
                             value={description}
                             onChange={(e) => {
+                              notePushToTalkEdit();
                               setDescription(e.target.value);
                               if (validationError) setValidationError(null);
                               if (isEnhanced) {
@@ -2892,6 +3073,27 @@ export function ReportDialog({
           attachmentCount={screenshots.length + attachments.length}
           context={{ ...(assistContext ?? {}), reportType }}
           reportTypeLabel={getTypeLabel(reportType)}
+          typePicked={typeChosen}
+          currentTile={reportType}
+          tiles={sendFeedback ? [...availableTypes, "RATING"] : availableTypes}
+          onPickType={(tile) => {
+            setReportType(tile);
+            setTypeChosen(true);
+            // Keep the dialog underneath in step with the sheet, so "Write it
+            // myself" lands on the form for the tile that was just picked
+            // rather than back on the grid.
+            setStep(2);
+          }}
+          onDuplicateChange={setDuplicateIssueNumber}
+          onConversationChange={setAiConversationId}
+          // The brief answered it: close everything rather than dropping them
+          // back onto an empty form, which reads as "file it anyway".
+          onFinish={handleClose}
+          rating={rating}
+          onRatingChange={(value) => {
+            setRating(value);
+            if (validationError) setValidationError(null);
+          }}
           projectSlot={headerSlot}
           reporterName={reporter?.name ?? null}
           description={description}
@@ -2924,27 +3126,6 @@ export function ReportDialog({
 }
 
 /* ─── Helpers ─── */
-
-function getTypeLabel(type: DialogTile): string {
-  switch (type) {
-    case "RATING":
-      return "Rating";
-    case "BUG":
-      return "Bug Report";
-    case "FEATURE_REQUEST":
-      return "Feature Request";
-    case "UI_IMPROVEMENT":
-      return "UI Improvement";
-    case "PERFORMANCE":
-      return "Performance";
-    case "SECURITY":
-      return "Security";
-    case "QUESTION":
-      return "Question";
-    case "OTHER":
-      return "Other";
-  }
-}
 
 function getPlaceholder(type: DialogTile, idx = 0, hasVoice = false): string {
   if (type === "RATING") return "What made it good — or what let you down? (optional)";
