@@ -84,7 +84,26 @@ export type EnhanceTextFn = (text: string, screenshot?: string | null) => Promis
 export interface AssistTurnResult {
   conversationId: string | null;
   question: string | null;
+  /**
+   * Tappable answers to `question`. Sent when the reporter has said something
+   * too vague to act on — "it could be better" — and the assistant read
+   * candidates off the screenshot instead of asking them to phrase it again.
+   * Empty when it asked an open question.
+   */
+  options?: string[];
   report: string | null;
+  /**
+   * An issue that is already open for this exact problem. Server-validated
+   * against the repo's real open issues, so the number is safe to send back:
+   * the report is added to that issue as a comment instead of opening another.
+   */
+  duplicate?: { number: number; title: string; url: string } | null;
+  /**
+   * The project's own brief answered it and the reporter confirmed. Nothing is
+   * filed — the sheet shows this line and the dialog closes. Someone whose
+   * problem already had an answer leaves with the answer, not a ticket number.
+   */
+  solved?: string | null;
   degraded?: string | null;
 }
 
