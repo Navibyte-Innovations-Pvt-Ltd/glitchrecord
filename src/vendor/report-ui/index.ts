@@ -3,7 +3,7 @@
 // Edit the source there and re-run `npm run sync:report-ui`.
 "use client";
 
-export { ReportDialog } from "./report-dialog";
+export { ReportDialog, MIC_MESSAGES, micErrorMessage } from "./report-dialog";
 export { AnnotationCanvas } from "./annotation-canvas";
 export { AssistSheet } from "./assist-sheet";
 export { ATTACHMENT_ACCEPT } from "./attachments";
