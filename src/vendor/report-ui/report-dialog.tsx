@@ -466,6 +466,66 @@ async function captureViaHtml2Canvas(): Promise<string | null> {
 }
 
 /**
+ * Recovery copy for every way the microphone can refuse to open.
+ *
+ * Every one of these ends with a way forward, because the field below still
+ * accepts typing: a blocked mic must never read like a blocked report.
+ */
+export const MIC_MESSAGES = {
+  blocked:
+    "Microphone is blocked for this site. Allow it in your browser's site settings, then reload this page. You can type your report instead.",
+  notFound:
+    "No microphone found. Connect one and try again, or type your report instead.",
+  inUse:
+    "Microphone is in use by another app. Close it and try again, or type your report instead.",
+  unusable:
+    "This microphone can't be used for recording. Pick another one in your system sound settings.",
+  insecure:
+    "Voice needs a secure (https) connection. Type your report instead.",
+  generic:
+    "Couldn't start the microphone. Try again, or type your report instead.",
+} as const;
+
+/**
+ * Turn a `getUserMedia` rejection into something the reporter can act on.
+ *
+ * "Microphone access denied" was a dead end: it is also what the browser says
+ * when the origin holds a *persisted* block, and no code on this side can lift
+ * that — only the user can, in site settings, and Chrome then needs a reload
+ * before the new setting reaches the page. So the denied copy names both steps.
+ *
+ * Deliberately host-neutral. This dialog also renders inside the Chrome
+ * extension and inside GlitchRecord, where "the lock icon in the address bar"
+ * points at nothing.
+ *
+ * `null` means "not a cause we recognise" — the caller may still fall through
+ * to Web Speech, which can succeed where the recorder stream did not.
+ */
+export const micErrorMessage = (err: unknown): string | null => {
+  const name =
+    typeof err === "object" && err !== null && "name" in err
+      ? String((err as { name: unknown }).name)
+      : "";
+  switch (name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+    case "SecurityError":
+      return MIC_MESSAGES.blocked;
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return MIC_MESSAGES.notFound;
+    case "NotReadableError":
+    case "TrackStartError":
+      return MIC_MESSAGES.inUse;
+    case "OverconstrainedError":
+    case "ConstraintNotSatisfiedError":
+      return MIC_MESSAGES.unusable;
+    default:
+      return null;
+  }
+};
+
+/**
  * The report dialog — rendered inside GlitchgrabProvider automatically.
  * Opens via the `glitchgrab:open-report` custom event (triggered by `openReportDialog()`).
  */
@@ -1098,12 +1158,35 @@ export function ReportDialog({
       : undefined;
 
     // Get mic stream for MediaRecorder (Sarvam final accurate result)
+    //
+    // `navigator.mediaDevices` is absent outside a secure context and patchy in
+    // some WebViews, so reaching straight for `.getUserMedia` throws a
+    // TypeError carrying no usable `name`. Check for it first — but only give
+    // up when Web Speech is missing too. Web Speech needs no recorder stream,
+    // so it can still transcribe here; it just loses the Sarvam correction.
     let stream: MediaStream | null = null;
+    const canRecord =
+      typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+    if (!canRecord && !SpeechRec) {
+      setVoiceError(MIC_MESSAGES.insecure);
+      return;
+    }
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (canRecord)
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-      const isDenied = err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError");
-      if (!SpeechRec || isDenied) { setVoiceError("Microphone access denied"); return; }
+      // Bail on every cause we can name, and say which one it is.
+      //
+      // The old code returned only on a denial and let everything else fall
+      // through to Web Speech — which starts by calling `setVoiceError(null)`,
+      // wiping the message, and then reports its own `audio-capture` failure as
+      // "Microphone access denied". A machine with no microphone at all was
+      // told its permissions were the problem.
+      const message = micErrorMessage(err);
+      if (message) { setVoiceError(message); return; }
+      // Unrecognised failure: Web Speech may still work without a recorder
+      // stream, so try it rather than refusing outright.
+      if (!SpeechRec) { setVoiceError(MIC_MESSAGES.generic); return; }
     }
 
     if (stream && transcribeAudio) {
@@ -1202,8 +1285,17 @@ export function ReportDialog({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onerror = (event: any) => {
         if (event.error === "aborted" || event.error === "no-speech") return;
-        const isDenied = event.error === "not-allowed" || event.error === "audio-capture";
-        setVoiceError(isDenied ? "Microphone access denied" : "Speech recognition not available — try Chrome");
+        // `audio-capture` is not a permission problem — it is the mic failing
+        // to open at all — so it gets the hardware message, not the site-block
+        // one. Sending a user with no microphone to their site settings is a
+        // wild goose chase.
+        setVoiceError(
+          event.error === "not-allowed"
+            ? MIC_MESSAGES.blocked
+            : event.error === "audio-capture"
+              ? MIC_MESSAGES.notFound
+              : "Speech recognition not available — try Chrome",
+        );
         usingWebSpeechRef.current = false;
         recognitionRef.current = null;
         setIsListening(false);
@@ -2012,7 +2104,11 @@ export function ReportDialog({
                                 ? "Transcribing your speech…"
                                 : isListening
                                   ? "Listening… speak now"
-                                  : getPlaceholder(reportType, placeholderIdx, !!transcribeAudio)
+                                  // `hasVoice` false once voice has failed: the
+                                  // rotating placeholder advertises "Hold Space
+                                  // to speak" directly above a line saying the
+                                  // microphone is blocked.
+                                  : getPlaceholder(reportType, placeholderIdx, !!transcribeAudio && !voiceError)
                             }
                             style={{
                               width: "100%",
@@ -2266,7 +2362,12 @@ export function ReportDialog({
                             </button>
                           )}
                         </div>
-                        {transcribeAudio && !isListening && !isTranscribing && (
+                        {/* Hidden once voice has failed: telling someone to
+                            hold Space to speak, directly above a line saying
+                            the microphone is blocked, advertises a gesture
+                            that cannot work. The error carries the mic story
+                            on its own until they retry. */}
+                        {transcribeAudio && !isListening && !isTranscribing && !voiceError && (
                           <div
                             style={{
                               display: "flex",
@@ -2368,11 +2469,16 @@ export function ReportDialog({
                             </button>
                           </div>
                         )}
+                        {/* Recovery instructions, not a one-word verdict —
+                            `lineHeight` and `maxWidth` so two sentences stay
+                            readable instead of running edge to edge. */}
                         {voiceError && (
                           <p
+                            role="alert"
                             style={{
                               color: "#ef4444",
                               fontSize: "11px",
+                              lineHeight: 1.5,
                               marginTop: "4px",
                               marginBottom: 0,
                             }}
