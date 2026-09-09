@@ -21,7 +21,36 @@ export type ReportType =
  */
 export type DialogTile = ReportType | "RATING";
 
-export type ReportSeverity = "low" | "medium" | "high";
+export type ReportSeverity = "low" | "medium" | "high" | "critical";
+
+/**
+ * The picker's order, left to right. Kept next to the union so a new level
+ * can't be added to the type and forgotten in the two pickers that render it
+ * (the dialog's own row and the assist sheet's).
+ *
+ * Mirrored server-side by `SEVERITY_VALUES` in `apps/web/lib/severity.ts`,
+ * which rejects anything outside it — add a level in both, or the button files
+ * a 400.
+ */
+export const SEVERITY_LEVELS: readonly ReportSeverity[] = [
+  "low",
+  "medium",
+  "high",
+  "critical",
+];
+
+/**
+ * Display text. The buttons used to render the raw union value through
+ * `text-transform: capitalize`, which meant the label and the GitHub label
+ * (`severity:<value>`) could never diverge — fine until a level needs wording
+ * the label can't carry.
+ */
+export const SEVERITY_LABELS: Record<ReportSeverity, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  critical: "Critical",
+};
 
 export interface ReportResult {
   success: boolean;
@@ -107,10 +136,28 @@ export interface AssistTurnResult {
   degraded?: string | null;
 }
 
+/**
+ * How many images ride along with one assistant turn.
+ *
+ * Capped rather than unbounded: every image is vision tokens against the
+ * repo's monthly conversation cap, and a reporter who drags in eight shots
+ * would spend the project's month on one bug. The newest win — the picture
+ * someone just pasted is the one they are talking about.
+ */
+export const MAX_ASSIST_IMAGES = 3;
+
 export interface AssistTurnParams {
   messages: { role: "user" | "assistant"; content: string }[];
   conversationId: string | null;
-  /** The screenshot already attached to the report, so the model can read it. */
+  /**
+   * Images the model reads — the auto-captured page shot plus anything the
+   * reporter pasted or attached, newest last, at most `MAX_ASSIST_IMAGES`.
+   */
+  screenshots?: string[];
+  /**
+   * @deprecated Superseded by `screenshots`, and still sent alongside it: a
+   * host running an older server would otherwise show the model nothing.
+   */
   screenshot?: string | null;
   /** Page URL, visited pages, breadcrumbs, report type. Host-supplied. */
   context?: Record<string, unknown> | null;
