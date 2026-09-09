@@ -11,6 +11,7 @@ export {
   encodeScreenshot,
   MAX_SCREENSHOT_DATA_URL_LENGTH,
 } from "./image-encode";
+export { SEVERITY_LEVELS, SEVERITY_LABELS, MAX_ASSIST_IMAGES } from "./types";
 export {
   GLITCHGRAB_SHORTCUT,
   GLITCHGRAB_SHORTCUT_MAC,
