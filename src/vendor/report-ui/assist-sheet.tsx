@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AssistFn, AssistTurnResult, DialogTile, ReportSeverity } from "./types";
+import { MAX_ASSIST_IMAGES, SEVERITY_LEVELS, SEVERITY_LABELS } from "./types";
 import { getTypeLabel } from "./labels";
 
 /**
@@ -49,8 +50,15 @@ interface ChatMessage {
 interface AssistSheetProps {
   assist: AssistFn;
   theme: AssistTheme;
-  /** Screenshot already attached to the report — the model reads it. */
-  screenshot: string | null;
+  /**
+   * Every image attached to the report, oldest first — the auto-captured page
+   * shot, then anything pasted or picked in here. The newest `MAX_ASSIST_IMAGES`
+   * go to the model; the strip above the composer shows all of them, because a
+   * paste that lands somewhere invisible reads as a paste that failed (#352).
+   */
+  screenshots: string[];
+  /** Add images from inside the sheet. The host owns the list; this appends. */
+  onAddImages?: (files: File[]) => void;
   /** How many screenshots + files are attached, for the draft's summary line. */
   attachmentCount: number;
   /** Page URL / breadcrumbs / report type — whatever the host knows. */
@@ -90,9 +98,22 @@ interface AssistSheetProps {
   /** The dialog's description state. The draft box edits it in place. */
   description: string;
   onDescriptionChange: (value: string) => void;
-  severity: ReportSeverity;
+  /** `null` until picked — the sheet never pre-selects one either (#353). */
+  severity: ReportSeverity | null;
   onSeverityChange: (value: ReportSeverity) => void;
   showSeverity: boolean;
+  /**
+   * The dialog owns submission, so a refused send (no severity, low-quality
+   * text) sets an error the reporter cannot see behind this sheet. Rendered
+   * above Send.
+   */
+  validationError?: string | null;
+  /**
+   * True only when the refusal was ABOUT severity. Computed by the dialog,
+   * which owns the error: painting the row red for a low-quality-text refusal
+   * would point at the wrong field and teach people to ignore red.
+   */
+  severityRefused?: boolean;
 
   /**
    * Tells the dialog which issue to attach to, so its ONE submit path carries
@@ -217,7 +238,8 @@ function Avatar({
 export function AssistSheet({
   assist,
   theme: t,
-  screenshot,
+  screenshots,
+  onAddImages,
   attachmentCount,
   context,
   reportTypeLabel,
@@ -234,6 +256,8 @@ export function AssistSheet({
   severity,
   onSeverityChange,
   showSeverity,
+  validationError,
+  severityRefused = false,
   onDuplicateChange,
   onConversationChange,
   isSubmitting,
@@ -244,6 +268,13 @@ export function AssistSheet({
   onFinish,
 }: AssistSheetProps) {
   const narrow = useIsNarrow();
+  /** A send the dialog refused because nothing is picked yet — turns the row red. */
+  /**
+   * The picker mirrors the dialog's gate exactly — `showSeverity` AND a bug.
+   * A feature request has no severity to give, and showing "required" on a
+   * field the dialog will not ask for makes Send unexplainable.
+   */
+  const severityAsked = showSeverity && currentTile === "BUG";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -298,7 +329,17 @@ export function AssistSheet({
     setBusy(true);
     let result: AssistTurnResult;
     try {
-      result = await assist({ messages: history, conversationId, screenshot, context });
+      // `screenshot` rides along with `screenshots` on purpose: a host pinned to
+      // an older server build reads only the singular field, and dropping it
+      // would show that server's model nothing at all.
+      const sent = screenshots.slice(-MAX_ASSIST_IMAGES);
+      result = await assist({
+        messages: history,
+        conversationId,
+        screenshots: sent,
+        screenshot: sent[sent.length - 1] ?? null,
+        context,
+      });
     } catch {
       // AssistFn is documented as never-throwing, but a host is a host.
       onDegrade("The assistant is unavailable — write your report below and send it as normal.");
@@ -956,7 +997,7 @@ export function AssistSheet({
                   }}
                 />
 
-                {showSeverity && (
+                {severityAsked && (
                   <div>
                     <span
                       style={{
@@ -967,32 +1008,56 @@ export function AssistSheet({
                       }}
                     >
                       How bad is it?
+                      {!severity && (
+                        <span
+                          style={{
+                            marginLeft: "6px",
+                            fontSize: "11px",
+                            color: severityRefused ? "#ef4444" : t.textMuted,
+                          }}
+                        >
+                          · required
+                        </span>
+                      )}
                     </span>
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      {(["low", "medium", "high"] as ReportSeverity[]).map((s) => {
+                    <div
+                      role="radiogroup"
+                      aria-label="Severity"
+                      style={{ display: "flex", gap: "6px" }}
+                    >
+                      {SEVERITY_LEVELS.map((s) => {
                         const on = severity === s;
                         return (
                           <button
                             key={s}
                             type="button"
                             onClick={() => onSeverityChange(s)}
-                            aria-pressed={on}
+                            role="radio"
+                            aria-checked={on}
                             style={{
                               flex: 1,
                               minWidth: 0,
-                              padding: "8px 0",
+                              padding: "8px 2px",
                               borderRadius: "8px",
-                              border: `1px solid ${on ? t.accent : t.inputBorder}`,
+                              border: `1px solid ${
+                                on
+                                  ? t.accent
+                                  : severityRefused
+                                    ? "#ef4444"
+                                    : t.inputBorder
+                              }`,
                               backgroundColor: on ? t.accent : "transparent",
                               color: on ? t.accentText : t.textMuted,
                               fontSize: "12px",
                               fontWeight: 600,
                               fontFamily: "inherit",
-                              textTransform: "capitalize",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
                               cursor: "pointer",
                             }}
                           >
-                            {s}
+                            {SEVERITY_LABELS[s]}
                           </button>
                         );
                       })}
@@ -1125,6 +1190,18 @@ export function AssistSheet({
                   {isSubmitting ? "Sending…" : rating < 1 ? "Pick a star first" : "Send Rating"}
                 </button>
               ) : phase === "draft" ? (
+                <>
+                {validationError && (
+                  <p
+                    style={{
+                      margin: "0 0 8px",
+                      color: "#ef4444",
+                      fontSize: "12px",
+                    }}
+                  >
+                    {validationError}
+                  </p>
+                )}
                 <button
                   type="button"
                   data-gg-sheet-send=""
@@ -1150,7 +1227,86 @@ export function AssistSheet({
                       ? `Add to #${duplicate.number}`
                       : "Send Report"}
                 </button>
+                </>
               ) : (
+                <>
+                {/* Proof that a pasted image landed. ⌘V is handled by the
+                    dialog underneath, which used to swallow the picture into a
+                    strip hidden behind this sheet — indistinguishable from
+                    paste being unsupported (#352). */}
+                {(screenshots.length > 0 || onAddImages) && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    {screenshots.map((shot, i) => {
+                      // Only the newest few are actually sent, so the rest are
+                      // dimmed rather than hidden: "it is attached but the
+                      // assistant is not looking at it" is the true statement.
+                      const read = i >= screenshots.length - MAX_ASSIST_IMAGES;
+                      return (
+                        <img
+                          key={`${i}-${shot.slice(-16)}`}
+                          src={shot}
+                          alt={read ? "Attached image the assistant reads" : "Attached image"}
+                          data-gg-assist-thumb=""
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            objectFit: "cover",
+                            borderRadius: "8px",
+                            border: `1px solid ${read ? t.accent : t.inputBorder}`,
+                            opacity: read ? 1 : 0.45,
+                          }}
+                        />
+                      );
+                    })}
+                    {onAddImages && (
+                      <label
+                        data-gg-assist-attach=""
+                        title="Attach an image — or just paste one"
+                        style={{
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: "8px",
+                          border: `1px dashed ${t.inputBorder}`,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: t.textMuted,
+                          fontSize: "18px",
+                          cursor: "pointer",
+                          flexShrink: 0,
+                        }}
+                      >
+                        +
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files ?? []);
+                            if (files.length) onAddImages(files);
+                            // Same file twice in a row fires no change event
+                            // unless the input is cleared.
+                            e.target.value = "";
+                          }}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                    )}
+                    {screenshots.length > MAX_ASSIST_IMAGES && (
+                      <span style={{ color: t.textMuted, fontSize: "11px" }}>
+                        newest {MAX_ASSIST_IMAGES} read
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
                   <textarea
                     ref={inputRef}
@@ -1217,6 +1373,7 @@ export function AssistSheet({
                     </svg>
                   </button>
                 </div>
+                </>
               )}
 
               {/* The moment people actually give up is two replies into a
