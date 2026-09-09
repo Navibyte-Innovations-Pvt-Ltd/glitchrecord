@@ -27,6 +27,10 @@ import type {
   AssistFn,
   ReportReporter,
 } from "./types";
+import { SEVERITY_LEVELS, SEVERITY_LABELS } from "./types";
+
+/** Shown when Send is pressed on a bug report with no severity picked (#353). */
+const SEVERITY_REQUIRED = "Pick how bad it is before sending.";
 
 /** Detect if the host page uses a dark or light theme */
 function useIsDark(): boolean {
@@ -712,7 +716,12 @@ export function ReportDialog({
   // Stepper state
   const [step, setStep] = useState<1 | 2>(1);
   const [reportType, setReportType] = useState<DialogTile>("BUG");
-  const [severity, setSeverity] = useState<ReportSeverity>("medium");
+  /**
+   * `null` until the reporter picks. It used to default to "medium", which put
+   * a lit-up button on screen that nobody had chosen — so every report arrived
+   * `severity:medium` and the field told triage nothing (#353).
+   */
+  const [severity, setSeverity] = useState<ReportSeverity | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   /** 0 = nothing picked yet. Only meaningful while the RATING tile is selected. */
@@ -723,6 +732,16 @@ export function ReportDialog({
 
   // A rating is gated on the stars, not the words — the message is optional.
   const submitDisabled = isSubmitting || (isRating ? rating < 1 : !description.trim());
+
+  /**
+   * The picker turns red only after a send was actually refused for it — an
+   * untouched form that already looks like an error trains people to ignore it.
+   */
+  const needsSeverity =
+    validationError === SEVERITY_REQUIRED &&
+    showSeverity &&
+    reportType === "BUG" &&
+    !severity;
 
   // RATING is deliberately NOT a tile: it gets the hero row above the grid, so
   // the stars are one click away instead of three, and its icon can't be
@@ -1130,7 +1149,7 @@ export function ReportDialog({
     setReportType("BUG");
     setTypeChosen(false);
     setDuplicateIssueNumber(null);
-    setSeverity("medium");
+    setSeverity(null);
     setValidationError(null);
     setVoiceError(null);
     setIsEnhanced(false);
@@ -1453,11 +1472,20 @@ export function ReportDialog({
         return;
       }
 
+      // Severity is a real answer, not a pre-filled one. Gated here rather than
+      // through `submitDisabled` so Send stays live and says why — a greyed-out
+      // button with no message is the failure this replaced.
+      if (showSeverity && reportType === "BUG" && !severity) {
+        setValidationError(SEVERITY_REQUIRED);
+        setStep(2);
+        return;
+      }
+
       setIsSubmitting(true);
       const metadata: Record<string, string> = {};
       if (screenshots.length > 0) metadata.screenshots = JSON.stringify(screenshots);
       if (attachments.length > 0) metadata.attachments = JSON.stringify(attachments);
-      if (showSeverity && reportType === "BUG") {
+      if (showSeverity && reportType === "BUG" && severity) {
         metadata.severity = severity;
       }
       if (duplicateIssueNumber) {
@@ -2863,39 +2891,78 @@ export function ReportDialog({
                                 fontSize: "12px",
                                 color: t.textMuted,
                                 marginBottom: "6px",
-                                display: "block",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
                               }}
                             >
-                              Severity
+                              How bad is it?
+                              <span
+                                style={{
+                                  color: severity
+                                    ? t.textMuted
+                                    : needsSeverity
+                                      ? "#ef4444"
+                                      : t.textMuted,
+                                  fontSize: "11px",
+                                }}
+                              >
+                                {severity ? "" : "· required"}
+                              </span>
                             </span>
-                            <div style={{ display: "flex", gap: "6px" }}>
-                              {(
-                                ["low", "medium", "high"] as ReportSeverity[]
-                              ).map((s) => (
-                                <button
-                                  key={s}
-                                  type="button"
-                                  onClick={() => setSeverity(s)}
-                                  style={{
-                                    flex: 1,
-                                    padding: "6px 0",
-                                    borderRadius: "6px",
-                                    border: `1px solid ${severity === s ? t.accent : t.inputBorder}`,
-                                    background:
-                                      severity === s ? t.accent : "transparent",
-                                    color:
-                                      severity === s ? t.accentText : t.text,
-                                    fontSize: "12px",
-                                    fontWeight: 600,
-                                    cursor: "pointer",
-                                    fontFamily: "inherit",
-                                    textTransform: "capitalize",
-                                    transition: "all 0.15s ease",
-                                  }}
-                                >
-                                  {s}
-                                </button>
-                              ))}
+                            <div
+                              role="radiogroup"
+                              aria-label="Severity"
+                              style={{ display: "flex", gap: "6px" }}
+                            >
+                              {SEVERITY_LEVELS.map((s) => {
+                                const on = severity === s;
+                                return (
+                                  <button
+                                    key={s}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={on}
+                                    onClick={() => {
+                                      setSeverity(s);
+                                      if (validationError)
+                                        setValidationError(null);
+                                    }}
+                                    style={{
+                                      flex: 1,
+                                      minWidth: 0,
+                                      // 9px + 12px line + borders clears a 36px
+                                      // tap target; 6px left it at ~29px.
+                                      padding: "9px 2px",
+                                      borderRadius: "6px",
+                                      border: `1px solid ${
+                                        on
+                                          ? t.accent
+                                          : needsSeverity
+                                            ? "#ef4444"
+                                            : t.inputBorder
+                                      }`,
+                                      background: on
+                                        ? t.accent
+                                        : "transparent",
+                                      color: on ? t.accentText : t.text,
+                                      fontSize: "12px",
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                      fontFamily: "inherit",
+                                      whiteSpace: "nowrap",
+                                      // Four labels where there were three: clip
+                                      // rather than spill if a host squeezes the
+                                      // dialog below ~260px.
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      transition: "all 0.15s ease",
+                                    }}
+                                  >
+                                    {SEVERITY_LABELS[s]}
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -3175,7 +3242,12 @@ export function ReportDialog({
             accent: t.accent,
             accentText: t.accentText,
           }}
-          screenshot={screenshots[0] ?? null}
+          // Every image, not just the first: the auto page shot arrived at [0],
+          // so passing that one meant a pasted picture never reached the model
+          // however visibly it was attached (#352). The sheet sends the newest
+          // few and shows the rest.
+          screenshots={screenshots}
+          onAddImages={addFiles}
           attachmentCount={screenshots.length + attachments.length}
           context={{ ...(assistContext ?? {}), reportType }}
           reportTypeLabel={getTypeLabel(reportType)}
@@ -3208,8 +3280,13 @@ export function ReportDialog({
             if (validationError) setValidationError(null);
           }}
           severity={severity}
-          onSeverityChange={setSeverity}
+          onSeverityChange={(value) => {
+            setSeverity(value);
+            if (validationError) setValidationError(null);
+          }}
           showSeverity={showSeverity}
+          validationError={validationError}
+          severityRefused={needsSeverity}
           isSubmitting={isSubmitting}
           submitted={submitted}
           onSend={() => void handleSubmit()}
