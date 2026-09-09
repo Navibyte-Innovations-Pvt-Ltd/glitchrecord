@@ -338,6 +338,9 @@ export async function assistReportTurn(params: {
 	repoId: string;
 	messages: Array<{ role: "user" | "assistant"; content: string }>;
 	conversationId: string | null;
+	/** Every image on the report, newest last (#352). */
+	screenshots?: string[];
+	/** @deprecated Sent beside `screenshots` for older server builds. */
 	screenshot?: string | null;
 	context?: Record<string, unknown> | null;
 }): Promise<{
