@@ -33,8 +33,12 @@ export type {
   FeedbackFn,
   EnhanceTextFn,
   AssistFn,
+  FindSimilarIssuesFn,
+  SimilarIssue,
   AssistSheetEvent,
   AssistTurnParams,
   AssistTurnResult,
   ReportReporter,
+  GlitchgrabProblemFn,
+  GlitchgrabProblemParams,
 } from "./types";
