@@ -146,20 +146,69 @@ export interface AssistTurnResult {
  */
 export const MAX_ASSIST_IMAGES = 3;
 
+/**
+ * Total characters of image data one assistant turn may carry.
+ *
+ * Vercel refuses a request body over ~4.5 MB at the edge with a 413, before the
+ * route runs — so the server never gets to answer `degrade`, nothing is logged,
+ * and the sheet simply closes. Images are nearly the whole body; this leaves
+ * about a megabyte for the conversation, context and events.
+ */
+export const MAX_ASSIST_IMAGE_CHARS = 3_500_000;
+
+/**
+ * Something the reporter did in the sheet, as opposed to something they typed
+ * (#357). Kept so the team can see where a conversation stopped working —
+ * "keep chatting" after a draft, "write it myself", a chip tapped.
+ */
+export interface AssistSheetEvent {
+  type:
+    | "draft_shown"
+    | "keep_chatting"
+    | "write_myself"
+    | "option_tap"
+    | "starter_tap"
+    | "image_added"
+    | "image_removed"
+    | "draft_sent"
+    | "closed";
+  detail?: string;
+  /** Epoch ms on the reporter's clock. */
+  at: number;
+}
+
 export interface AssistTurnParams {
-  messages: { role: "user" | "assistant"; content: string }[];
+  /**
+   * The conversation so far. An assistant message with `kind: "report"` is a
+   * draft the reporter was shown, its `content` the draft as they last left it
+   * — so "keep chatting" revises the draft instead of starting over (#357).
+   * Empty on an events-only flush.
+   */
+  messages: { role: "user" | "assistant"; content: string; kind?: "report" }[];
   conversationId: string | null;
   /**
+   * Sheet clicks since the last call. Hosts forward params verbatim, so this
+   * needs no host code; the server stores it against the conversation.
+   */
+  events?: AssistSheetEvent[];
+  /**
    * Images the model reads — the auto-captured page shot plus anything the
-   * reporter pasted or attached, newest last, at most `MAX_ASSIST_IMAGES`.
+   * reporter pasted or attached, newest last, at most `MAX_ASSIST_IMAGES` and
+   * `MAX_ASSIST_IMAGE_CHARS` between them.
    */
   screenshots?: string[];
   /**
-   * @deprecated Superseded by `screenshots`, and still sent alongside it: a
-   * host running an older server would otherwise show the model nothing.
+   * @deprecated Superseded by `screenshots`, and no longer sent by the sheet:
+   * repeating the newest image doubled the heaviest part of the body and pushed
+   * turns past the request-size limit. The server still reads it from SDK
+   * builds that predate `screenshots`.
    */
   screenshot?: string | null;
-  /** Page URL, visited pages, breadcrumbs, report type. Host-supplied. */
+  /**
+   * Page URL, visited pages, breadcrumbs, report type. Host-supplied. The sheet
+   * adds `imageSources` — "page" | "attached" per entry of `screenshots` — so
+   * the model can tell the screen they were on from what they pasted (#357).
+   */
   context?: Record<string, unknown> | null;
 }
 
