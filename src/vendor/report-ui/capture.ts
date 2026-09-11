@@ -26,6 +26,15 @@ const MAX_SCALE = 2;
 const FRAME_TIMEOUT_MS = 3000;
 
 /**
+ * Ceiling on everything after the reporter clicked Allow. `waitForFrame` has
+ * its own timeout but `video.play()` does not, and an await that never settles
+ * never reaches the `finally` that stops the stream — the "Sharing this tab"
+ * bar would then outlive the report (#364, not reproduced: a static page stops
+ * in ~140ms in real Chromium). Bounded here so no await in the path can do it.
+ */
+const GRAB_TIMEOUT_MS = FRAME_TIMEOUT_MS + 2000;
+
+/**
  * Chromium-only members of the `getDisplayMedia` options. Not in lib.dom yet;
  * other engines ignore unknown keys, so passing them is harmless.
  */
@@ -145,7 +154,13 @@ export async function captureViaTabPixels(): Promise<string | null> {
     )?.displaySurface;
     if (surface && surface !== "browser") return null;
 
-    const canvas = await grabFrame(stream);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), GRAB_TIMEOUT_MS);
+    });
+    const canvas = await Promise.race([grabFrame(stream), timedOut]).finally(() =>
+      clearTimeout(timer)
+    );
     return canvas ? encodeScreenshot(canvas) : null;
   } catch {
     return null;
@@ -154,6 +169,23 @@ export async function captureViaTabPixels(): Promise<string | null> {
     // one frame takes, not as long as the dialog stays open.
     stream?.getTracks().forEach((track) => track.stop());
   }
+}
+
+/**
+ * Longest one image may hold up the re-draw. html2canvas waits 15s per image by
+ * default, and `useCORS` re-fetches every cross-origin one — a list of avatars
+ * on a slow line kept the capture running for most of a minute (#363). An image
+ * that misses this is left out of the screenshot; the page around it is not.
+ */
+const IMAGE_TIMEOUT_MS = 3000;
+
+/**
+ * Our own dialog, sheet and overlays. The SDK opens the dialog before the
+ * re-draw finishes (#363), so without this the page shot would show the dialog
+ * sitting on top of the page it is meant to be a picture of.
+ */
+function isGlitchgrabLayer(el: Element): boolean {
+  return el.hasAttribute("data-glitchgrab-layer");
 }
 
 /** Re-draw the viewport from the DOM. Needs no permission; not always faithful. */
@@ -166,6 +198,8 @@ export async function captureViaHtml2Canvas(): Promise<string | null> {
       logging: false,
       useCORS: true,
       allowTaint: true,
+      imageTimeout: IMAGE_TIMEOUT_MS,
+      ignoreElements: isGlitchgrabLayer,
       x: window.scrollX,
       y: window.scrollY,
       width: window.innerWidth,
@@ -180,10 +214,66 @@ export async function captureViaHtml2Canvas(): Promise<string | null> {
 }
 
 /**
+ * The capture already running, if any. One ⌘⇧G on an SDK page with the
+ * extension installed opened the dialog twice — both keydown listeners fired —
+ * and each open asked Chrome for the tab: two share prompts for one report
+ * (#364). An open that arrives mid-capture gets the same image instead.
+ */
+let inFlight: Promise<string | null> | null = null;
+
+export interface CaptureOptions {
+  /**
+   * Called the moment the capture falls back to the DOM re-draw — the point at
+   * which the dialog can open (#363). Real pixels are taken before the dialog
+   * is on screen, or the frame would show it; the re-draw leaves our own layers
+   * out, so it doesn't have to wait. On a slow CPU and a long page the re-draw
+   * took seconds, and the dialog used to stay closed for all of them.
+   */
+  onRedraw?: () => void;
+}
+
+/**
+ * Resolves once the browser has painted, so a dialog opened in `onRedraw` is on
+ * screen before html2canvas takes the main thread. Capped, because a hidden tab
+ * never paints.
+ */
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    const cap = setTimeout(resolve, 100);
+    if (typeof requestAnimationFrame !== "function") return;
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        clearTimeout(cap);
+        resolve();
+      }, 0)
+    );
+  });
+}
+
+/**
  * Real pixels first, the re-draw when those aren't available. A refused prompt
  * still yields a screenshot — the reporter said no to screen sharing, not to
  * filing the report.
+ *
+ * `getDisplayMedia` is still reached synchronously on a fresh call: the async
+ * body runs up to its first await before this returns.
  */
-export async function captureDefaultScreenshot(): Promise<string | null> {
-  return (await captureViaTabPixels()) ?? (await captureViaHtml2Canvas());
+export function captureDefaultScreenshot(options?: CaptureOptions): Promise<string | null> {
+  if (inFlight) return inFlight;
+  inFlight = (async () => {
+    const pixels = await captureViaTabPixels();
+    if (pixels) return pixels;
+    if (options?.onRedraw) {
+      try {
+        options.onRedraw();
+      } catch {
+        // The caller's problem — the screenshot still gets taken.
+      }
+      await nextPaint();
+    }
+    return captureViaHtml2Canvas();
+  })().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
 }
