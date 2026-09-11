@@ -380,6 +380,37 @@ export async function assistReportTurn(params: {
 	}
 }
 
+/**
+ * "Is this already filed?" for the report window's plain form, asked on Send.
+ * `[]` when the repo has it off, `null` on any failure — the dialog sends
+ * straight away on either. Never throws.
+ */
+export async function findSimilarIssues(params: {
+	sessionId: string;
+	repoId: string;
+	text: string;
+}): Promise<Array<{ number: number; title: string; url: string; status?: string }> | null> {
+	try {
+		const res = await fetch(`${BASE}/api/v1/reports/similar`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(params),
+		});
+		const data = (await res.json().catch(() => null)) as {
+			success?: boolean;
+			data?: {
+				enabled?: boolean;
+				matches?: Array<{ number: number; title: string; url: string; status?: string }>;
+			};
+		} | null;
+		if (!res.ok || !data?.success) return null;
+		if (!data.data?.enabled) return [];
+		return Array.isArray(data.data.matches) ? data.data.matches : [];
+	} catch {
+		return null;
+	}
+}
+
 export async function submitReport(params: {
 	sessionId: string;
 	repoId: string;
