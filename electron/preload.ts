@@ -188,6 +188,8 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 		screenshot?: string | null;
 		context?: Record<string, unknown> | null;
 	}) => ipcRenderer.invoke("glitchgrab:assist-report", payload),
+	findSimilarIssues: (payload: { repoId: string; text: string }) =>
+		ipcRenderer.invoke("glitchgrab:find-similar-issues", payload),
 	closeReport: () => ipcRenderer.invoke("glitchgrab:close-report"),
 	onReporterChanged: (cb: (info: unknown) => void) => {
 		const handler = (_e: unknown, info: unknown) => cb(info);
