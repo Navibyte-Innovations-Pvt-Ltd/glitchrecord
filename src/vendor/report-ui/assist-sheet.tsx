@@ -5,8 +5,19 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { AssistFn, AssistTurnResult, DialogTile, ReportSeverity } from "./types";
-import { MAX_ASSIST_IMAGES, SEVERITY_LEVELS, SEVERITY_LABELS } from "./types";
+import type {
+  AssistFn,
+  AssistSheetEvent,
+  AssistTurnResult,
+  DialogTile,
+  ReportSeverity,
+} from "./types";
+import {
+  MAX_ASSIST_IMAGE_CHARS,
+  MAX_ASSIST_IMAGES,
+  SEVERITY_LEVELS,
+  SEVERITY_LABELS,
+} from "./types";
 import { getTypeLabel } from "./labels";
 
 /**
@@ -45,6 +56,31 @@ export interface AssistTheme {
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /**
+   * A draft the model wrote. Its `content` is the draft TEXT, not a "here's
+   * your report" line — the model has to see what it wrote, or "keep chatting"
+   * makes the reporter describe the whole thing again (#357).
+   */
+  kind?: "report";
+}
+
+/**
+ * The images one turn can carry: newest first, at most `MAX_ASSIST_IMAGES`,
+ * and never more than `MAX_ASSIST_IMAGE_CHARS` between them. An image that
+ * would overflow is skipped rather than ending the pick, so a heavy paste costs
+ * itself, not the small page shot behind it. Returned oldest-first, the order
+ * the model reads them in.
+ */
+function pickAssistImages(all: string[]): string[] {
+  const picked: string[] = [];
+  let total = 0;
+  for (let i = all.length - 1; i >= 0 && picked.length < MAX_ASSIST_IMAGES; i--) {
+    const shot = all[i];
+    if (total + shot.length > MAX_ASSIST_IMAGE_CHARS) continue;
+    picked.unshift(shot);
+    total += shot.length;
+  }
+  return picked;
 }
 
 interface AssistSheetProps {
@@ -52,13 +88,26 @@ interface AssistSheetProps {
   theme: AssistTheme;
   /**
    * Every image attached to the report, oldest first — the auto-captured page
-   * shot, then anything pasted or picked in here. The newest `MAX_ASSIST_IMAGES`
-   * go to the model; the strip above the composer shows all of them, because a
+   * shot, then anything pasted or picked in here. The newest that fit
+   * `MAX_ASSIST_IMAGES` and `MAX_ASSIST_IMAGE_CHARS` go to the model
+   * (`pickAssistImages`); the strip above the composer shows all of them, because a
    * paste that lands somewhere invisible reads as a paste that failed (#352).
    */
   screenshots: string[];
+  /**
+   * The shot the dialog captured itself when it opened, if it did. Every other
+   * entry of `screenshots` was added by the reporter — and is usually the thing
+   * they are complaining about, which may not be this page at all (#357).
+   */
+  pageShot?: string | null;
   /** Add images from inside the sheet. The host owns the list; this appends. */
   onAddImages?: (files: File[]) => void;
+  /**
+   * Take one image back off the report, by its index in `screenshots` (#360).
+   * Without it a wrong paste could only be undone by leaving the sheet — and
+   * the reporter had no idea the dialog behind it had a remove button.
+   */
+  onRemoveImage?: (index: number) => void;
   /** How many screenshots + files are attached, for the draft's summary line. */
   attachmentCount: number;
   /** Page URL / breadcrumbs / report type — whatever the host knows. */
@@ -239,7 +288,9 @@ export function AssistSheet({
   assist,
   theme: t,
   screenshots,
+  pageShot = null,
   onAddImages,
+  onRemoveImage,
   attachmentCount,
   context,
   reportTypeLabel,
@@ -311,10 +362,58 @@ export function AssistSheet({
     !typePicked ? "type" : currentTile === "RATING" ? "rating" : "chat",
   );
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   /** Guards the seed below against React 18's double-invoked effects. */
   const seededRef = useRef(false);
+  /**
+   * Clicks the server has not seen yet (#357). They ride along with the next
+   * turn, or go on their own when the sheet is left — the moment someone gives
+   * up on the assistant is exactly the click worth keeping.
+   */
+  const eventsRef = useRef<AssistSheetEvent[]>([]);
+  /** The model's own last draft, to tell "sent as drafted" from "edited". */
+  const aiDraftRef = useRef<string | null>(null);
+
+  function logEvent(type: AssistSheetEvent["type"], detail?: string) {
+    eventsRef.current.push({ type, at: Date.now(), ...(detail ? { detail } : {}) });
+  }
+
+  function takeEvents(): AssistSheetEvent[] | undefined {
+    if (eventsRef.current.length === 0) return undefined;
+    const events = eventsRef.current;
+    eventsRef.current = [];
+    return events;
+  }
+
+  /**
+   * Send pending clicks without a model turn. Fire-and-forget: the server
+   * answers an empty `messages` with no model call and nothing counted, and
+   * nobody waits on it. Needs a conversation to attach to — clicks before the
+   * first reply have nowhere to go and ride with that reply instead.
+   */
+  function flushEvents() {
+    if (!conversationId) return;
+    const events = takeEvents();
+    if (!events) return;
+    try {
+      void Promise.resolve(
+        assist({ messages: [], conversationId, events, screenshots: [], context: null }),
+      ).catch(() => {});
+    } catch {
+      // A host's fn threw synchronously. Losing a click log is fine.
+    }
+  }
+
+  // What the next turn will actually send — the strip marks exactly these, so
+  // an image dropped for size reads as unread, not just one dropped for count.
+  const readShots = new Set(pickAssistImages(screenshots));
+
+  /** Every way out of the sheet that is not Send. */
+  function leave(type: "write_myself" | "closed", detail?: string) {
+    logEvent(type, detail);
+    flushEvents();
+    onClose();
+  }
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -325,31 +424,55 @@ export function AssistSheet({
     if (phase === "draft") draftRef.current?.focus();
   }, [phase]);
 
+  /**
+   * A turn that failed carried clicks with it. Put them back and flush them on
+   * their own — the clicks right before an outage are exactly the ones worth
+   * reading, and a cap/rate-limit degrade still accepts an events-only flush.
+   */
+  function degradeKeepingEvents(events: AssistSheetEvent[] | undefined, message: string) {
+    if (events) eventsRef.current = [...events, ...eventsRef.current];
+    flushEvents();
+    onDegrade(message);
+  }
+
   async function runTurn(history: ChatMessage[]) {
     setBusy(true);
     let result: AssistTurnResult;
+    const events = takeEvents();
     try {
-      // `screenshot` rides along with `screenshots` on purpose: a host pinned to
-      // an older server build reads only the singular field, and dropping it
-      // would show that server's model nothing at all.
-      const sent = screenshots.slice(-MAX_ASSIST_IMAGES);
+      // Held to a total budget, and no singular `screenshot` beside it: a body
+      // over the request limit is refused at the edge with a 413 before the
+      // route runs, and repeating the newest image is what tipped real turns
+      // over it.
+      const sent = pickAssistImages(screenshots);
       result = await assist({
-        messages: history,
+        // `kind` only on drafts, so an older server sees the exact shape it
+        // always did — it just learns the draft text now instead of a
+        // placeholder line.
+        messages: history.map((m) =>
+          m.kind ? { role: m.role, content: m.content, kind: m.kind } : m,
+        ),
         conversationId,
         screenshots: sent,
-        screenshot: sent[sent.length - 1] ?? null,
-        context,
+        context: {
+          ...(context ?? {}),
+          imageSources: sent.map((shot) => (pageShot && shot === pageShot ? "page" : "attached")),
+        },
+        events,
       });
     } catch {
       // AssistFn is documented as never-throwing, but a host is a host.
-      onDegrade("The assistant is unavailable — write your report below and send it as normal.");
+      degradeKeepingEvents(
+        events,
+        "The assistant is unavailable — write your report below and send it as normal.",
+      );
       return;
     } finally {
       setBusy(false);
     }
 
     if (result.degraded) {
-      onDegrade(result.degraded);
+      degradeKeepingEvents(events, result.degraded);
       return;
     }
     if (result.conversationId) {
@@ -369,7 +492,9 @@ export function AssistSheet({
 
     if (result.report) {
       onDescriptionChange(result.report);
-      setMessages([...history, { role: "assistant", content: "Here's your report — have a read." }]);
+      aiDraftRef.current = result.report;
+      logEvent("draft_shown");
+      setMessages([...history, { role: "assistant", content: result.report, kind: "report" }]);
       setOptions([]);
       setPhase("draft");
       return;
@@ -405,7 +530,18 @@ export function AssistSheet({
     const value = text.trim();
     if (!value || busy) return;
     setOptions([]);
-    const history: ChatMessage[] = [...messages, { role: "user", content: value }];
+    // Typed under a draft, it is a correction to that draft (#360 — the chat box
+    // stays there, so asking for a change is just replying). Logged as
+    // `keep_chatting`, the first number read when tuning the prompt.
+    const underDraft = phase === "draft";
+    if (underDraft) {
+      const edited =
+        aiDraftRef.current !== null && description.trim() !== aiDraftRef.current.trim();
+      logEvent("keep_chatting", edited ? "after editing" : undefined);
+      setPhase("chat");
+    }
+    const base = underDraft ? withCurrentDraft(messages) : messages;
+    const history: ChatMessage[] = [...base, { role: "user", content: value }];
     setMessages(history);
     setInput("");
     void runTurn(history);
@@ -419,6 +555,30 @@ export function AssistSheet({
   function pickType(tile: DialogTile) {
     onPickType(tile);
     setPhase(tile === "RATING" ? "rating" : "chat");
+  }
+
+  /**
+   * The draft stays in the conversation — as the reporter last left it, hand
+   * edits included — so the next message is read as a correction to it, not as
+   * the start of a new report (#357).
+   */
+  function withCurrentDraft(history: ChatMessage[]): ChatMessage[] {
+    const current = description.trim();
+    const next = [...history];
+    for (let i = next.length - 1; i >= 0; i--) {
+      if (next[i].kind === "report") {
+        if (current) next[i] = { ...next[i], content: current };
+        break;
+      }
+    }
+    return next;
+  }
+
+  function sendDraft() {
+    const edited = aiDraftRef.current !== null && description.trim() !== aiDraftRef.current.trim();
+    logEvent("draft_sent", edited ? "edited" : "as drafted");
+    flushEvents();
+    onSend();
   }
 
   const empty = phase === "chat" && messages.length === 0 && !busy;
@@ -454,7 +614,7 @@ export function AssistSheet({
         @keyframes gg-sheet-up{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
         @keyframes gg-sheet-fade{from{opacity:0}to{opacity:1}}
         @keyframes gg-dot{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-3px);opacity:1}}
-        [data-gg-sheet-send]:focus-visible,[data-gg-chip]:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+        [data-gg-sheet-send]:focus-visible,[data-gg-chip]:focus-visible,[data-gg-assist-remove]:focus-visible{outline:2px solid currentColor;outline-offset:2px}
       `}</style>
       <div
         data-glitchgrab-layer=""
@@ -472,7 +632,7 @@ export function AssistSheet({
           animation: "gg-sheet-fade .18s ease",
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         }}
-        onClick={onClose}
+        onClick={() => leave("closed")}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div
@@ -549,7 +709,7 @@ export function AssistSheet({
             <button
               type="button"
               data-gg-write-myself=""
-              onClick={onClose}
+              onClick={() => leave("write_myself", `header, ${phase}`)}
               aria-label="Write it myself instead"
               style={{
                 flexShrink: 0,
@@ -793,7 +953,10 @@ export function AssistSheet({
                       key={s}
                       type="button"
                       data-gg-chip=""
-                      onClick={() => send(s)}
+                      onClick={() => {
+                        logEvent("starter_tap", s);
+                        send(s);
+                      }}
                       style={{
                         border: `1px solid ${t.inputBorder}`,
                         background: "transparent",
@@ -814,6 +977,64 @@ export function AssistSheet({
 
             {messages.map((m, i) => {
               const mine = m.role === "user";
+              if (m.kind === "report") {
+                // While the draft card is up it shows the text itself, so the
+                // bubble only points at it. Once they go back to chatting, the
+                // draft stays readable in the transcript: they are correcting
+                // it, and a correction to something you cannot see is a guess.
+                const live = phase === "draft" && i === messages.length - 1;
+                return (
+                  <div key={i} style={{ display: "flex", gap: "8px", minWidth: 0 }}>
+                    <Avatar who="assistant" theme={t} />
+                    <div
+                      data-gg-draft-bubble=""
+                      style={{
+                        maxWidth: "82%",
+                        minWidth: 0,
+                        padding: "9px 12px",
+                        borderRadius: "12px 12px 12px 4px",
+                        fontSize: "13px",
+                        lineHeight: 1.55,
+                        backgroundColor: t.bgSecondary,
+                        color: t.text,
+                        border: live ? "none" : `1px solid ${t.accent}66`,
+                      }}
+                    >
+                      {live ? (
+                        "Here's your report — have a read."
+                      ) : (
+                        <>
+                          <span
+                            style={{
+                              display: "block",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              letterSpacing: ".06em",
+                              textTransform: "uppercase",
+                              color: t.accent,
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Draft so far
+                          </span>
+                          <span
+                            style={{
+                              display: "block",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                              maxHeight: "160px",
+                              overflowY: "auto",
+                              color: t.textMuted,
+                            }}
+                          >
+                            {m.content}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={i}
@@ -869,7 +1090,10 @@ export function AssistSheet({
                     type="button"
                     data-gg-chip=""
                     data-gg-option=""
-                    onClick={() => send(option)}
+                    onClick={() => {
+                      logEvent("option_tap", option);
+                      send(option);
+                    }}
                     style={{
                       border: `1px solid ${t.inputBorder}`,
                       background: "transparent",
@@ -1071,24 +1295,6 @@ export function AssistSheet({
                     sent with this.
                   </span>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => setPhase("chat")}
-                  style={{
-                    alignSelf: "flex-start",
-                    border: "none",
-                    background: "transparent",
-                    color: t.textMuted,
-                    fontSize: "12px",
-                    fontFamily: "inherit",
-                    padding: "9px 0",
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                  }}
-                >
-                  Not quite — keep chatting
-                </button>
               </div>
             )}
 
@@ -1189,46 +1395,11 @@ export function AssistSheet({
                 >
                   {isSubmitting ? "Sending…" : rating < 1 ? "Pick a star first" : "Send Rating"}
                 </button>
-              ) : phase === "draft" ? (
-                <>
-                {validationError && (
-                  <p
-                    style={{
-                      margin: "0 0 8px",
-                      color: "#ef4444",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {validationError}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  data-gg-sheet-send=""
-                  onClick={onSend}
-                  disabled={isSubmitting || !description.trim()}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    borderRadius: "10px",
-                    border: "none",
-                    backgroundColor:
-                      isSubmitting || !description.trim() ? t.bgSecondary : t.accent,
-                    color: isSubmitting || !description.trim() ? t.textMuted : t.accentText,
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    fontFamily: "inherit",
-                    cursor: isSubmitting || !description.trim() ? "default" : "pointer",
-                  }}
-                >
-                  {isSubmitting
-                    ? "Sending…"
-                    : duplicate
-                      ? `Add to #${duplicate.number}`
-                      : "Send Report"}
-                </button>
-                </>
               ) : (
+                // Chat AND draft share this branch, so the chat box is the same
+                // element on both sides of a draft landing — it stays put
+                // instead of remounting, and a draft is something you can
+                // still reply to (#360), not a form that replaced the chat.
                 <>
                 {/* Proof that a pasted image landed. ⌘V is handled by the
                     dialog underneath, which used to swallow the picture into a
@@ -1245,25 +1416,98 @@ export function AssistSheet({
                     }}
                   >
                     {screenshots.map((shot, i) => {
-                      // Only the newest few are actually sent, so the rest are
-                      // dimmed rather than hidden: "it is attached but the
-                      // assistant is not looking at it" is the true statement.
-                      const read = i >= screenshots.length - MAX_ASSIST_IMAGES;
+                      // Only some are actually sent (count and size caps), so
+                      // the rest are dimmed rather than hidden: "it is attached
+                      // but the assistant is not looking at it" is the true
+                      // statement.
+                      const read = readShots.has(shot);
                       return (
-                        <img
+                        <div
                           key={`${i}-${shot.slice(-16)}`}
-                          src={shot}
-                          alt={read ? "Attached image the assistant reads" : "Attached image"}
-                          data-gg-assist-thumb=""
                           style={{
+                            position: "relative",
                             width: "40px",
                             height: "40px",
-                            objectFit: "cover",
-                            borderRadius: "8px",
-                            border: `1px solid ${read ? t.accent : t.inputBorder}`,
-                            opacity: read ? 1 : 0.45,
+                            flexShrink: 0,
                           }}
-                        />
+                        >
+                          <img
+                            src={shot}
+                            alt={read ? "Attached image the assistant reads" : "Attached image"}
+                            data-gg-assist-thumb=""
+                            style={{
+                              display: "block",
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              borderRadius: "8px",
+                              border: `1px solid ${read ? t.accent : t.inputBorder}`,
+                              opacity: read ? 1 : 0.45,
+                              boxSizing: "border-box",
+                            }}
+                          />
+                          {/* #360: a wrong paste could not be taken back from
+                              in here, so reporters described "the third
+                              screenshot" in words instead. Same red × as the
+                              dialog's own strip. */}
+                          {onRemoveImage && (
+                            <button
+                              type="button"
+                              data-gg-assist-remove=""
+                              aria-label={`Remove image ${i + 1}`}
+                              title="Remove this image"
+                              onClick={() => {
+                                logEvent(
+                                  "image_removed",
+                                  pageShot && shot === pageShot ? "page capture" : "attached",
+                                );
+                                onRemoveImage(i);
+                              }}
+                              // 32px to tap, 20px to see: the dot stays small on a
+                              // 40px thumbnail, the target does not.
+                              style={{
+                                position: "absolute",
+                                top: "-13px",
+                                right: "-13px",
+                                width: "32px",
+                                height: "32px",
+                                border: "none",
+                                background: "transparent",
+                                padding: 0,
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: "50%",
+                              }}
+                            >
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  width: "20px",
+                                  height: "20px",
+                                  boxSizing: "border-box",
+                                  borderRadius: "50%",
+                                  border: `2px solid ${t.bg}`,
+                                  background: "#ef4444",
+                                  color: "#fff",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                                  <path
+                                    d="M1 1L9 9M9 1L1 9"
+                                    stroke="currentColor"
+                                    strokeWidth="1.6"
+                                    strokeLinecap="round"
+                                  />
+                                </svg>
+                              </span>
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                     {onAddImages && (
@@ -1291,7 +1535,10 @@ export function AssistSheet({
                           multiple
                           onChange={(e) => {
                             const files = Array.from(e.target.files ?? []);
-                            if (files.length) onAddImages(files);
+                            if (files.length) {
+                              logEvent("image_added", String(files.length));
+                              onAddImages(files);
+                            }
                             // Same file twice in a row fires no change event
                             // unless the input is cleared.
                             e.target.value = "";
@@ -1300,16 +1547,15 @@ export function AssistSheet({
                         />
                       </label>
                     )}
-                    {screenshots.length > MAX_ASSIST_IMAGES && (
+                    {readShots.size < screenshots.length && (
                       <span style={{ color: t.textMuted, fontSize: "11px" }}>
-                        newest {MAX_ASSIST_IMAGES} read
+                        {readShots.size} of {screenshots.length} read
                       </span>
                     )}
                   </div>
                 )}
                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
                   <textarea
-                    ref={inputRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -1320,7 +1566,9 @@ export function AssistSheet({
                         send(input);
                       }
                     }}
-                    placeholder="Type your answer…"
+                    placeholder={
+                      phase === "draft" ? "Anything to change? Tell me here…" : "Type your answer…"
+                    }
                     rows={1}
                     disabled={busy}
                     autoFocus
@@ -1373,6 +1621,47 @@ export function AssistSheet({
                     </svg>
                   </button>
                 </div>
+                {phase === "draft" && (
+                  <>
+                    {validationError && (
+                      <p
+                        style={{
+                          margin: "8px 0 0",
+                          color: "#ef4444",
+                          fontSize: "12px",
+                        }}
+                      >
+                        {validationError}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      data-gg-sheet-send=""
+                      onClick={sendDraft}
+                      disabled={isSubmitting || !description.trim()}
+                      style={{
+                        width: "100%",
+                        marginTop: "8px",
+                        padding: "12px",
+                        borderRadius: "10px",
+                        border: "none",
+                        backgroundColor:
+                          isSubmitting || !description.trim() ? t.bgSecondary : t.accent,
+                        color: isSubmitting || !description.trim() ? t.textMuted : t.accentText,
+                        fontSize: "14px",
+                        fontWeight: 700,
+                        fontFamily: "inherit",
+                        cursor: isSubmitting || !description.trim() ? "default" : "pointer",
+                      }}
+                    >
+                      {isSubmitting
+                        ? "Sending…"
+                        : duplicate
+                          ? `Add to #${duplicate.number}`
+                          : "Send Report"}
+                    </button>
+                  </>
+                )}
                 </>
               )}
 
@@ -1383,7 +1672,7 @@ export function AssistSheet({
                 <button
                   type="button"
                   data-gg-write-myself=""
-                  onClick={onClose}
+                  onClick={() => leave("write_myself", "footer")}
                   style={{
                     display: "block",
                     margin: "8px auto 0",
