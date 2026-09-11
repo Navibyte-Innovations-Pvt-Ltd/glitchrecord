@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AssistFn, ReportFn, ReportResult, ReportType } from "../../vendor/report-ui";
+import type {
+	AssistFn,
+	FindSimilarIssuesFn,
+	ReportFn,
+	ReportResult,
+	ReportType,
+} from "../../vendor/report-ui";
 import { ReportDialog } from "../../vendor/report-ui";
 
 /**
@@ -55,6 +61,10 @@ interface GlitchgrabReportAPI {
 		report: string | null;
 		degraded: string | null;
 	}>;
+	findSimilarIssues: (payload: {
+		repoId: string;
+		text: string;
+	}) => Promise<Array<{ number: number; title: string; url: string; status?: string }> | null>;
 	closeReport: () => Promise<{ ok: boolean }>;
 }
 
@@ -166,6 +176,20 @@ export function ReportWindow() {
 		[repoId],
 	);
 
+	/** Plain form's "is this already filed?" on Send, via main (session stays there). */
+	const findSimilarIssues: FindSimilarIssuesFn = useCallback(
+		async (description) => {
+			const api = gg();
+			if (!api || !repoId) return null;
+			try {
+				return await api.findSimilarIssues({ repoId, text: description });
+			} catch {
+				return null;
+			}
+		},
+		[repoId],
+	);
+
 	if (error) {
 		return <div className="gg-report-msg gg-report-msg--error">{error}</div>;
 	}
@@ -213,6 +237,11 @@ export function ReportWindow() {
 				report={report}
 				assist={
 					payload.repos.find((r) => r.id === repoId)?.aiAssistEnabled ? assist : undefined
+				}
+				findSimilarIssues={
+					payload.repos.find((r) => r.id === repoId)?.aiAssistEnabled
+						? findSimilarIssues
+						: undefined
 				}
 				captureScreenshot={captureScreenshot}
 			/>
