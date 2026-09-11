@@ -191,6 +191,14 @@ interface AssistSheetProps {
    * them they are done would read as "now file it anyway".
    */
   onFinish?: () => void;
+  /**
+   * Opens the dialog's "Problem with Glitchgrab?" panel (#366). The sheet is
+   * where the assistant goes wrong, so the way to say so lives here too — as a
+   * link, and as a card when the assistant itself decides the chat is about
+   * Glitchgrab. `prefill` is the reporter's own words, so they never retype.
+   * Omitted when the host did not offer it.
+   */
+  onReportGlitchgrabProblem?: (prefill?: string) => void;
 }
 
 /**
@@ -317,6 +325,7 @@ export function AssistSheet({
   onDegrade,
   onClose,
   onFinish,
+  onReportGlitchgrabProblem,
 }: AssistSheetProps) {
   const narrow = useIsNarrow();
   /** A send the dialog refused because nothing is picked yet — turns the row red. */
@@ -343,9 +352,9 @@ export function AssistSheet({
    * number is safe to hand back on submit: the report is added to that issue
    * as a comment rather than opening a second one.
    */
-  const [duplicate, setDuplicate] = useState<
-    { number: number; title: string; url: string } | null
-  >(null);
+  const [duplicate, setDuplicate] = useState<AssistTurnResult["duplicate"]>(null);
+  /** The assistant said "this is about Glitchgrab, not this app" (#366) — show the offer card. */
+  const [glitchgrabOffer, setGlitchgrabOffer] = useState(false);
   /**
    * The brief answered it. Nothing is filed and the dialog closes — the whole
    * point of giving the assistant the project's guides is that some people
@@ -457,6 +466,9 @@ export function AssistSheet({
         context: {
           ...(context ?? {}),
           imageSources: sent.map((shot) => (pageShot && shot === pageShot ? "page" : "attached")),
+          // Whether this dialog can open the #366 panel at all. A hint — the
+          // server decides whether the model may offer it.
+          canReportGlitchgrab: !!onReportGlitchgrabProblem,
         },
         events,
       });
@@ -482,6 +494,7 @@ export function AssistSheet({
 
     setDuplicate(result.duplicate ?? null);
     onDuplicateChange?.(result.duplicate?.number ?? null);
+    setGlitchgrabOffer(!!result.aboutGlitchgrab && !!onReportGlitchgrabProblem && !!result.question);
 
     if (result.solved) {
       setSolved(result.solved);
@@ -530,6 +543,8 @@ export function AssistSheet({
     const value = text.trim();
     if (!value || busy) return;
     setOptions([]);
+    // Replying at all answers the offer — the card goes, the chat carries on.
+    setGlitchgrabOffer(false);
     // Typed under a draft, it is a correction to that draft (#360 — the chat box
     // stays there, so asking for a change is just replying). Logged as
     // `keep_chatting`, the first number read when tuning the prompt.
@@ -582,6 +597,49 @@ export function AssistSheet({
   }
 
   const empty = phase === "chat" && messages.length === 0 && !busy;
+
+  /**
+   * The already-open issue, and where its fix stands. Shown beside the "is it
+   * the same problem?" question and again above the draft — "we know, we're on
+   * it" is the answer the reporter came for, so it is said before Send, not
+   * after. `status` is the server's, off GitHub's milestone; never the model's.
+   *
+   * `title: false` beside the question, which already names the issue — the
+   * card then adds only what the model cannot say: where the fix stands.
+   */
+  function renderKnownIssue({ title, footer }: { title: boolean; footer?: string }) {
+    if (!duplicate) return null;
+    return (
+      <div
+        data-gg-known-issue=""
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "3px",
+          padding: "9px 10px",
+          borderRadius: "8px",
+          border: "1px solid rgba(245,158,11,0.4)",
+          backgroundColor: "rgba(245,158,11,0.08)",
+          fontSize: "12px",
+          lineHeight: 1.5,
+          minWidth: 0,
+        }}
+      >
+        <span style={{ color: "#f59e0b", fontWeight: 600 }}>
+          {title ? "Our team is already on this" : `Our team is already on #${duplicate.number}`}
+        </span>
+        {title && (
+          <span style={{ color: t.textMuted, wordBreak: "break-word" }}>
+            #{duplicate.number} {duplicate.title}
+          </span>
+        )}
+        {duplicate.status && (
+          <span style={{ color: t.text, fontWeight: 600 }}>{duplicate.status}</span>
+        )}
+        {footer && <span style={{ color: t.textMuted }}>{footer}</span>}
+      </div>
+    );
+  }
 
   /** "Naresh Bhosale" → "NB". Blank when we were given no name at all. */
   const initials = (reporterName ?? "")
@@ -1069,7 +1127,100 @@ export function AssistSheet({
                 when the reporter has said something it cannot act on ("it could
                 be better") — re-asking "what specifically?" is what made that
                 conversation go in circles. */}
-            {options.length > 0 && !busy && phase === "chat" && (
+            {/* The model thinks this is an open issue and is asking. The card
+                sits with the question so "is it the same problem?" is answered
+                looking at the actual issue — and its status. */}
+            {duplicate && !busy && phase === "chat" && (
+              <div style={{ paddingLeft: "32px", minWidth: 0 }}>
+                {renderKnownIssue({ title: false })}
+              </div>
+            )}
+
+            {/* #366 — the assistant thinks this is about Glitchgrab itself, not
+                this app. Offered, never automatic: a wrong guess must not yank
+                someone out of a real report. One tap sends it on with their own
+                words already in the box; one tap says no and the chat goes on. */}
+            {glitchgrabOffer && onReportGlitchgrabProblem && !busy && phase === "chat" && (
+              <div style={{ paddingLeft: "32px", minWidth: 0 }}>
+                <div
+                  data-gg-glitchgrab-offer=""
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: `1px solid ${t.accent}55`,
+                    backgroundColor: `${t.accent}14`,
+                    fontSize: "12px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <span style={{ color: t.text, fontWeight: 600 }}>
+                    This is about Glitchgrab, not this app
+                  </span>
+                  <span style={{ color: t.textMuted }}>
+                    It goes to the team that builds this reporter, with your chat attached.
+                  </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    <button
+                      type="button"
+                      data-gg-glitchgrab-offer-send=""
+                      onClick={() => {
+                        logEvent("glitchgrab_offer_tap");
+                        setGlitchgrabOffer(false);
+                        onReportGlitchgrabProblem(
+                          messages
+                            .filter((m) => m.role === "user")
+                            .map((m) => m.content.trim())
+                            .filter(Boolean)
+                            .join("\n\n"),
+                        );
+                      }}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "999px",
+                        border: "none",
+                        backgroundColor: t.accent,
+                        color: t.accentText,
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        fontFamily: "inherit",
+                        cursor: "pointer",
+                        // Both stretch, so on a phone each wrapped line reads as
+                        // a choice rather than one button left stranded.
+                        flex: "1 1 auto",
+                      }}
+                    >
+                      Send to the Glitchgrab team
+                    </button>
+                    <button
+                      type="button"
+                      data-gg-glitchgrab-offer-no=""
+                      onClick={() => {
+                        logEvent("glitchgrab_offer_declined");
+                        send("No — it's about this app, not the reporting tool");
+                      }}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "999px",
+                        border: `1px solid ${t.inputBorder}`,
+                        background: "transparent",
+                        color: t.textMuted,
+                        fontSize: "12px",
+                        fontFamily: "inherit",
+                        cursor: "pointer",
+                        flex: "1 1 auto",
+                      }}
+                    >
+                      No, it&apos;s about this app
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {options.length > 0 && !busy && phase === "chat" && !glitchgrabOffer && (
               <div
                 style={{
                   display: "flex",
@@ -1167,38 +1318,15 @@ export function AssistSheet({
                     color: t.accent,
                   }}
                 >
-                  Your report · edit anything
+                  {duplicate
+                    ? `What we'll add to #${duplicate.number} · edit anything`
+                    : "Your report · edit anything"}
                 </span>
 
-                {/* Someone already reported this. Said before Send, not after,
-                    because "we know, we're on it" is the answer they came for —
-                    and it is why this goes onto that issue instead of becoming
-                    the fifth copy of it. */}
-                {duplicate && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "3px",
-                      padding: "9px 10px",
-                      borderRadius: "8px",
-                      border: "1px solid rgba(245,158,11,0.4)",
-                      backgroundColor: "rgba(245,158,11,0.08)",
-                      fontSize: "12px",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    <span style={{ color: "#f59e0b", fontWeight: 600 }}>
-                      Our team is already on this
-                    </span>
-                    <span style={{ color: t.textMuted, wordBreak: "break-word" }}>
-                      #{duplicate.number} {duplicate.title}
-                    </span>
-                    <span style={{ color: t.textMuted }}>
-                      Your details will be added to it instead of opening a new issue.
-                    </span>
-                  </div>
-                )}
+                {renderKnownIssue({
+                  title: true,
+                  footer: "Your details will be added to it instead of opening a new issue.",
+                })}
                 <textarea
                   ref={draftRef}
                   value={description}
@@ -1686,6 +1814,34 @@ export function AssistSheet({
                   }}
                 >
                   Not getting it? Fill the form yourself →
+                </button>
+              )}
+
+              {/* #366 — the assistant itself is what went wrong. That report
+                  belongs to Glitchgrab, not to the project behind this sheet. */}
+              {/* Hidden while the offer card is up — it says the same thing, bigger. */}
+              {onReportGlitchgrabProblem && phase !== "solved" && !glitchgrabOffer && (
+                <button
+                  type="button"
+                  data-gg-self-report=""
+                  onClick={() => onReportGlitchgrabProblem()}
+                  style={{
+                    display: "block",
+                    // ~32px tap target; the negative margins keep the composer
+                    // from growing to make room for it.
+                    margin: "-2px auto -8px",
+                    border: "none",
+                    background: "transparent",
+                    color: t.textMuted,
+                    fontSize: "11.5px",
+                    fontFamily: "inherit",
+                    padding: "10px 8px",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    textUnderlineOffset: "2px",
+                  }}
+                >
+                  Assistant misbehaving? Tell Glitchgrab
                 </button>
               )}
             </div>
