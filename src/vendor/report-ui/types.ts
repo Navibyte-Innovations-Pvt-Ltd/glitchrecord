@@ -125,14 +125,24 @@ export interface AssistTurnResult {
    * An issue that is already open for this exact problem. Server-validated
    * against the repo's real open issues, so the number is safe to send back:
    * the report is added to that issue as a comment instead of opening another.
+   *
+   * `status` is where the fix stands, worded by the server off GitHub's own
+   * milestone and assignees — "Fix expected by 18 Sep (v1.8)." Never from the
+   * model. Absent from servers older than it.
    */
-  duplicate?: { number: number; title: string; url: string } | null;
+  duplicate?: { number: number; title: string; url: string; status?: string } | null;
   /**
    * The project's own brief answered it and the reporter confirmed. Nothing is
    * filed — the sheet shows this line and the dialog closes. Someone whose
    * problem already had an answer leaves with the answer, not a ticket number.
    */
   solved?: string | null;
+  /**
+   * The assistant thinks this is a problem with Glitchgrab itself, not the
+   * project (#366). The sheet offers to send it to the Glitchgrab team —
+   * only when the host passed `reportGlitchgrabProblem`.
+   */
+  aboutGlitchgrab?: boolean;
   degraded?: string | null;
 }
 
@@ -171,7 +181,9 @@ export interface AssistSheetEvent {
     | "image_added"
     | "image_removed"
     | "draft_sent"
-    | "closed";
+    | "closed"
+    | "glitchgrab_offer_tap"
+    | "glitchgrab_offer_declined";
   detail?: string;
   /** Epoch ms on the reporter's clock. */
   at: number;
@@ -218,3 +230,52 @@ export interface AssistTurnParams {
  * throw — a failure comes back as `degraded`.
  */
 export type AssistFn = (params: AssistTurnParams) => Promise<AssistTurnResult>;
+
+/** An already-open issue the plain form's duplicate check matched. */
+export interface SimilarIssue {
+  number: number;
+  title: string;
+  url: string;
+  /**
+   * Where the fix stands, worded by the server off GitHub's milestone and
+   * assignees — the same line the assistant's duplicate card shows. Absent from
+   * hosts or servers that predate it.
+   */
+  status?: string;
+}
+
+/**
+ * "Is this already filed?" — asked when the plain form's Send is pressed.
+ *
+ * Deterministic on the server (word overlap on the repo's open issues, no
+ * model), so it can sit in front of Send without making filing depend on a
+ * model. Hosts return `[]` when the project has it off and `null` on any
+ * failure; the dialog treats both as "send now". Must never throw.
+ */
+export type FindSimilarIssuesFn = (description: string) => Promise<SimilarIssue[] | null>;
+
+/** What the dialog hands the host when someone reports a problem with Glitchgrab itself (#366). */
+export interface GlitchgrabProblemParams {
+  description: string;
+  /** Where they were when it went wrong — the plain form, or the AI sheet. */
+  surface: "form" | "assist";
+  /**
+   * The assistant chat, if there was one. The server checks it belongs to the
+   * host's project, then puts the full transcript in the issue.
+   */
+  conversationId: string | null;
+  /** The tile they were filing — "BUG", "FEATURE_REQUEST", … */
+  reportType: string;
+  /** Every image attached to the report, page shot first, as data URLs. */
+  screenshots: string[];
+}
+
+/**
+ * Sends a report about the report dialog itself to the Glitchgrab team, never
+ * to the host project. Supplying it adds "Problem with Glitchgrab?" to the
+ * dialog footer and the AI sheet; omitting it leaves both exactly as they were.
+ * The SDK passes it only when the project's owner switched it on.
+ */
+export type GlitchgrabProblemFn = (
+  params: GlitchgrabProblemParams
+) => Promise<ReportResult | null>;
