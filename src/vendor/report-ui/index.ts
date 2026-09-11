@@ -8,10 +8,16 @@ export { AnnotationCanvas } from "./annotation-canvas";
 export { AssistSheet } from "./assist-sheet";
 export { ATTACHMENT_ACCEPT } from "./attachments";
 export {
+  encodeImageFile,
   encodeScreenshot,
   MAX_SCREENSHOT_DATA_URL_LENGTH,
 } from "./image-encode";
-export { SEVERITY_LEVELS, SEVERITY_LABELS, MAX_ASSIST_IMAGES } from "./types";
+export {
+  SEVERITY_LEVELS,
+  SEVERITY_LABELS,
+  MAX_ASSIST_IMAGES,
+  MAX_ASSIST_IMAGE_CHARS,
+} from "./types";
 export {
   GLITCHGRAB_SHORTCUT,
   GLITCHGRAB_SHORTCUT_MAC,
@@ -27,6 +33,7 @@ export type {
   FeedbackFn,
   EnhanceTextFn,
   AssistFn,
+  AssistSheetEvent,
   AssistTurnParams,
   AssistTurnResult,
   ReportReporter,
