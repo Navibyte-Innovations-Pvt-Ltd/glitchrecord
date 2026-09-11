@@ -1637,7 +1637,9 @@ export function ReportDialog({
         setCheckingSimilar(false);
         if (matches && matches.length > 0) {
           setSimilarIssues(matches.slice(0, MAX_SIMILAR_SHOWN));
-          setPickedSimilar(matches[0].number);
+          // Nothing starts picked: a preselected row turns an unread tap into
+          // a comment on the wrong issue.
+          setPickedSimilar(null);
           setIsSubmitting(false);
           return;
         }
@@ -3212,13 +3214,14 @@ export function ReportDialog({
                             }}
                           >
                             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                              <span style={{ color: "#f59e0b", fontWeight: 600, fontSize: "13px" }}>
+                              {/* Theme text, not amber: amber on the tint is ~2:1 in light mode. */}
+                              <span style={{ color: t.text, fontWeight: 600, fontSize: "13px" }}>
                                 Our team may already have this
                               </span>
                               <span style={{ color: t.textMuted, fontSize: "12px", lineHeight: 1.5 }}>
                                 {similarIssues.length > 1
                                   ? "Pick the one that matches — your report is added to it, so the team sees everyone hitting it in one place."
-                                  : "If it's the same problem, your report is added to it, so the team sees everyone hitting it in one place."}
+                                  : "If it's the same problem, pick it — your report is added to it, so the team sees everyone hitting it in one place."}
                               </span>
                             </div>
                             {/* Title only, no link: an SDK reporter is a stranger to a
@@ -3334,7 +3337,7 @@ export function ReportDialog({
                                   Adding to #{attachingTo}…
                                 </>
                               ) : (
-                                `Add to #${pickedSimilar ?? similarIssues[0].number}`
+                                pickedSimilar ? `Add to #${pickedSimilar}` : "Pick the matching issue"
                               )}
                             </button>
                             <button
