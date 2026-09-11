@@ -16,7 +16,8 @@ import { AssistSheet } from "./assist-sheet";
 import { getShortcutLabel } from "./shortcut";
 import { getTypeLabel } from "./labels";
 import { ATTACHMENT_ACCEPT } from "./attachments";
-import { encodeScreenshot } from "./image-encode";
+import { captureDefaultScreenshot } from "./capture";
+import { encodeImageFile } from "./image-encode";
 import type {
   ReportType,
   ReportSeverity,
@@ -410,8 +411,11 @@ interface ReportDialogProps {
   showSeverity?: boolean;
   /**
    * Overrides how the initial/retake screenshot is captured. Defaults to
-   * html2canvas-pro over `document.body` (correct for the SDK, embedded in
-   * the host page). Standalone hosts must inject their own — `document.body`
+   * `captureDefaultScreenshot` (correct for the SDK, embedded in the host
+   * page): the tab's real pixels on Chromium, html2canvas-pro over
+   * `document.body` everywhere else — see `capture.ts`. It is called before
+   * the dialog's first await, so the browser still sees the user's click.
+   * Standalone hosts must inject their own — the current tab / `document.body`
    * there is the host's OWN tiny window, not the thing being reported:
    *   - Chrome extension → `chrome.tabs.captureVisibleTab`
    *   - GlitchRecord desktop → Electron `desktopCapturer` (whole screen, so it
@@ -443,30 +447,6 @@ interface ReportDialogProps {
    * two stacked cards read as a bug in the bug reporter.
    */
   headerSlot?: ReactNode;
-}
-
-async function captureViaHtml2Canvas(): Promise<string | null> {
-  try {
-    const { default: html2canvas } = await import("html2canvas-pro");
-    // Capture at the display's own pixel density so UI text stays readable.
-    // Capped at 2 — beyond that the payload grows faster than the legibility.
-    const scale = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
-    const canvas = await html2canvas(document.body, {
-      scale,
-      logging: false,
-      useCORS: true,
-      allowTaint: true,
-      x: window.scrollX,
-      y: window.scrollY,
-      width: window.innerWidth,
-      height: window.innerHeight,
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight,
-    });
-    return encodeScreenshot(canvas);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -542,7 +522,7 @@ export function ReportDialog({
   transcribeAudio,
   types,
   showSeverity = true,
-  captureScreenshot = captureViaHtml2Canvas,
+  captureScreenshot = captureDefaultScreenshot,
   reporter,
   onClose,
   headerSlot,
@@ -598,6 +578,13 @@ export function ReportDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [screenshots, setScreenshots] = useState<string[]>([]);
+  /**
+   * Which entry of `screenshots` this dialog captured itself on open. Anything
+   * else was pasted or picked by the reporter, and the assistant is told so —
+   * a WhatsApp screenshot pasted on the dashboard is about WhatsApp, not the
+   * dashboard (#357). Matched by value, so removing or reordering is safe.
+   */
+  const [pageShot, setPageShot] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<
     { name: string; size: number; dataUrl: string }[]
   >([]);
@@ -846,22 +833,29 @@ export function ReportDialog({
   };
 
   const addFiles = (files: File[]) => {
-    files.forEach((file) => {
-      const reader = new FileReader();
-      if (file.type.startsWith("image/")) {
-        reader.onload = () => {
-          setScreenshots((prev) => [...prev, reader.result as string]);
-        };
-      } else {
+    // Images are held to the screenshot budget — a raw retina paste alone can
+    // exceed the request-body limit. All in one update, in the order dropped.
+    const images = files.filter((file) => file.type.startsWith("image/"));
+    if (images.length > 0) {
+      void Promise.all(images.map((file) => encodeImageFile(file).catch(() => null))).then(
+        (encoded) => {
+          const added = encoded.filter((url): url is string => !!url);
+          if (added.length > 0) setScreenshots((prev) => [...prev, ...added]);
+        },
+      );
+    }
+    files
+      .filter((file) => !file.type.startsWith("image/"))
+      .forEach((file) => {
+        const reader = new FileReader();
         reader.onload = () => {
           setAttachments((prev) => [
             ...prev,
             { name: file.name, size: file.size, dataUrl: reader.result as string },
           ]);
         };
-      }
-      reader.readAsDataURL(file);
-    });
+        reader.readAsDataURL(file);
+      });
   };
 
   const handleOpen = async () => {
@@ -877,6 +871,7 @@ export function ReportDialog({
       setStep(2);
     }
     const shot = await captureScreenshot();
+    setPageShot(shot ?? null);
     if (shot) setScreenshots([shot]);
     // The assistant is the front door now, not a button inside the form: ⌘⇧G
     // opens the sheet, which asks what this is before anything else. The tile
@@ -3215,6 +3210,8 @@ export function ReportDialog({
             imageSrc={screenshots[annotatingIndex]}
             onCancel={() => setAnnotatingIndex(null)}
             onSave={(dataUrl) => {
+              // Marking up the page shot keeps it the page shot.
+              if (screenshots[annotatingIndex] === pageShot) setPageShot(dataUrl);
               setScreenshots((prev) =>
                 prev.map((s, i) => (i === annotatingIndex ? dataUrl : s)),
               );
@@ -3247,7 +3244,11 @@ export function ReportDialog({
           // however visibly it was attached (#352). The sheet sends the newest
           // few and shows the rest.
           screenshots={screenshots}
+          pageShot={pageShot}
           onAddImages={addFiles}
+          onRemoveImage={(index) =>
+            setScreenshots((prev) => prev.filter((_, i) => i !== index))
+          }
           attachmentCount={screenshots.length + attachments.length}
           context={{ ...(assistContext ?? {}), reportType }}
           reportTypeLabel={getTypeLabel(reportType)}
