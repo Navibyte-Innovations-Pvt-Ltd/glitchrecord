@@ -7,16 +7,18 @@ import {
   useState,
   useRef,
   useEffect,
+  useMemo,
   type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { AnnotationCanvas } from "./annotation-canvas";
 import { AssistSheet } from "./assist-sheet";
+import { GlitchgrabProblemPanel } from "./glitchgrab-problem";
 import { getShortcutLabel } from "./shortcut";
 import { getTypeLabel } from "./labels";
 import { ATTACHMENT_ACCEPT } from "./attachments";
-import { captureDefaultScreenshot } from "./capture";
+import { captureDefaultScreenshot, type CaptureOptions } from "./capture";
 import { encodeImageFile } from "./image-encode";
 import type {
   ReportType,
@@ -26,15 +28,53 @@ import type {
   FeedbackFn,
   EnhanceTextFn,
   AssistFn,
+  FindSimilarIssuesFn,
+  SimilarIssue,
   ReportReporter,
+  GlitchgrabProblemFn,
 } from "./types";
 import { SEVERITY_LEVELS, SEVERITY_LABELS } from "./types";
 
 /** Shown when Send is pressed on a bug report with no severity picked (#353). */
 const SEVERITY_REQUIRED = "Pick how bad it is before sending.";
 
-/** Detect if the host page uses a dark or light theme */
-function useIsDark(): boolean {
+/** How long Send waits for a page shot that is still being re-drawn (#363). */
+const SHOT_WAIT_MS = 3000;
+
+/**
+ * How long Send waits on "is this already filed?". Past this the report goes
+ * out as a new issue — a slow GitHub list must never cost someone their report.
+ */
+const SIMILAR_WAIT_MS = 2500;
+
+/** More than three and the reporter stops reading and sends a new one anyway. */
+const MAX_SIMILAR_SHOWN = 3;
+
+/** Inline spinner for a button waiting on the network. `gg-spin` lives in the dialog's style block. */
+function ButtonSpinner() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: "inline-block",
+        width: "11px",
+        height: "11px",
+        marginRight: "6px",
+        verticalAlign: "-1px",
+        border: "2px solid currentColor",
+        borderRightColor: "transparent",
+        borderRadius: "50%",
+        animation: "gg-spin .7s linear infinite",
+      }}
+    />
+  );
+}
+
+/**
+ * Detect if the host page uses a dark or light theme. Reads computed styles,
+ * which forces a style recalculation on the host page — see the call site.
+ */
+function detectDark(): boolean {
   if (typeof window === "undefined") return true;
   try {
     // Check body then html — most sites set background on html, not body
@@ -401,6 +441,18 @@ interface ReportDialogProps {
    */
   assist?: AssistFn;
   /**
+   * "Is this already filed?", asked when the plain form's Send is pressed. A
+   * match shows "Our team may already have this" — pickable rows and "Add to #N" (the
+   * report becomes a comment on that issue, through the same submit path the
+   * assistant's duplicate uses) or "No, mine is different". No match, `null`, or
+   * no answer within `SIMILAR_WAIT_MS` → sent exactly as before. Omit it and
+   * Send never waits.
+   *
+   * Skipped when the assistant was used — it already checked open issues with
+   * the reporter, and asking twice is the dialog arguing with itself.
+   */
+  findSimilarIssues?: FindSimilarIssuesFn;
+  /**
    * Session facts handed to the assistant — page URL, pages visited, recent
    * clicks and API calls. The host owns this because only the host has it: the
    * SDK keeps breadcrumbs, the extension has the tab, GlitchRecord has neither.
@@ -420,9 +472,11 @@ interface ReportDialogProps {
    *   - Chrome extension → `chrome.tabs.captureVisibleTab`
    *   - GlitchRecord desktop → Electron `desktopCapturer` (whole screen, so it
    *     works for any browser or native app, not just Chrome)
-   * Return `null` to open without a screenshot.
+   * Return `null` to open without a screenshot. The dialog opens when this
+   * resolves, or earlier if it calls `options.onRedraw` — the default does on
+   * its html2canvas path, then fills the strip when the re-draw lands (#363).
    */
-  captureScreenshot?: () => Promise<string | null>;
+  captureScreenshot?: (options?: CaptureOptions) => Promise<string | null>;
   /**
    * Who the report will be attributed to. Omit or pass `null` and the footer
    * says "Not signed in" rather than showing nothing — silence there reads as
@@ -447,6 +501,16 @@ interface ReportDialogProps {
    * two stacked cards read as a bug in the bug reporter.
    */
   headerSlot?: ReactNode;
+  /**
+   * "Problem with Glitchgrab?" (#366). Supplying it swaps the footer's
+   * "Powered by Glitchgrab" for a link, and adds the same link to the AI sheet,
+   * both opening a small panel that files into Glitchgrab's own repo — never
+   * the host's. The report underneath stays open and untouched.
+   *
+   * The SDK passes it only when the project owner switched it on; the Chrome
+   * extension always does, because its reporters are Glitchgrab testers.
+   */
+  reportGlitchgrabProblem?: GlitchgrabProblemFn;
 }
 
 /**
@@ -518,6 +582,7 @@ export function ReportDialog({
   sendFeedback,
   enhanceText,
   assist,
+  findSimilarIssues,
   assistContext = null,
   transcribeAudio,
   types,
@@ -526,6 +591,7 @@ export function ReportDialog({
   reporter,
   onClose,
   headerSlot,
+  reportGlitchgrabProblem,
 }: ReportDialogProps) {
   const [isEnhancing, setIsEnhancing] = useState(false);
 
@@ -538,6 +604,10 @@ export function ReportDialog({
   const [assistOpen, setAssistOpen] = useState(false);
   const [assistNotice, setAssistNotice] = useState<string | null>(null);
   const [assistUsed, setAssistUsed] = useState(false);
+  /** Which surface opened the "Problem with Glitchgrab?" panel (#366); null = closed. */
+  const [selfReportFrom, setSelfReportFrom] = useState<"form" | "assist" | null>(null);
+  /** What the panel opens with — the reporter's chat words when the assistant offered it. */
+  const [selfReportPrefill, setSelfReportPrefill] = useState("");
   /**
    * Has anyone actually said what this report is?
    *
@@ -554,6 +624,18 @@ export function ReportDialog({
    * re-validates it, so a comment replaces the second identical issue.
    */
   const [duplicateIssueNumber, setDuplicateIssueNumber] = useState<number | null>(null);
+  /**
+   * What the plain form's duplicate check matched when Send was pressed.
+   * Non-null swaps the Send button for the "Our team may already have this" card. `attachingTo` is
+   * the choice now sending, so only that button spins.
+   */
+  const [similarIssues, setSimilarIssues] = useState<SimilarIssue[] | null>(null);
+  const [checkingSimilar, setCheckingSimilar] = useState(false);
+  const [attachingTo, setAttachingTo] = useState<number | "new" | null>(null);
+  /** The row picked in that card. Starts on the best match — the button still names the number. */
+  const [pickedSimilar, setPickedSimilar] = useState<number | null>(null);
+  /** The open issue the last report was added to, for the success line. */
+  const [addedToIssue, setAddedToIssue] = useState<number | null>(null);
   /**
    * The assistant chat that produced this description, if one did. Rides along
    * in metadata so the server can join the filed report back to the chat.
@@ -585,6 +667,18 @@ export function ReportDialog({
    * dashboard (#357). Matched by value, so removing or reordering is safe.
    */
   const [pageShot, setPageShot] = useState<string | null>(null);
+  /**
+   * The page shot is still being re-drawn (#363). The dialog no longer waits
+   * for it: it opens at once, the strip shows a placeholder, and Send gives it
+   * SHOT_WAIT_MS to make it in.
+   */
+  const [shotPending, setShotPending] = useState(false);
+  const pendingShotRef = useRef<Promise<string | null> | null>(null);
+  /**
+   * Bumped on close. A capture that settles after its dialog closed carries a
+   * stale number and is dropped — it belongs to a report nobody is writing.
+   */
+  const openGenRef = useRef(0);
   const [attachments, setAttachments] = useState<
     { name: string; size: number; dataUrl: string }[]
   >([]);
@@ -814,8 +908,22 @@ export function ReportDialog({
     tiles[next]?.focus();
   };
 
-  const isDark = useIsDark();
+  // Once per open. Computed-style reads force a style recalc on the host page,
+  // and this used to run on every host re-render while the dialog sat closed.
+  const isDark = useMemo(() => (isOpen ? detectDark() : true), [isOpen]);
   const t = getTheme(isDark);
+  /** The slice of the theme the layers above the dialog (AI sheet, #366 panel) paint with. */
+  const layerTheme = {
+    bg: t.bg,
+    bgSecondary: t.bgSecondary,
+    border: t.border,
+    text: t.text,
+    textMuted: t.textMuted,
+    inputBg: t.inputBg,
+    inputBorder: t.inputBorder,
+    accent: t.accent,
+    accentText: t.accentText,
+  };
 
   // Zooming only earns its place when the screenshot holds more pixels than the
   // fit-to-screen view can show.
@@ -859,6 +967,7 @@ export function ReportDialog({
   };
 
   const handleOpen = async () => {
+    const gen = openGenRef.current;
     setSubmitted(false);
     // Belt to `handleClose`'s braces: every open starts on the form, never on a
     // preview or annotator left over from last time. Asserted here rather than
@@ -870,16 +979,41 @@ export function ReportDialog({
       setTypeChosen(true);
       setStep(2);
     }
-    const shot = await captureScreenshot();
+    const show = () => {
+      if (gen !== openGenRef.current) return;
+      // The assistant is the front door now, not a button inside the form: ⌘⇧G
+      // opens the sheet, which asks what this is before anything else. The tile
+      // grid is still exactly one tap away ("Write it myself"), and a project
+      // without the assistant — or one whose assistant degraded earlier in this
+      // page's life — opens on the grid the way it always did.
+      if (assist && !assistUsed) setAssistOpen(true);
+      setIsOpen(true);
+    };
+    // Called before the first await, so the browser still sees the click.
+    const capture = captureScreenshot({
+      onRedraw: () => {
+        if (gen !== openGenRef.current) return;
+        setShotPending(true);
+        show();
+      },
+    });
+    pendingShotRef.current = capture;
+    const previousPageShot = pageShot;
+    const shot = await capture.catch(() => null);
+    if (gen !== openGenRef.current) return;
+    pendingShotRef.current = null;
+    setShotPending(false);
     setPageShot(shot ?? null);
-    if (shot) setScreenshots([shot]);
-    // The assistant is the front door now, not a button inside the form: ⌘⇧G
-    // opens the sheet, which asks what this is before anything else. The tile
-    // grid is still exactly one tap away ("Write it myself"), and a project
-    // without the assistant — or one whose assistant degraded earlier in this
-    // page's life — opens on the grid the way it always did.
-    if (assist && !assistUsed) setAssistOpen(true);
-    setIsOpen(true);
+    // Merged, not replaced: the dialog may have been open while the re-draw
+    // ran, and the reporter may have pasted an image. Only the last open's page
+    // shot goes — it shows the page as it was then.
+    if (shot) {
+      setScreenshots((prev) => [
+        shot,
+        ...prev.filter((s) => s !== shot && s !== previousPageShot),
+      ]);
+    }
+    show();
   };
 
   // Listen for programmatic open via openReportDialog()
@@ -1132,6 +1266,10 @@ export function ReportDialog({
     stopVoice();
     setIsOpen(false);
     onClose?.();
+    // A capture still running belongs to this report, not the next one.
+    openGenRef.current += 1;
+    pendingShotRef.current = null;
+    setShotPending(false);
     // The preview and annotation overlays are full-viewport portals at the top of
     // the stacking order. Leaving their indices set on close leaves one of them
     // mounted over a dialog that is no longer there — the page stops accepting
@@ -1144,8 +1282,13 @@ export function ReportDialog({
     setReportType("BUG");
     setTypeChosen(false);
     setDuplicateIssueNumber(null);
+    setSimilarIssues(null);
+    setPickedSimilar(null);
+    setCheckingSimilar(false);
+    setAttachingTo(null);
     setSeverity(null);
     setValidationError(null);
+    setSelfReportFrom(null);
     setVoiceError(null);
     setIsEnhanced(false);
     setOriginalDescription(null);
@@ -1426,7 +1569,7 @@ export function ReportDialog({
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (opts?: { duplicateOf?: number; skipSimilar?: boolean }) => {
     try {
       if (isSubmitting) return;
 
@@ -1476,15 +1619,52 @@ export function ReportDialog({
         return;
       }
 
+      // Read now, not off state after a setter: "Add to #N" picks the issue
+      // and submits in the same click, before a re-render could deliver it.
+      const duplicateOf = opts?.duplicateOf ?? duplicateIssueNumber;
+
+      // "Is this already filed?" — once, on the plain form. Not after the
+      // assistant ran (it already walked the reporter through open issues), and
+      // not when a duplicate is already picked. Anything short of a real match
+      // inside SIMILAR_WAIT_MS sends the report as it always has.
+      if (findSimilarIssues && !opts?.skipSimilar && !duplicateOf && !aiConversationId) {
+        setIsSubmitting(true);
+        setCheckingSimilar(true);
+        const matches = await Promise.race([
+          findSimilarIssues(description.trim()).catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), SIMILAR_WAIT_MS)),
+        ]);
+        setCheckingSimilar(false);
+        if (matches && matches.length > 0) {
+          setSimilarIssues(matches.slice(0, MAX_SIMILAR_SHOWN));
+          setPickedSimilar(matches[0].number);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       setIsSubmitting(true);
+      // A page shot still being re-drawn gets a moment to make it in — worth
+      // SHOT_WAIT_MS, not a report that never sends (#363).
+      let shots = screenshots;
+      const pending = pendingShotRef.current;
+      if (pending) {
+        const shot = await Promise.race([
+          pending.catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), SHOT_WAIT_MS)),
+        ]);
+        if (shot && !shots.includes(shot)) {
+          shots = [shot, ...shots.filter((s) => s !== pageShot)];
+        }
+      }
       const metadata: Record<string, string> = {};
-      if (screenshots.length > 0) metadata.screenshots = JSON.stringify(screenshots);
+      if (shots.length > 0) metadata.screenshots = JSON.stringify(shots);
       if (attachments.length > 0) metadata.attachments = JSON.stringify(attachments);
       if (showSeverity && reportType === "BUG" && severity) {
         metadata.severity = severity;
       }
-      if (duplicateIssueNumber) {
-        metadata.duplicateIssueNumber = String(duplicateIssueNumber);
+      if (duplicateOf) {
+        metadata.duplicateIssueNumber = String(duplicateOf);
       }
       if (aiConversationId) {
         metadata.aiConversationId = aiConversationId;
@@ -1499,6 +1679,9 @@ export function ReportDialog({
       );
 
       if (result) {
+        // Only when the server really attached. A pick it refused (issue closed
+        // since) is filed as a new issue, and saying "added to #N" would be a lie.
+        setAddedToIssue(duplicateOf && result.issueNumber === duplicateOf ? duplicateOf : null);
         setSubmitted(true);
         setDescription("");
         setScreenshots([]);
@@ -1509,6 +1692,8 @@ export function ReportDialog({
         // wrote none of it.
         setAiConversationId(null);
         setDuplicateIssueNumber(null);
+        setSimilarIssues(null);
+        setPickedSimilar(null);
 
         setTimeout(() => {
           setSubmitted(false);
@@ -1516,8 +1701,11 @@ export function ReportDialog({
         }, 2000);
       }
       setIsSubmitting(false);
+      setAttachingTo(null);
     } catch {
       setIsSubmitting(false);
+      setCheckingSimilar(false);
+      setAttachingTo(null);
     }
   };
 
@@ -1530,6 +1718,7 @@ export function ReportDialog({
         createPortal(
           <style>{`
           @keyframes gg-pulse{0%,100%{opacity:1}50%{opacity:0.35}}
+          @keyframes gg-spin{to{transform:rotate(360deg)}}
           @keyframes gg-b1{0%,100%{height:3px}40%{height:13px}}
           @keyframes gg-b2{0%,100%{height:8px}50%{height:3px}}
           @keyframes gg-b3{0%,100%{height:4px}30%{height:14px}70%{height:5px}}
@@ -1592,6 +1781,12 @@ export function ReportDialog({
           >
             <div
               ref={modalRef}
+              // Hosts wait on `[role="dialog"]` to know the dialog is up — without
+              // it, a host's "Opening…" spinner sat out its own timeout long after
+              // the dialog was on screen (#363).
+              role="dialog"
+              aria-modal="true"
+              aria-label="Report an issue"
               onClick={(e) => e.stopPropagation()}
               style={{
                 position: "relative",
@@ -1788,7 +1983,9 @@ export function ReportDialog({
                       fontWeight: 500,
                     }}
                   >
-                    {getTypeLabel(reportType)} sent. Thank you!
+                    {addedToIssue
+                      ? `Added to #${addedToIssue}. Thank you!`
+                      : `${getTypeLabel(reportType)} sent. Thank you!`}
                   </div>
                 ) : (
                   <>
@@ -2550,7 +2747,7 @@ export function ReportDialog({
                               ? ` (${screenshots.length + attachments.length})`
                               : ""}
                           </span>
-                          {screenshots.length > 0 && (
+                          {(screenshots.length > 0 || shotPending) && (
                             <div
                               style={{
                                 display: "flex",
@@ -2559,6 +2756,31 @@ export function ReportDialog({
                                 marginBottom: "8px",
                               }}
                             >
+                              {shotPending && (
+                                <div
+                                  role="status"
+                                  aria-label="Capturing screenshot"
+                                  title="Capturing a screenshot of the page…"
+                                  style={{
+                                    width: "56px",
+                                    height: "56px",
+                                    borderRadius: "6px",
+                                    border: `1px dashed ${t.border}`,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: "4px",
+                                    boxSizing: "border-box",
+                                    fontSize: "9px",
+                                    lineHeight: 1.2,
+                                    textAlign: "center",
+                                    color: t.textMuted,
+                                    animation: "gg-pulse 1.4s ease-in-out infinite",
+                                  }}
+                                >
+                                  Capturing…
+                                </div>
+                              )}
                               {screenshots.map((src, i) => (
                                 <div
                                   key={i}
@@ -2972,33 +3194,219 @@ export function ReportDialog({
                             {validationError}
                           </p>
                         )}
-                        <button
-                          type="button"
-                          onClick={handleSubmit}
-                          disabled={submitDisabled}
-                          style={{
-                            marginTop: "12px",
-                            width: "100%",
-                            padding: "10px",
-                            borderRadius: "8px",
-                            border: "none",
-                            backgroundColor: submitDisabled
-                              ? t.bgSecondary
-                              : t.accent,
-                            color: submitDisabled ? t.textMuted : t.accentText,
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            cursor: submitDisabled ? "not-allowed" : "pointer",
-                            fontFamily: "inherit",
-                            transition: "background-color 0.15s ease",
-                          }}
-                        >
-                          {isSubmitting
-                            ? "Sending..."
-                            : isRating
-                              ? "Send Rating"
-                              : "Send Report"}
-                        </button>
+                        {similarIssues ? (
+                          // Same visual language as the assistant's "Our team is
+                          // already on this" card, so both routes to a duplicate
+                          // read as one feature.
+                          <div
+                            data-gg-similar=""
+                            style={{
+                              marginTop: "12px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "10px",
+                              padding: "12px",
+                              borderRadius: "10px",
+                              border: "1px solid rgba(245,158,11,0.4)",
+                              backgroundColor: "rgba(245,158,11,0.08)",
+                            }}
+                          >
+                            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                              <span style={{ color: "#f59e0b", fontWeight: 600, fontSize: "13px" }}>
+                                Our team may already have this
+                              </span>
+                              <span style={{ color: t.textMuted, fontSize: "12px", lineHeight: 1.5 }}>
+                                {similarIssues.length > 1
+                                  ? "Pick the one that matches — your report is added to it, so the team sees everyone hitting it in one place."
+                                  : "If it's the same problem, your report is added to it, so the team sees everyone hitting it in one place."}
+                              </span>
+                            </div>
+                            {/* Title only, no link: an SDK reporter is a stranger to a
+                                private repo and the link would 404 for them. */}
+                            <div
+                              role="radiogroup"
+                              aria-label="Existing issues"
+                              style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+                            >
+                              {similarIssues.map((issue) => {
+                                const picked = pickedSimilar === issue.number;
+                                return (
+                                  <button
+                                    key={issue.number}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={picked}
+                                    disabled={isSubmitting}
+                                    onClick={() => setPickedSimilar(issue.number)}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "flex-start",
+                                      gap: "10px",
+                                      width: "100%",
+                                      minHeight: "44px",
+                                      padding: "9px 10px",
+                                      borderRadius: "8px",
+                                      border: `1px solid ${picked ? t.accent : t.border}`,
+                                      boxShadow: picked ? `0 0 0 1px ${t.accent}` : "none",
+                                      backgroundColor: t.bg,
+                                      color: t.text,
+                                      textAlign: "left",
+                                      cursor: isSubmitting ? "not-allowed" : "pointer",
+                                      fontFamily: "inherit",
+                                    }}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      style={{
+                                        flexShrink: 0,
+                                        marginTop: "2px",
+                                        width: "14px",
+                                        height: "14px",
+                                        boxSizing: "border-box",
+                                        borderRadius: "50%",
+                                        border: `2px solid ${picked ? t.accent : t.textMuted}`,
+                                        backgroundColor: picked ? t.accent : "transparent",
+                                        boxShadow: picked ? `inset 0 0 0 2px ${t.bg}` : "none",
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        gap: "3px",
+                                        minWidth: 0,
+                                      }}
+                                    >
+                                      <span
+                                        title={issue.title}
+                                        style={{
+                                          fontSize: "12.5px",
+                                          lineHeight: 1.45,
+                                          wordBreak: "break-word",
+                                          overflow: "hidden",
+                                          display: "-webkit-box",
+                                          WebkitLineClamp: 3,
+                                          WebkitBoxOrient: "vertical",
+                                        }}
+                                      >
+                                        <span style={{ color: t.textMuted, fontWeight: 600 }}>
+                                          #{issue.number}
+                                        </span>{" "}
+                                        {issue.title}
+                                      </span>
+                                      {issue.status && (
+                                        <span style={{ fontSize: "11.5px", color: t.textMuted }}>
+                                          {issue.status}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isSubmitting || !pickedSimilar}
+                              onClick={() => {
+                                if (!pickedSimilar) return;
+                                setAttachingTo(pickedSimilar);
+                                setDuplicateIssueNumber(pickedSimilar);
+                                void handleSubmit({ duplicateOf: pickedSimilar });
+                              }}
+                              style={{
+                                width: "100%",
+                                minHeight: "40px",
+                                padding: "10px",
+                                borderRadius: "8px",
+                                border: "none",
+                                backgroundColor:
+                                  isSubmitting || !pickedSimilar ? t.bgSecondary : t.accent,
+                                color: isSubmitting || !pickedSimilar ? t.textMuted : t.accentText,
+                                fontSize: "14px",
+                                fontWeight: 600,
+                                cursor: isSubmitting || !pickedSimilar ? "not-allowed" : "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {typeof attachingTo === "number" ? (
+                                <>
+                                  <ButtonSpinner />
+                                  Adding to #{attachingTo}…
+                                </>
+                              ) : (
+                                `Add to #${pickedSimilar ?? similarIssues[0].number}`
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSubmitting}
+                              onClick={() => {
+                                setAttachingTo("new");
+                                void handleSubmit({ skipSimilar: true });
+                              }}
+                              style={{
+                                width: "100%",
+                                minHeight: "40px",
+                                marginTop: "-4px",
+                                padding: "8px",
+                                borderRadius: "8px",
+                                border: "none",
+                                backgroundColor: "transparent",
+                                color: isSubmitting ? t.textMuted : t.text,
+                                fontSize: "13px",
+                                fontWeight: 500,
+                                textDecoration: "underline",
+                                textUnderlineOffset: "3px",
+                                cursor: isSubmitting ? "not-allowed" : "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {attachingTo === "new" ? (
+                                <>
+                                  <ButtonSpinner />
+                                  Sending as new…
+                                </>
+                              ) : (
+                                "No, mine is different — send as new"
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleSubmit()}
+                            disabled={submitDisabled}
+                            style={{
+                              marginTop: "12px",
+                              width: "100%",
+                              padding: "10px",
+                              borderRadius: "8px",
+                              border: "none",
+                              backgroundColor: submitDisabled
+                                ? t.bgSecondary
+                                : t.accent,
+                              color: submitDisabled ? t.textMuted : t.accentText,
+                              fontSize: "14px",
+                              fontWeight: 600,
+                              cursor: submitDisabled ? "not-allowed" : "pointer",
+                              fontFamily: "inherit",
+                              transition: "background-color 0.15s ease",
+                            }}
+                          >
+                            {checkingSimilar ? (
+                              <>
+                                <ButtonSpinner />
+                                Checking for existing reports…
+                              </>
+                            ) : isSubmitting
+                              ? shotPending && !isRating
+                                ? "Attaching screenshot…"
+                                : "Sending..."
+                              : isRating
+                                ? "Send Rating"
+                                : "Send Report"}
+                          </button>
+                        )}
                       </>
                     )}
                   </>
@@ -3017,16 +3425,45 @@ export function ReportDialog({
                 }}
               >
                 <ReporterChip reporter={reporter} t={t} />
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: t.textMuted,
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}
-                >
-                  Powered by Glitchgrab
-                </span>
+                {reportGlitchgrabProblem ? (
+                  <button
+                    type="button"
+                    data-gg-self-report=""
+                    onClick={() => {
+                      setSelfReportPrefill("");
+                      setSelfReportFrom("form");
+                    }}
+                    title="Something wrong with this reporter itself? Tell the Glitchgrab team."
+                    style={{
+                      fontSize: "11px",
+                      color: t.textMuted,
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                      border: "none",
+                      background: "transparent",
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      textUnderlineOffset: "2px",
+                      // A ~30px tap target without growing the footer.
+                      padding: "9px 0",
+                      margin: "-9px 0",
+                    }}
+                  >
+                    Problem with Glitchgrab?
+                  </button>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: t.textMuted,
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Powered by Glitchgrab
+                  </span>
+                )}
               </div>
             </div>
           </div>,
@@ -3221,6 +3658,22 @@ export function ReportDialog({
           document.body,
         )}
 
+      {/* "Problem with Glitchgrab?" (#366) — above the dialog AND the sheet,
+          with its own send. Mounted after the sheet's portal, so at the same
+          z-index it paints on top. */}
+      {isOpen && selfReportFrom && reportGlitchgrabProblem && (
+        <GlitchgrabProblemPanel
+          send={reportGlitchgrabProblem}
+          theme={layerTheme}
+          surface={selfReportFrom}
+          conversationId={aiConversationId}
+          reportType={reportType}
+          screenshots={screenshots}
+          initialText={selfReportPrefill}
+          onClose={() => setSelfReportFrom(null)}
+        />
+      )}
+
       {/* The AI sheet (#330) — its own layer, above the dialog. It owns the
           whole flow (chat → draft → Send) but NOT submission: `description`,
           `severity` and `handleSubmit` are this component's own, so there is
@@ -3228,17 +3681,7 @@ export function ReportDialog({
       {isOpen && sheetUp && (
         <AssistSheet
           assist={assist}
-          theme={{
-            bg: t.bg,
-            bgSecondary: t.bgSecondary,
-            border: t.border,
-            text: t.text,
-            textMuted: t.textMuted,
-            inputBg: t.inputBg,
-            inputBorder: t.inputBorder,
-            accent: t.accent,
-            accentText: t.accentText,
-          }}
+          theme={layerTheme}
           // Every image, not just the first: the auto page shot arrived at [0],
           // so passing that one meant a pasted picture never reached the model
           // however visibly it was attached (#352). The sheet sends the newest
@@ -3290,7 +3733,15 @@ export function ReportDialog({
           severityRefused={needsSeverity}
           isSubmitting={isSubmitting}
           submitted={submitted}
-          onSend={() => void handleSubmit()}
+          onSend={() => void handleSubmit({ skipSimilar: true })}
+          onReportGlitchgrabProblem={
+            reportGlitchgrabProblem
+              ? (prefill) => {
+                  setSelfReportPrefill(prefill ?? "");
+                  setSelfReportFrom("assist");
+                }
+              : undefined
+          }
           onDegrade={(message) => {
             setAssistOpen(false);
             setAssistUsed(true);
