@@ -32,6 +32,7 @@ import {
 	refineScript,
 	resolveReporterSession,
 	assistReportTurn,
+	findSimilarIssues,
 	submitReport,
 	uploadSession,
 	validateToken,
@@ -1759,6 +1760,17 @@ app.whenReady().then(async () => {
 				};
 			}
 			return assistReportTurn({ sessionId: session.sessionId, ...payload });
+		},
+	);
+
+	// Plain form's "is this already filed?" on Send. Session id added here, never
+	// taken from the renderer. No session → null, and the dialog just sends.
+	ipcMain.handle(
+		"glitchgrab:find-similar-issues",
+		async (_e, payload: { repoId: string; text: string }) => {
+			const session = reporterSession ?? (await ensureReporterSession());
+			if (!session) return null;
+			return findSimilarIssues({ sessionId: session.sessionId, ...payload });
 		},
 	);
 
