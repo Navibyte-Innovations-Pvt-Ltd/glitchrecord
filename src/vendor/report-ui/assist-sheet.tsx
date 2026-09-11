@@ -625,7 +625,8 @@ export function AssistSheet({
           minWidth: 0,
         }}
       >
-        <span style={{ color: "#f59e0b", fontWeight: 600 }}>
+        {/* Theme text, not amber: amber on the tint is ~2:1 in light mode. */}
+        <span style={{ color: t.text, fontWeight: 600 }}>
           {title ? "Our team is already on this" : `Our team is already on #${duplicate.number}`}
         </span>
         {title && (
