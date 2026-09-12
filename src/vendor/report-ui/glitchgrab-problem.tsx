@@ -3,9 +3,10 @@
 // Edit the source there and re-run `npm run sync:report-ui`.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AssistTheme } from "./assist-sheet";
+import { encodeImageFile } from "./image-encode";
 import type { GlitchgrabProblemFn } from "./types";
 
 /**
@@ -22,13 +23,19 @@ import type { GlitchgrabProblemFn } from "./types";
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 const FAILED = "Couldn't send it. Try again in a moment.";
 
+/** The server keeps the first 5 (`lib/glitchgrab-self-report.ts`); past that the button hides. */
+export const MAX_SELF_REPORT_IMAGES = 5;
+
 interface GlitchgrabProblemPanelProps {
   send: GlitchgrabProblemFn;
   theme: AssistTheme;
   surface: "form" | "assist";
   conversationId: string | null;
   reportType: string;
-  /** The report's images — sent along, and counted in the note above Send. */
+  /**
+   * The report's images — what the panel starts with. Adding or removing one in
+   * the panel changes only what goes to Glitchgrab, never the report underneath.
+   */
   screenshots: string[];
   /** Opening text — the reporter's own chat words when the assistant offered this. */
   initialText?: string;
@@ -67,11 +74,60 @@ export function GlitchgrabProblemPanel({
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The panel's own copy. #375: a reporter showing us the problem had no way to
+  // add the screenshot of it — the report's images went along unseen.
+  const [images, setImages] = useState<string[]>(() =>
+    screenshots.slice(0, MAX_SELF_REPORT_IMAGES),
+  );
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Same budget as the dialog's own attachments: a retina paste alone can be
+  // over the request-body limit.
+  const addImages = useCallback((files: File[]) => {
+    const picked = files.filter((file) => file.type.startsWith("image/"));
+    if (!picked.length) return;
+    void Promise.all(picked.map((file) => encodeImageFile(file).catch(() => null))).then(
+      (encoded) => {
+        const added = encoded.filter((url): url is string => !!url);
+        if (added.length) {
+          setImages((prev) => [...prev, ...added].slice(0, MAX_SELF_REPORT_IMAGES));
+        }
+      },
+    );
+  }, []);
+
+  // A pasted image belongs to this panel. Window + capture runs before the
+  // dialog's own paste handler on window; without stopping it there the image
+  // lands on the report underneath, where the reporter never sees it arrive.
+  // Immediate, not plain stopPropagation: an event targeted at window itself
+  // still runs every other window listener after a plain stop.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      try {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        const files: File[] = [];
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].kind !== "file") continue;
+          const file = items[i].getAsFile();
+          if (file) files.push(file);
+        }
+        if (!files.length) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        addImages(files);
+      } catch {
+        // An unreadable clipboard is just a paste that did nothing.
+      }
+    };
+    window.addEventListener("paste", onPaste, true);
+    return () => window.removeEventListener("paste", onPaste, true);
+  }, [addImages]);
 
   // Escape closes this layer and nothing else. Window + capture runs before the
   // dialog's own Escape handler on document; stopping it here keeps the report
@@ -93,7 +149,13 @@ export function GlitchgrabProblemPanel({
     setBusy(true);
     setError(null);
     try {
-      const result = await send({ description, surface, conversationId, reportType, screenshots });
+      const result = await send({
+        description,
+        surface,
+        conversationId,
+        reportType,
+        screenshots: images,
+      });
       if (result?.success) setSent(true);
       else setError(result?.message || FAILED);
     } catch {
@@ -253,12 +315,127 @@ export function GlitchgrabProblemPanel({
               }}
             />
 
+            <div
+              data-gg-self-report-images=""
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "8px",
+                marginTop: "10px",
+              }}
+            >
+              {images.map((src, i) => (
+                <div key={i} style={{ position: "relative", width: "48px", height: "48px" }}>
+                  <img
+                    src={src}
+                    alt={`Screenshot ${i + 1}`}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                      boxSizing: "border-box",
+                      borderRadius: "8px",
+                      border: `1px solid ${t.inputBorder}`,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    data-gg-self-report-remove-image=""
+                    aria-label={`Remove screenshot ${i + 1}`}
+                    title="Don't send this one"
+                    onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                    style={{
+                      position: "absolute",
+                      top: "-13px",
+                      right: "-13px",
+                      width: "32px",
+                      height: "32px",
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: "50%",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "20px",
+                        height: "20px",
+                        boxSizing: "border-box",
+                        borderRadius: "50%",
+                        border: `2px solid ${t.bg}`,
+                        background: "#ef4444",
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                        <path
+                          d="M1 1L9 9M9 1L1 9"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+              ))}
+              {images.length < MAX_SELF_REPORT_IMAGES && (
+                <button
+                  type="button"
+                  data-gg-self-report-attach=""
+                  aria-label="Add screenshot"
+                  title="Add a screenshot — or paste one"
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    height: "48px",
+                    padding: "0 12px",
+                    boxSizing: "border-box",
+                    borderRadius: "8px",
+                    border: `1px dashed ${t.inputBorder}`,
+                    background: "transparent",
+                    color: t.textMuted,
+                    fontSize: "12.5px",
+                    fontWeight: 600,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                  }}
+                >
+                  {/* Short once thumbnails fill the row, or on a phone it wraps
+                      onto a line of its own. */}
+                  {images.length >= 3 ? "+ Add" : "+ Add screenshot"}
+                </button>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                data-gg-self-report-file=""
+                onChange={(e) => {
+                  addImages(Array.from(e.target.files ?? []));
+                  // The same file twice in a row fires no change unless cleared.
+                  e.target.value = "";
+                }}
+                style={{ display: "none" }}
+              />
+            </div>
+
             <p
               data-gg-self-report-includes=""
               style={{ margin: "8px 0 0", fontSize: "11.5px", lineHeight: 1.45, color: t.textMuted }}
             >
               Also sent, so we can see what happened:{" "}
-              {describeSentAlong(conversationId !== null, screenshots.length)}.
+              {describeSentAlong(conversationId !== null, images.length)}.
             </p>
             {error && (
               <p role="alert" style={{ margin: "8px 0 0", fontSize: "12px", color: "#ef4444" }}>
