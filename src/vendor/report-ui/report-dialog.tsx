@@ -3691,9 +3691,15 @@ export function ReportDialog({
           // few and shows the rest.
           screenshots={screenshots}
           pageShot={pageShot}
-          onAddImages={addFiles}
+          onAddFiles={addFiles}
           onRemoveImage={(index) =>
             setScreenshots((prev) => prev.filter((_, i) => i !== index))
+          }
+          // Non-image attachments too (#1851): the assistant reads the text
+          // ones, so a mockup attached on the form is part of the conversation.
+          files={attachments}
+          onRemoveFile={(index) =>
+            setAttachments((prev) => prev.filter((_, i) => i !== index))
           }
           attachmentCount={screenshots.length + attachments.length}
           context={{ ...(assistContext ?? {}), reportType }}
@@ -3745,16 +3751,20 @@ export function ReportDialog({
                 }
               : undefined
           }
-          onDegrade={(message) => {
+          onDegrade={(message, retryable) => {
             setAssistOpen(false);
-            setAssistUsed(true);
+            // An hourly limit clears in minutes: keep the button so they can try
+            // again on this report. Retiring it read as "the AI threw me out"
+            // to a QA team sharing one office IP.
+            if (!retryable) setAssistUsed(true);
             setAssistNotice(message);
           }}
           onClose={() => {
             setAssistOpen(false);
             // Closing by hand is not "used up" — someone who peeked and backed
             // out should still find the button where they left it. Only a
-            // degrade (cap, outage) retires the assistant for this report.
+            // degrade that will not clear by itself (cap, outage) retires the
+            // assistant for this report.
             requestAnimationFrame(() => textareaRef.current?.focus());
           }}
         />
