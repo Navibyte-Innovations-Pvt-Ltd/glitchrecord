@@ -3,9 +3,10 @@
 // Edit the source there and re-run `npm run sync:report-ui`.
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type {
+  AssistFile,
   AssistFn,
   AssistSheetEvent,
   AssistTurnResult,
@@ -13,11 +14,19 @@ import type {
   ReportSeverity,
 } from "./types";
 import {
+  MAX_ASSIST_FILE_CHARS,
+  MAX_ASSIST_FILE_CHARS_EACH,
+  MAX_ASSIST_FILES,
   MAX_ASSIST_IMAGE_CHARS,
   MAX_ASSIST_IMAGES,
   SEVERITY_LEVELS,
   SEVERITY_LABELS,
 } from "./types";
+import {
+  ASSIST_ATTACHMENT_ACCEPT,
+  decodeTextDataUrl,
+  isAssistReadableFile,
+} from "./attachments";
 import { getTypeLabel } from "./labels";
 
 /**
@@ -83,6 +92,38 @@ function pickAssistImages(all: string[]): string[] {
   return picked;
 }
 
+/** A non-image file attached to the report, as the dialog holds it. */
+interface SheetFile {
+  name: string;
+  size: number;
+  dataUrl: string;
+}
+
+/** Stable empty default, so the memo below does not re-decode every render. */
+const NO_FILES: SheetFile[] = [];
+
+/**
+ * The text files one turn can carry (#1851): readable types only, newest
+ * first, at most `MAX_ASSIST_FILES` and `MAX_ASSIST_FILE_CHARS` between them,
+ * each cut at `MAX_ASSIST_FILE_CHARS_EACH`. Returned oldest-first with each
+ * file's index in `files`, so the strip marks exactly the ones sent.
+ */
+function pickAssistFiles(files: SheetFile[]): { index: number; file: AssistFile }[] {
+  const picked: { index: number; file: AssistFile }[] = [];
+  let total = 0;
+  for (let i = files.length - 1; i >= 0 && picked.length < MAX_ASSIST_FILES; i--) {
+    const attached = files[i];
+    if (!isAssistReadableFile(attached.name)) continue;
+    const text = decodeTextDataUrl(attached.dataUrl);
+    if (!text || !text.trim()) continue;
+    const content = text.slice(0, MAX_ASSIST_FILE_CHARS_EACH);
+    if (total + content.length > MAX_ASSIST_FILE_CHARS) continue;
+    picked.unshift({ index: i, file: { name: attached.name, content } });
+    total += content.length;
+  }
+  return picked;
+}
+
 interface AssistSheetProps {
   assist: AssistFn;
   theme: AssistTheme;
@@ -100,8 +141,19 @@ interface AssistSheetProps {
    * they are complaining about, which may not be this page at all (#357).
    */
   pageShot?: string | null;
-  /** Add images from inside the sheet. The host owns the list; this appends. */
-  onAddImages?: (files: File[]) => void;
+  /**
+   * Add images or files from inside the sheet. The host owns both lists and
+   * sorts them: images to `screenshots`, anything else to `files`.
+   */
+  onAddFiles?: (files: File[]) => void;
+  /**
+   * Every non-image file attached to the report, oldest first (#1851). The
+   * text ones the assistant can read are sent with each turn; the rest (pdf,
+   * docx) are shown so the reporter knows they are attached, and dimmed.
+   */
+  files?: SheetFile[];
+  /** Take one file back off the report, by its index in `files`. */
+  onRemoveFile?: (index: number) => void;
   /**
    * Take one image back off the report, by its index in `screenshots` (#360).
    * Without it a wrong paste could only be undone by leaving the sheet — and
@@ -183,7 +235,8 @@ interface AssistSheetProps {
   submitted: boolean;
   onSend: () => void;
 
-  onDegrade: (message: string) => void;
+  /** `retryable`: the reason clears on its own, so the assistant is not retired. */
+  onDegrade: (message: string, retryable?: boolean) => void;
   onClose: () => void;
   /**
    * Close the whole dialog, not just the sheet. Used when the brief answered
@@ -297,7 +350,9 @@ export function AssistSheet({
   theme: t,
   screenshots,
   pageShot = null,
-  onAddImages,
+  onAddFiles,
+  files = NO_FILES,
+  onRemoveFile,
   onRemoveImage,
   attachmentCount,
   context,
@@ -416,6 +471,9 @@ export function AssistSheet({
   // What the next turn will actually send — the strip marks exactly these, so
   // an image dropped for size reads as unread, not just one dropped for count.
   const readShots = new Set(pickAssistImages(screenshots));
+  // Decoding a mockup is not free, and this body re-runs on every keystroke.
+  const sentFiles = useMemo(() => pickAssistFiles(files), [files]);
+  const readFiles = new Set(sentFiles.map((f) => f.index));
 
   /** Every way out of the sheet that is not Send. */
   function leave(type: "write_myself" | "closed", detail?: string) {
@@ -438,10 +496,14 @@ export function AssistSheet({
    * their own — the clicks right before an outage are exactly the ones worth
    * reading, and a cap/rate-limit degrade still accepts an events-only flush.
    */
-  function degradeKeepingEvents(events: AssistSheetEvent[] | undefined, message: string) {
+  function degradeKeepingEvents(
+    events: AssistSheetEvent[] | undefined,
+    message: string,
+    retryable?: boolean,
+  ) {
     if (events) eventsRef.current = [...events, ...eventsRef.current];
     flushEvents();
-    onDegrade(message);
+    onDegrade(message, retryable);
   }
 
   async function runTurn(history: ChatMessage[]) {
@@ -463,6 +525,9 @@ export function AssistSheet({
         ),
         conversationId,
         screenshots: sent,
+        // Only when there is something: an older server then sees the body
+        // it always did.
+        ...(sentFiles.length > 0 ? { files: sentFiles.map((f) => f.file) } : {}),
         context: {
           ...(context ?? {}),
           imageSources: sent.map((shot) => (pageShot && shot === pageShot ? "page" : "attached")),
@@ -484,7 +549,7 @@ export function AssistSheet({
     }
 
     if (result.degraded) {
-      degradeKeepingEvents(events, result.degraded);
+      degradeKeepingEvents(events, result.degraded, result.retryable === true);
       return;
     }
     if (result.conversationId) {
@@ -1534,7 +1599,7 @@ export function AssistSheet({
                     dialog underneath, which used to swallow the picture into a
                     strip hidden behind this sheet — indistinguishable from
                     paste being unsupported (#352). */}
-                {(screenshots.length > 0 || onAddImages) && (
+                {(screenshots.length > 0 || files.length > 0 || onAddFiles) && (
                   <div
                     style={{
                       display: "flex",
@@ -1639,10 +1704,117 @@ export function AssistSheet({
                         </div>
                       );
                     })}
-                    {onAddImages && (
+                    {/* #1851: a mockup attached on the form was invisible here,
+                        and the assistant asked about a page it never saw. A
+                        file it reads is outlined like a read image; one it
+                        cannot read is dimmed, and says why on hover. */}
+                    {files.map((file, i) => {
+                      const read = readFiles.has(i);
+                      const why = read
+                        ? "the assistant reads this file"
+                        : isAssistReadableFile(file.name)
+                          ? "attached, but more than one message can carry, so the assistant is not reading it"
+                          : "attached to the report — the assistant can't read this kind of file";
+                      return (
+                        <div
+                          key={`file-${i}-${file.name}`}
+                          data-gg-assist-file=""
+                          data-gg-assist-file-read={read ? "" : undefined}
+                          title={`${file.name} — ${why}`}
+                          style={{
+                            position: "relative",
+                            height: "40px",
+                            maxWidth: "170px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "0 10px",
+                            borderRadius: "8px",
+                            border: `1px solid ${read ? t.accent : t.inputBorder}`,
+                            opacity: read ? 1 : 0.55,
+                            boxSizing: "border-box",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+                            <path
+                              d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6"
+                              stroke={t.textMuted}
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span
+                            style={{
+                              fontSize: "11.5px",
+                              color: t.text,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {file.name}
+                          </span>
+                          {onRemoveFile && (
+                            <button
+                              type="button"
+                              data-gg-assist-remove-file=""
+                              aria-label={`Remove file ${file.name}`}
+                              title="Remove this file"
+                              onClick={() => {
+                                logEvent("file_removed", read ? "read" : "not read");
+                                onRemoveFile(i);
+                              }}
+                              style={{
+                                position: "absolute",
+                                top: "-13px",
+                                right: "-13px",
+                                width: "32px",
+                                height: "32px",
+                                border: "none",
+                                background: "transparent",
+                                padding: 0,
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: "50%",
+                              }}
+                            >
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  width: "20px",
+                                  height: "20px",
+                                  boxSizing: "border-box",
+                                  borderRadius: "50%",
+                                  border: `2px solid ${t.bg}`,
+                                  background: "#ef4444",
+                                  color: "#fff",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                                  <path
+                                    d="M1 1L9 9M9 1L1 9"
+                                    stroke="currentColor"
+                                    strokeWidth="1.6"
+                                    strokeLinecap="round"
+                                  />
+                                </svg>
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {onAddFiles && (
                       <label
                         data-gg-assist-attach=""
-                        title="Attach an image — or just paste one"
+                        title="Attach an image or a file (html, json, log…) — or paste one"
                         style={{
                           width: "40px",
                           height: "40px",
@@ -1660,13 +1832,17 @@ export function AssistSheet({
                         +
                         <input
                           type="file"
-                          accept="image/*"
+                          accept={ASSIST_ATTACHMENT_ACCEPT}
                           multiple
                           onChange={(e) => {
-                            const files = Array.from(e.target.files ?? []);
-                            if (files.length) {
-                              logEvent("image_added", String(files.length));
-                              onAddImages(files);
+                            const picked = Array.from(e.target.files ?? []);
+                            if (picked.length) {
+                              const images = picked.filter((f) => f.type.startsWith("image/")).length;
+                              if (images) logEvent("image_added", String(images));
+                              if (picked.length > images) {
+                                logEvent("file_added", String(picked.length - images));
+                              }
+                              onAddFiles(picked);
                             }
                             // Same file twice in a row fires no change event
                             // unless the input is cleared.
