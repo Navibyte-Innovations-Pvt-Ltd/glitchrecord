@@ -144,6 +144,13 @@ export interface AssistTurnResult {
    */
   aboutGlitchgrab?: boolean;
   degraded?: string | null;
+  /**
+   * With `degraded`: the reason clears on its own (an hourly rate limit), so the
+   * dialog keeps the assistant button for this report instead of retiring it.
+   * A monthly cap or an outage leaves this unset. Absent from older hosts, which
+   * then retire the assistant exactly as before.
+   */
+  retryable?: boolean;
 }
 
 /**
@@ -167,6 +174,28 @@ export const MAX_ASSIST_IMAGES = 3;
 export const MAX_ASSIST_IMAGE_CHARS = 3_500_000;
 
 /**
+ * A text file the reporter attached, decoded for the assistant (#1851) — an
+ * HTML mockup, a JSON export, a log. Images go in `screenshots`; binaries (pdf,
+ * docx) are not read.
+ */
+export interface AssistFile {
+  name: string;
+  content: string;
+}
+
+/** Files one assistant turn may carry. The newest win, like images. */
+export const MAX_ASSIST_FILES = 3;
+
+/**
+ * Characters of file text one turn may carry in total, and per file. Sized to
+ * fit the megabyte `MAX_ASSIST_IMAGE_CHARS` leaves under the request limit. The
+ * server caps again and shows the model an outline plus an excerpt, so this
+ * bounds the request body, not how much the model reads.
+ */
+export const MAX_ASSIST_FILE_CHARS = 300_000;
+export const MAX_ASSIST_FILE_CHARS_EACH = 200_000;
+
+/**
  * Something the reporter did in the sheet, as opposed to something they typed
  * (#357). Kept so the team can see where a conversation stopped working —
  * "keep chatting" after a draft, "write it myself", a chip tapped.
@@ -180,6 +209,8 @@ export interface AssistSheetEvent {
     | "starter_tap"
     | "image_added"
     | "image_removed"
+    | "file_added"
+    | "file_removed"
     | "draft_sent"
     | "closed"
     | "glitchgrab_offer_tap"
@@ -216,6 +247,12 @@ export interface AssistTurnParams {
    * builds that predate `screenshots`.
    */
   screenshot?: string | null;
+  /**
+   * Text files attached to the report (html, json, log…), decoded, newest last,
+   * at most `MAX_ASSIST_FILES` (#1851). Omitted when there are none, so a host
+   * or server that predates it sees the exact body it always did.
+   */
+  files?: AssistFile[];
   /**
    * Page URL, visited pages, breadcrumbs, report type. Host-supplied. The sheet
    * adds `imageSources` — "page" | "attached" per entry of `screenshots` — so
