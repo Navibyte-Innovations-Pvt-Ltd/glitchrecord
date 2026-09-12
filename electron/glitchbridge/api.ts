@@ -348,6 +348,8 @@ export async function assistReportTurn(params: {
 	question: string | null;
 	report: string | null;
 	degraded: string | null;
+	/** With `degraded`: an hourly limit that clears on its own — the dialog keeps the assistant. */
+	retryable?: boolean;
 }> {
 	const offline = {
 		conversationId: null,
@@ -364,10 +366,15 @@ export async function assistReportTurn(params: {
 		const data = (await res.json().catch(() => null)) as {
 			success?: boolean;
 			error?: string;
+			retryable?: boolean;
 			data?: { conversationId?: string; question?: string | null; report?: string | null };
 		} | null;
 		if (!res.ok || !data?.success) {
-			return { ...offline, degraded: data?.error ?? offline.degraded };
+			return {
+				...offline,
+				degraded: data?.error ?? offline.degraded,
+				retryable: data?.retryable === true,
+			};
 		}
 		return {
 			conversationId: data.data?.conversationId ?? null,
