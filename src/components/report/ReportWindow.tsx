@@ -60,6 +60,7 @@ interface GlitchgrabReportAPI {
 		question: string | null;
 		report: string | null;
 		degraded: string | null;
+		retryable?: boolean;
 	}>;
 	findSimilarIssues: (payload: {
 		repoId: string;
