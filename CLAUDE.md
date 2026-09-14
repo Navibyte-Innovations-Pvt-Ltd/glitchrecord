@@ -28,9 +28,9 @@ Full methodology, lanes, and the bug→test→scenario workflow live in
   the running window and exits. The e2e harness preflights this and fails with a
   clear message.
 
-## Report Bug window
+## Report Bug sheet
 
-`windowType=report` renders `src/components/report/ReportWindow.tsx`, which
+`src/components/report/InlineReport.tsx` (mounted in Home and the editor)
 hosts the **shared** report dialog from `packages/report-ui` — vendored into
 `src/vendor/report-ui/` by `scripts/sync-report-ui.mjs` on every `dev`/`build`.
 `src/vendor/` is generated: **never hand-edit it**, edit `packages/report-ui`
@@ -38,9 +38,10 @@ and re-run `npm run sync:report-ui`. (It's a copy, not a dependency, because
 this app is a standalone submodule — see that package's README.)
 
 It files bugs in GlitchRecord only: fixed repo
-`Navibyte-Innovations-Pvt-Ltd/glitchrecord`, bug type only, `layout="fill"`,
-and a screenshot of the GlitchRecord window that was in front (`capturePage`).
-Open it from Home or ⌘⇧G (File menu). The AI assistant reads `GLITCH.md` at this
+`Navibyte-Innovations-Pvt-Ltd/glitchrecord`, bug type only, as a right-side sheet
+over the window you're in (`layout="sheet"`), with a screenshot of that window
+(`capturePage`). Open it from Home or ⌘⇧G (File menu); from the recording HUD it
+opens in Home. The AI assistant reads `GLITCH.md` at this
 app's root. Identity is an `ExtensionSession` held in the main process — see the
 repo-root `CLAUDE.md`.
 
