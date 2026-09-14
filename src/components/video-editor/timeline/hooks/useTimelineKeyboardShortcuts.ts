@@ -1,6 +1,7 @@
 import { type RefObject, useEffect } from "react";
 import { matchesShortcut } from "@/lib/shortcuts";
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
+import { isInReportSheet } from "../../../report/isInReportSheet";
 import { resolveDeleteSelectionTarget } from "./utils/timelineSelectionUtils";
 
 interface UseTimelineKeyboardShortcutsParams {
@@ -60,6 +61,8 @@ export function useTimelineKeyboardShortcuts({
 		const handleKeyDown = (e: KeyboardEvent) => {
 			const eventTarget = e.target;
 			if (
+				// Delete/Backspace on a focused Report Bug sheet button must not delete a clip.
+				isInReportSheet(eventTarget) ||
 				eventTarget instanceof HTMLInputElement ||
 				eventTarget instanceof HTMLTextAreaElement ||
 				eventTarget instanceof HTMLSelectElement ||
