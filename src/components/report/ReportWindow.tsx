@@ -3,22 +3,24 @@ import type {
 	AssistFn,
 	FindSimilarIssuesFn,
 	ReportFn,
+	ReportReporter,
 	ReportResult,
 	ReportType,
 } from "../../vendor/report-ui";
 import { ReportDialog } from "../../vendor/report-ui";
 
 /**
- * The desktop "Report Bug" window.
+ * The desktop "Report Bug" window — for bugs in GlitchRecord itself.
  *
  * Renders the SAME dialog component the npm SDK ships (packages/report-ui,
  * synced into src/vendor by scripts/sync-report-ui.mjs), so the bug-reporting
- * UI a tester sees is identical everywhere and only has to be changed once.
+ * UI is identical everywhere and only has to be changed once.
  *
  * What's different from the SDK/extension hosts:
- *  - screenshots come from Electron's desktopCapturer (the whole screen), so a
- *    tester can report from Firefox, Safari, a native app or a terminal — not
- *    just from a Chrome tab.
+ *  - it always files into the GlitchRecord repo — no repo picker. Bugs in a
+ *    web app being tested are filed from Chrome with ⌘⇧G instead.
+ *  - the screenshot is the GlitchRecord window the reporter was in (main
+ *    process, `capturePage`), and the dialog fills this window (`layout="fill"`).
  *  - submission goes through the main process, which holds the reporter
  *    session (a QA tester's, or the signed-in owner's) and the repo scope.
  */
@@ -35,6 +37,10 @@ interface ReportPayload {
 	reporterName: string | null;
 	repos: RepoOption[];
 	screenshotDataUrl: string | null;
+	/** The saved GlitchRecord sign-in was rejected and has been cleared. */
+	authExpired?: boolean;
+	/** Version, platform and which GlitchRecord window the bug was in. */
+	app?: { version: string; platform: string; window: string | null };
 }
 
 interface GlitchgrabReportAPI {
@@ -67,13 +73,16 @@ interface GlitchgrabReportAPI {
 		text: string;
 	}) => Promise<Array<{ number: number; title: string; url: string; status?: string }> | null>;
 	closeReport: () => Promise<{ ok: boolean }>;
+	login: () => Promise<{ ok: boolean }>;
+	onAuthChanged?: (cb: (status: { loggedIn: boolean }) => void) => () => void;
 }
 
 function gg(): GlitchgrabReportAPI | null {
 	return (window as unknown as { glitchgrab?: GlitchgrabReportAPI }).glitchgrab ?? null;
 }
 
-const LAST_REPO_KEY = "gg_last_repo_id";
+/** Where every GlitchRecord bug goes. Matched case-insensitively against the session's repos. */
+const GLITCHRECORD_REPO = "Navibyte-Innovations-Pvt-Ltd/glitchrecord";
 
 export function ReportWindow() {
 	const [payload, setPayload] = useState<ReportPayload | null>(null);
@@ -82,6 +91,15 @@ export function ReportWindow() {
 	// The screenshot taken just before this window opened is what the reporter
 	// actually saw, so it wins the first capture. "Retake" then goes live.
 	const initialShotUsed = useRef(false);
+	// Bumped when sign-in completes, so the window loads itself instead of
+	// making the reporter close it and press ⌘⇧G again.
+	const [loadKey, setLoadKey] = useState(0);
+
+	useEffect(() => {
+		return gg()?.onAuthChanged?.((status) => {
+			if (status.loggedIn) setLoadKey((k) => k + 1);
+		});
+	}, []);
 
 	useEffect(() => {
 		const api = gg();
@@ -90,19 +108,22 @@ export function ReportWindow() {
 			return;
 		}
 		let cancelled = false;
+		setError(null);
 		api.reportPayload()
 			.then((p) => {
 				if (cancelled) return;
 				setPayload(p);
 				if (!p.sessionId) {
 					setError(
-						"Not signed in — log in to GlitchRecord, or open your QA link and press “Open in GlitchRecord”.",
+						p.authExpired
+							? "Your GlitchRecord sign-in expired. Sign in again to file this report."
+							: "Sign in to Glitchgrab to file a report — or open your QA link and press “Open in GlitchRecord”.",
 					);
 					return;
 				}
-				const saved = localStorage.getItem(LAST_REPO_KEY);
 				setRepoId(
-					saved && p.repos.some((r) => r.id === saved) ? saved : (p.repos[0]?.id ?? ""),
+					p.repos.find((r) => r.fullName.toLowerCase() === GLITCHRECORD_REPO.toLowerCase())?.id ??
+						"",
 				);
 			})
 			.catch(() => {
@@ -111,7 +132,7 @@ export function ReportWindow() {
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [loadKey]);
 
 	// ReportDialog renders nothing until it hears this. Normally the SDK
 	// provider's openReportDialog() fires it; there's no provider here.
@@ -192,60 +213,65 @@ export function ReportWindow() {
 	);
 
 	if (error) {
-		return <div className="gg-report-msg gg-report-msg--error">{error}</div>;
+		// Signed out is a step to take, not a failure — and it needs a way forward.
+		const signedOut = !!payload && !payload.sessionId;
+		return (
+			<div className={`gg-report-msg gg-report-msg--gate${signedOut ? "" : " gg-report-msg--error"}`}>
+				<p>{error}</p>
+				<div className="gg-report-msg-actions">
+					{signedOut && (
+						<button
+							type="button"
+							className="gg-report-btn gg-report-btn--primary"
+							onClick={() => void gg()?.login()}
+						>
+							Connect Glitchgrab
+						</button>
+					)}
+					<button type="button" className="gg-report-btn" onClick={() => void gg()?.closeReport()}>
+						Close
+					</button>
+				</div>
+			</div>
+		);
 	}
 
 	if (!payload) {
 		return <div className="gg-report-msg">Loading…</div>;
 	}
 
-	if (payload.repos.length === 0) {
+	const repo = payload.repos.find((r) => r.id === repoId);
+	if (!repo) {
 		return (
-			<div className="gg-report-msg gg-report-msg--error">
-				No repos assigned to you yet — ask the org owner to add you as a tester or connect a
-				repo.
+			<div className="gg-report-msg gg-report-msg--gate gg-report-msg--error">
+				<p>
+					GlitchRecord bugs go to {GLITCHRECORD_REPO}, and this Glitchgrab account can't file
+					there yet. Ask the owner to add you to that repo.
+				</p>
+				<div className="gg-report-msg-actions">
+					<button type="button" className="gg-report-btn" onClick={() => void gg()?.closeReport()}>
+						Close
+					</button>
+				</div>
 			</div>
 		);
 	}
 
+	const reporter: ReportReporter | null = payload.reporterName
+		? { name: payload.reporterName, email: null, role: null }
+		: null;
+
 	return (
-		<div className="gg-report-window">
-			<header className="gg-report-header">
-				<div className="gg-report-title">Report a bug</div>
-				{payload.reporterName && (
-					<div className="gg-report-reporter">as {payload.reporterName}</div>
-				)}
-			</header>
-
-			<label className="gg-report-field">
-				Repo
-				<select
-					value={repoId}
-					onChange={(e) => {
-						setRepoId(e.target.value);
-						localStorage.setItem(LAST_REPO_KEY, e.target.value);
-					}}
-				>
-					{payload.repos.map((r) => (
-						<option key={r.id} value={r.id}>
-							{r.fullName}
-						</option>
-					))}
-				</select>
-			</label>
-
-			<ReportDialog
-				report={report}
-				assist={
-					payload.repos.find((r) => r.id === repoId)?.aiAssistEnabled ? assist : undefined
-				}
-				findSimilarIssues={
-					payload.repos.find((r) => r.id === repoId)?.aiAssistEnabled
-						? findSimilarIssues
-						: undefined
-				}
-				captureScreenshot={captureScreenshot}
-			/>
-		</div>
+		<ReportDialog
+			layout="fill"
+			types={["BUG"]}
+			report={report}
+			assist={repo.aiAssistEnabled ? assist : undefined}
+			findSimilarIssues={repo.aiAssistEnabled ? findSimilarIssues : undefined}
+			assistContext={{ product: "GlitchRecord desktop app", ...(payload.app ?? {}) }}
+			reporter={reporter}
+			captureScreenshot={captureScreenshot}
+			onClose={() => void gg()?.closeReport()}
+		/>
 	);
 }
