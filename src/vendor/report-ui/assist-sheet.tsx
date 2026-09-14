@@ -10,6 +10,7 @@ import type {
   AssistFn,
   AssistSheetEvent,
   AssistTurnResult,
+  AttachKind,
   DialogTile,
   ReportSeverity,
 } from "./types";
@@ -126,6 +127,8 @@ function pickAssistFiles(files: SheetFile[]): { index: number; file: AssistFile 
 
 interface AssistSheetProps {
   assist: AssistFn;
+  /** Fill the whole window, no backdrop — the dialog's `layout="fill"`. */
+  fill?: boolean;
   theme: AssistTheme;
   /**
    * Every image attached to the report, oldest first — the auto-captured page
@@ -219,9 +222,10 @@ interface AssistSheetProps {
   /**
    * Tells the dialog which issue to attach to, so its ONE submit path carries
    * the number into report metadata. Null clears it — the reporter kept typing
-   * and it stopped looking like a duplicate.
+   * and it stopped looking like a duplicate. `kind` says whether it is the same
+   * problem or a related request for that issue.
    */
-  onDuplicateChange?: (issueNumber: number | null) => void;
+  onDuplicateChange?: (issueNumber: number | null, kind?: AttachKind) => void;
 
   /**
    * Tells the dialog which chat this is, so its ONE submit path carries the id
@@ -263,6 +267,22 @@ const STARTERS = [
   "It did the wrong thing",
   "I wish it could…",
 ];
+
+/**
+ * The check-back chip the prompt offers before the first report
+ * (`apps/web/lib/ai-assist/prompt.ts`, pinned in `prompt.test.ts`). Tapping it
+ * already confirmed the restatement, so the report it produces files itself
+ * after a short countdown instead of asking for a second Send (#402). Typed
+ * words never arm it — only the tap, which is unambiguous.
+ */
+const CONFIRM_OPTION = "Yes, that's it";
+
+/**
+ * Seconds a confirmed draft stays on screen before it files itself (#402). The
+ * reporter never read the draft before confirming — it is written after the
+ * tap — so this is the window in which a wrong or injected draft gets stopped.
+ */
+const AUTO_FILE_SECONDS = 4;
 
 const NARROW_QUERY = "(max-width: 640px)";
 
@@ -381,8 +401,10 @@ export function AssistSheet({
   onClose,
   onFinish,
   onReportGlitchgrabProblem,
+  fill = false,
 }: AssistSheetProps) {
-  const narrow = useIsNarrow();
+  // A sheet that owns its window is not a phone layout at any width.
+  const narrow = useIsNarrow() && !fill;
   /** A send the dialog refused because nothing is picked yet — turns the row red. */
   /**
    * The picker mirrors the dialog's gate exactly — `showSeverity` AND a bug.
@@ -407,7 +429,9 @@ export function AssistSheet({
    * number is safe to hand back on submit: the report is added to that issue
    * as a comment rather than opening a second one.
    */
-  const [duplicate, setDuplicate] = useState<AssistTurnResult["duplicate"]>(null);
+  const [duplicate, setDuplicate] = useState<
+    (NonNullable<AssistTurnResult["duplicate"]> & { kind: AttachKind }) | null
+  >(null);
   /** The assistant said "this is about Glitchgrab, not this app" (#366) — show the offer card. */
   const [glitchgrabOffer, setGlitchgrabOffer] = useState(false);
   /**
@@ -417,18 +441,40 @@ export function AssistSheet({
    */
   const [solved, setSolved] = useState<string | null>(null);
   /**
-   * "type" → the picker chips, "rating" → stars, "chat" → the conversation,
-   * "draft" → the model's report, ready to send. A sheet opened from the
-   * dialog's own "Describe it with AI" button already knows its type and
-   * starts at "chat"; ⌘⇧G starts at "type".
+   * A bug is asked how bad it is right after its type, before the chat (#402).
+   * Asked once: a severity already picked on the form is not asked again.
    */
-  const [phase, setPhase] = useState<"type" | "rating" | "chat" | "draft" | "solved">(
-    !typePicked ? "type" : currentTile === "RATING" ? "rating" : "chat",
+  const needsSeverity = (tile: DialogTile) => showSeverity && tile === "BUG" && !severity;
+  /**
+   * "type" → the picker chips, "severity" → how bad a bug is, "rating" →
+   * stars, "chat" → the conversation, "draft" → the model's report, ready to
+   * send. A sheet opened from the dialog's own "Describe it with AI" button
+   * already knows its type and starts at "chat" (or "severity" for a bug);
+   * ⌘⇧G starts at "type".
+   */
+  const [phase, setPhase] = useState<
+    "type" | "severity" | "rating" | "chat" | "draft" | "solved"
+  >(() =>
+    !typePicked
+      ? "type"
+      : currentTile === "RATING"
+        ? "rating"
+        : needsSeverity(currentTile)
+          ? "severity"
+          : "chat",
   );
+  /**
+   * Seconds until a confirmed draft files itself (#402), null when nothing is
+   * counting. Driven by the effect below, so closing the sheet, a degrade or
+   * the dialog starting its own submit all stop it without a stray timer.
+   */
+  const [autoFileLeft, setAutoFileLeft] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   /** Guards the seed below against React 18's double-invoked effects. */
   const seededRef = useRef(false);
+  /** The opening turn is waiting for the severity answer (#402). */
+  const seedPendingRef = useRef(false);
   /**
    * Clicks the server has not seen yet (#357). They ride along with the next
    * turn, or go on their own when the sheet is left — the moment someone gives
@@ -491,6 +537,31 @@ export function AssistSheet({
     if (phase === "draft") draftRef.current?.focus();
   }, [phase]);
 
+  useEffect(() => {
+    if (autoFileLeft === null) return;
+    // The dialog took over (Send pressed by hand) or the draft went away.
+    if (isSubmitting || submitted || phase !== "draft") {
+      setAutoFileLeft(null);
+      return;
+    }
+    if (autoFileLeft <= 0) {
+      sendDraft(true);
+      return;
+    }
+    const id = setTimeout(() => setAutoFileLeft((n) => (n === null ? null : n - 1)), 1000);
+    return () => clearTimeout(id);
+    // `sendDraft` is re-created every render; the tick that reaches 0 renders
+    // first, so it is always the current one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFileLeft, isSubmitting, submitted, phase]);
+
+  /** The reporter touched the draft, so it is theirs to send now (#402). */
+  function stopAutoFile(reason: string) {
+    if (autoFileLeft === null) return;
+    setAutoFileLeft(null);
+    logEvent("auto_file_stopped", reason);
+  }
+
   /**
    * A turn that failed carried clicks with it. Put them back and flush them on
    * their own — the clicks right before an outage are exactly the ones worth
@@ -506,8 +577,13 @@ export function AssistSheet({
     onDegrade(message, retryable);
   }
 
-  async function runTurn(history: ChatMessage[]) {
+  /**
+   * `autoFile`: this turn answers the check-back chip, so a plain report it
+   * returns starts the countdown instead of waiting for Send (#402).
+   */
+  async function runTurn(history: ChatMessage[], autoFile = false) {
     setBusy(true);
+    setAutoFileLeft(null);
     let result: AssistTurnResult;
     const events = takeEvents();
     try {
@@ -557,8 +633,15 @@ export function AssistSheet({
       onConversationChange?.(result.conversationId);
     }
 
-    setDuplicate(result.duplicate ?? null);
-    onDuplicateChange?.(result.duplicate?.number ?? null);
+    // One card, one submit path for both: the SAME problem, or a related request
+    // the model asked about. The server never sends both.
+    const attach = result.duplicate
+      ? { ...result.duplicate, kind: "duplicate" as const }
+      : result.related
+        ? { ...result.related, kind: "related" as const }
+        : null;
+    setDuplicate(attach);
+    onDuplicateChange?.(attach?.number ?? null, attach?.kind);
     setGlitchgrabOffer(!!result.aboutGlitchgrab && !!onReportGlitchgrabProblem && !!result.question);
 
     if (result.solved) {
@@ -575,6 +658,11 @@ export function AssistSheet({
       setMessages([...history, { role: "assistant", content: result.report, kind: "report" }]);
       setOptions([]);
       setPhase("draft");
+      // Never onto somebody else's issue: attaching to the wrong thread stays a
+      // deliberate click. And never without a severity the dialog would refuse.
+      if (autoFile && !attach && !(severityAsked && !severity)) {
+        setAutoFileLeft(AUTO_FILE_SECONDS);
+      }
       return;
     }
     if (result.question) {
@@ -595,16 +683,34 @@ export function AssistSheet({
     // A rating never calls the model, so whatever is in the box is a comment,
     // not the opening line of a conversation.
     if (!typePicked || currentTile === "RATING") return;
+    // A bug answers "how bad is it?" first (#402); the opening turn waits.
+    if (phase === "severity") {
+      seedPendingRef.current = true;
+      return;
+    }
+    seedFromDescription();
+    // Intentionally once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function seedFromDescription() {
     const seed = description.trim();
     if (!seed) return;
     const history: ChatMessage[] = [{ role: "user", content: seed }];
     setMessages(history);
     void runTurn(history);
-    // Intentionally once, on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
 
-  function send(text: string) {
+  function answerSeverity(value: ReportSeverity) {
+    onSeverityChange(value);
+    setPhase("chat");
+    if (seedPendingRef.current) {
+      seedPendingRef.current = false;
+      seedFromDescription();
+    }
+  }
+
+  function send(text: string, autoFile = false) {
     const value = text.trim();
     if (!value || busy) return;
     setOptions([]);
@@ -624,7 +730,7 @@ export function AssistSheet({
     const history: ChatMessage[] = [...base, { role: "user", content: value }];
     setMessages(history);
     setInput("");
-    void runTurn(history);
+    void runTurn(history, autoFile);
   }
 
   /**
@@ -634,7 +740,7 @@ export function AssistSheet({
    */
   function pickType(tile: DialogTile) {
     onPickType(tile);
-    setPhase(tile === "RATING" ? "rating" : "chat");
+    setPhase(tile === "RATING" ? "rating" : needsSeverity(tile) ? "severity" : "chat");
   }
 
   /**
@@ -654,9 +760,11 @@ export function AssistSheet({
     return next;
   }
 
-  function sendDraft() {
+  /** `auto`: the countdown ran out, so nobody pressed Send — kept apart in the log. */
+  function sendDraft(auto = false) {
+    setAutoFileLeft(null);
     const edited = aiDraftRef.current !== null && description.trim() !== aiDraftRef.current.trim();
-    logEvent("draft_sent", edited ? "edited" : "as drafted");
+    logEvent("draft_sent", auto ? "auto-filed" : edited ? "edited" : "as drafted");
     flushEvents();
     onSend();
   }
@@ -692,17 +800,31 @@ export function AssistSheet({
       >
         {/* Theme text, not amber: amber on the tint is ~2:1 in light mode. */}
         <span style={{ color: t.text, fontWeight: 600 }}>
-          {title ? "Our team is already on this" : `Our team is already on #${duplicate.number}`}
+          {duplicate.kind === "related"
+            ? title
+              ? "Your request goes onto this issue"
+              : `Connected to #${duplicate.number}`
+            : title
+              ? "Our team is already on this"
+              : `Our team is already on #${duplicate.number}`}
         </span>
         {title && (
           <span style={{ color: t.textMuted, wordBreak: "break-word" }}>
             #{duplicate.number} {duplicate.title}
           </span>
         )}
-        {duplicate.status && (
+        {/* Where THAT issue's fix stands says nothing about a new request added
+            to it — "Fix expected by 18 Sep" would read as a promise for theirs. */}
+        {duplicate.status && duplicate.kind !== "related" && (
           <span style={{ color: t.text, fontWeight: 600 }}>{duplicate.status}</span>
         )}
-        {footer && <span style={{ color: t.textMuted }}>{footer}</span>}
+        {footer && (
+          <span style={{ color: t.textMuted }}>
+            {duplicate.kind === "related"
+              ? "Added as a separate request on it, not a repeat — the team sees both."
+              : footer}
+          </span>
+        )}
       </div>
     );
   }
@@ -715,7 +837,9 @@ export function AssistSheet({
     .map((w) => w[0]?.toUpperCase() ?? "")
     .join("");
 
-  const panelStyle: React.CSSProperties = narrow
+  const panelStyle: React.CSSProperties = fill
+    ? { width: "100%", height: "100dvh" }
+    : narrow
     ? {
         width: "100%",
         maxHeight: "88dvh",
@@ -737,6 +861,7 @@ export function AssistSheet({
         @keyframes gg-sheet-in{from{transform:translateX(24px);opacity:0}to{transform:translateX(0);opacity:1}}
         @keyframes gg-sheet-up{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
         @keyframes gg-sheet-fade{from{opacity:0}to{opacity:1}}
+        @keyframes gg-autofile{from{transform:scaleX(0)}to{transform:scaleX(1)}}
         @keyframes gg-dot{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-3px);opacity:1}}
         [data-gg-sheet-send]:focus-visible,[data-gg-chip]:focus-visible,[data-gg-assist-remove]:focus-visible{outline:2px solid currentColor;outline-offset:2px}
       `}</style>
@@ -752,7 +877,7 @@ export function AssistSheet({
           display: "flex",
           alignItems: narrow ? "flex-end" : "stretch",
           justifyContent: narrow ? "center" : "flex-end",
-          backgroundColor: "rgba(0,0,0,0.5)",
+          backgroundColor: fill ? t.bg : "rgba(0,0,0,0.5)",
           animation: "gg-sheet-fade .18s ease",
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         }}
@@ -773,13 +898,14 @@ export function AssistSheet({
             boxSizing: "border-box",
             backgroundColor: t.bg,
             color: t.text,
-            boxShadow: "0 20px 60px rgba(0,0,0,.35)",
+            boxShadow: fill ? "none" : "0 20px 60px rgba(0,0,0,.35)",
             overflow: "hidden",
             isolation: "isolate",
           }}
         >
           {/* ── Header ─────────────────────────────────────────────── */}
           <div
+            data-gg-sheet-header=""
             style={{
               flexShrink: 0,
               padding: "14px 16px",
@@ -791,7 +917,12 @@ export function AssistSheet({
               minWidth: 0,
             }}
           >
-            <div style={{ minWidth: 0, overflow: "hidden" }}>
+            {/* No overflow:hidden here. The extension's project picker drops its
+                search list out of this column, and clipping it left the list
+                cut off under the search box with nothing to click (#380).
+                minWidth:0 alone lets the column shrink; the picker ellipsizes
+                its own label. */}
+            <div style={{ minWidth: 0 }}>
               <div
                 style={{
                   display: "flex",
@@ -822,6 +953,11 @@ export function AssistSheet({
                 {/* The picker's own bubble asks the question — saying it again
                     here reads as two prompts for one answer. */}
                 {phase === "type" ? null : reportTypeLabel}
+                {/* The severity step's chips are gone once answered — this is
+                    where the answer stays visible. */}
+                {phase !== "type" && severityAsked && severity
+                  ? ` · ${SEVERITY_LABELS[severity]}`
+                  : null}
                 {projectSlot ? <span style={{ marginLeft: "6px" }}>{projectSlot}</span> : null}
               </div>
             </div>
@@ -937,6 +1073,63 @@ export function AssistSheet({
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* #402: one tap, right after "Bug", so a confirmed draft has
+                everything the dialog needs to file it without a second stop. */}
+            {phase === "severity" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <Avatar who="assistant" theme={t} />
+                  <div
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: "12px 12px 12px 4px",
+                      backgroundColor: t.bgSecondary,
+                      fontSize: "13px",
+                      lineHeight: 1.55,
+                      maxWidth: "88%",
+                    }}
+                  >
+                    How bad is it?
+                  </div>
+                </div>
+                <div
+                  role="radiogroup"
+                  aria-label="Severity"
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "6px",
+                    paddingLeft: "32px",
+                  }}
+                >
+                  {SEVERITY_LEVELS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      role="radio"
+                      aria-checked={severity === s}
+                      data-gg-chip=""
+                      data-gg-severity={s}
+                      onClick={() => answerSeverity(s)}
+                      style={{
+                        border: `1px solid ${t.inputBorder}`,
+                        background: "transparent",
+                        color: t.textMuted,
+                        borderRadius: "999px",
+                        // Same as the picker and option chips — one chip size.
+                        padding: "8px 12px",
+                        fontSize: "12px",
+                        fontFamily: "inherit",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {SEVERITY_LABELS[s]}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -1125,7 +1318,13 @@ export function AssistSheet({
                       }}
                     >
                       {live ? (
-                        "Here's your report — have a read."
+                        // #402: "have a read" beside a countdown reads as a
+                        // contradiction. Say what is about to happen instead.
+                        autoFileLeft !== null ? (
+                          "Here's your report — I'll file it unless you want to change something."
+                        ) : (
+                          "Here's your report — have a read."
+                        )
                       ) : (
                         <>
                           <span
@@ -1309,7 +1508,7 @@ export function AssistSheet({
                     data-gg-option=""
                     onClick={() => {
                       logEvent("option_tap", option);
-                      send(option);
+                      send(option, option === CONFIRM_OPTION);
                     }}
                     style={{
                       border: `1px solid ${t.inputBorder}`,
@@ -1385,7 +1584,7 @@ export function AssistSheet({
                   }}
                 >
                   {duplicate
-                    ? `What we'll add to #${duplicate.number} · edit anything`
+                    ? `What we'll add to #${duplicate.number}${duplicate.kind === "related" ? " as a related request" : ""} · edit anything`
                     : "Your report · edit anything"}
                 </span>
 
@@ -1396,7 +1595,10 @@ export function AssistSheet({
                 <textarea
                   ref={draftRef}
                   value={description}
-                  onChange={(e) => onDescriptionChange(e.target.value)}
+                  onChange={(e) => {
+                    stopAutoFile("edited the draft");
+                    onDescriptionChange(e.target.value);
+                  }}
                   rows={6}
                   style={{
                     width: "100%",
@@ -1415,7 +1617,10 @@ export function AssistSheet({
                   }}
                 />
 
-                {severityAsked && (
+                {/* Answered a step ago; while the countdown runs a second
+                    picker is only something to mis-tap. "Edit first" brings it
+                    back so the answer can still be changed. */}
+                {severityAsked && autoFileLeft === null && (
                   <div>
                     <span
                       style={{
@@ -1538,7 +1743,7 @@ export function AssistSheet({
           {/* The picker has nothing to compose — a chip IS the answer, and an
               input under it invites someone to type a type name we then have
               to parse. */}
-          {!submitted && phase !== "type" && (
+          {!submitted && phase !== "type" && phase !== "severity" && (
             <div
               style={{
                 flexShrink: 0,
@@ -1651,6 +1856,7 @@ export function AssistSheet({
                               aria-label={`Remove image ${i + 1}`}
                               title="Remove this image"
                               onClick={() => {
+                                stopAutoFile("changed attachments");
                                 logEvent(
                                   "image_removed",
                                   pageShot && shot === pageShot ? "page capture" : "attached",
@@ -1763,6 +1969,7 @@ export function AssistSheet({
                               aria-label={`Remove file ${file.name}`}
                               title="Remove this file"
                               onClick={() => {
+                                stopAutoFile("changed attachments");
                                 logEvent("file_removed", read ? "read" : "not read");
                                 onRemoveFile(i);
                               }}
@@ -1837,6 +2044,7 @@ export function AssistSheet({
                           onChange={(e) => {
                             const picked = Array.from(e.target.files ?? []);
                             if (picked.length) {
+                              stopAutoFile("changed attachments");
                               const images = picked.filter((f) => f.type.startsWith("image/")).length;
                               if (images) logEvent("image_added", String(images));
                               if (picked.length > images) {
@@ -1862,7 +2070,11 @@ export function AssistSheet({
                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
                   <textarea
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => {
+                      // Typing a change under the draft — it must not file mid-sentence.
+                      stopAutoFile("typing a change");
+                      setInput(e.target.value);
+                    }}
                     onKeyDown={(e) => {
                       // Enter sends, Shift+Enter breaks the line — the rule
                       // every chat surface uses, so nobody has to learn it.
@@ -1939,10 +2151,72 @@ export function AssistSheet({
                         {validationError}
                       </p>
                     )}
+                    {autoFileLeft !== null ? (
+                      // #402: "Yes, that's it" was the confirmation. The draft
+                      // files itself unless they stop it — the bar shows how
+                      // long is left, the button sends now.
+                      <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                        <button
+                          type="button"
+                          data-gg-sheet-send=""
+                          data-gg-auto-file=""
+                          onClick={() => sendDraft()}
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            position: "relative",
+                            overflow: "hidden",
+                            padding: "12px",
+                            borderRadius: "10px",
+                            border: "none",
+                            backgroundColor: t.accent,
+                            color: t.accentText,
+                            fontSize: "14px",
+                            fontWeight: 700,
+                            fontFamily: "inherit",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              backgroundColor: "rgba(255,255,255,0.22)",
+                              transformOrigin: "left",
+                              animation: `gg-autofile ${AUTO_FILE_SECONDS}s linear forwards`,
+                            }}
+                          />
+                          <span style={{ position: "relative" }}>Filing in {autoFileLeft}s…</span>
+                        </button>
+                        <button
+                          type="button"
+                          data-gg-edit-first=""
+                          onClick={() => {
+                            stopAutoFile("edit first");
+                            draftRef.current?.focus();
+                          }}
+                          style={{
+                            flexShrink: 0,
+                            padding: "12px 14px",
+                            borderRadius: "10px",
+                            border: `1px solid ${t.inputBorder}`,
+                            background: "transparent",
+                            color: t.text,
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            fontFamily: "inherit",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Edit first
+                        </button>
+                      </div>
+                    ) : (
                     <button
                       type="button"
                       data-gg-sheet-send=""
-                      onClick={sendDraft}
+                      onClick={() => sendDraft()}
                       disabled={isSubmitting || !description.trim()}
                       style={{
                         width: "100%",
@@ -1965,6 +2239,7 @@ export function AssistSheet({
                           ? `Add to #${duplicate.number}`
                           : "Send Report"}
                     </button>
+                    )}
                   </>
                 )}
                 </>
