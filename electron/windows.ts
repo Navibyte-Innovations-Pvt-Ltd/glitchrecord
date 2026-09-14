@@ -1176,10 +1176,8 @@ export function createReportWindow(): BrowserWindow {
 		minWidth: 420,
 		minHeight: 520,
 		...(process.platform !== "darwin" && { icon: WINDOW_ICON_PATH }),
-		...(isMac && {
-			titleBarStyle: "hiddenInset",
-			trafficLightPosition: { x: 12, y: 14 },
-		}),
+		// Native title bar: the dialog fills this window edge to edge, and
+		// hidden-inset traffic lights would sit on top of its header.
 		autoHideMenuBar: !isMac,
 		transparent: false,
 		resizable: true,
