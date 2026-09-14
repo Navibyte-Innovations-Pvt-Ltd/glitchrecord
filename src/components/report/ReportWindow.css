@@ -1,6 +1,6 @@
-/* Chrome around the shared ReportDialog in the desktop Report Bug window.
-   The dialog itself ships its own styles from packages/report-ui — only the
-   host frame (title, repo picker, empty/error states) is styled here. */
+/* The desktop Report Bug window. The shared ReportDialog fills it
+   (layout="fill") and ships its own styles from packages/report-ui — only the
+   window's own states (loading, signed out, errors) are styled here. */
 
 /* This window renders standalone (windowType=report), so it can't inherit a
    background from the editor/home shells — it has to set its own, or the
@@ -12,52 +12,8 @@
 	min-height: 100%;
 }
 
-.gg-report-window {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	padding: 16px;
-	padding-top: 34px; /* clears the macOS hidden-inset traffic lights */
-	color: #e5e5e5;
-	font-size: 13px;
-}
-
-.gg-report-header {
-	display: flex;
-	align-items: baseline;
-	gap: 8px;
-}
-
-.gg-report-title {
-	font-size: 14px;
-	font-weight: 600;
-}
-
-.gg-report-reporter {
-	font-size: 11px;
-	color: #888;
-}
-
-.gg-report-field {
-	display: block;
-	font-size: 11px;
-	color: #aaa;
-}
-
-.gg-report-field select {
-	display: block;
-	width: 100%;
-	margin-top: 4px;
-	padding: 6px;
-	background: #141414;
-	color: #e5e5e5;
-	border: 1px solid #2a2a2a;
-	border-radius: 4px;
-	font-size: 13px;
-}
-
 .gg-report-msg {
-	padding: 34px 24px 24px;
+	padding: 24px;
 	font-size: 13px;
 	line-height: 1.5;
 	color: #888;
@@ -65,4 +21,57 @@
 
 .gg-report-msg--error {
 	color: #f87171;
+}
+
+/* Full-window state (signed out, failed load): centred, with actions. */
+.gg-report-msg--gate {
+	box-sizing: border-box;
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	max-width: 420px;
+	margin: 0 auto;
+	color: #c8c8c8;
+}
+
+.gg-report-msg--gate.gg-report-msg--error {
+	color: #f87171;
+}
+
+.gg-report-msg--gate p {
+	margin: 0;
+}
+
+.gg-report-msg-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 16px;
+}
+
+.gg-report-btn {
+	height: 32px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border: 1px solid #2a2a2a;
+	background: #141414;
+	color: #e5e5e5;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.gg-report-btn:hover {
+	background: #1c1c1c;
+}
+
+.gg-report-btn--primary {
+	background: #2563eb;
+	border-color: #2563eb;
+	color: #fff;
+}
+
+.gg-report-btn--primary:hover {
+	background: #1d4ed8;
 }
