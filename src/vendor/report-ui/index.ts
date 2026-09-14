@@ -7,6 +7,7 @@ export { ReportDialog, MIC_MESSAGES, micErrorMessage } from "./report-dialog";
 export { AnnotationCanvas } from "./annotation-canvas";
 export { AssistSheet } from "./assist-sheet";
 export { ATTACHMENT_ACCEPT, ASSIST_ATTACHMENT_ACCEPT } from "./attachments";
+export { ASSIST_OFFLINE_MESSAGE, assistOffline, toAssistTurnResult } from "./assist-response";
 export {
   encodeImageFile,
   encodeScreenshot,
