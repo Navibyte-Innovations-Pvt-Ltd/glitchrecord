@@ -60,6 +60,8 @@ export interface ReportResult {
   title?: string;
   intent?: string;
   message?: string;
+  /** "QUEUED" when saved but not filed yet — the repo lost GitHub access. */
+  status?: string;
 }
 
 /**
@@ -131,6 +133,14 @@ export interface AssistTurnResult {
    * model. Absent from servers older than it.
    */
   duplicate?: { number: number; title: string; url: string; status?: string } | null;
+  /**
+   * An open issue this is a DIFFERENT requirement for, in the same feature. The
+   * assistant asks whether to add it there; yes → a comment marked as a related
+   * request. Server-validated like `duplicate`, never set together with it.
+   * Top-level on purpose: a host that predates it ignores it and files a new
+   * issue, instead of posting new work as "another report of this".
+   */
+  related?: { number: number; title: string; url: string; status?: string } | null;
   /**
    * The project's own brief answered it and the reporter confirmed. Nothing is
    * filed — the sheet shows this line and the dialog closes. Someone whose
@@ -212,6 +222,7 @@ export interface AssistSheetEvent {
     | "file_added"
     | "file_removed"
     | "draft_sent"
+    | "auto_file_stopped"
     | "closed"
     | "glitchgrab_offer_tap"
     | "glitchgrab_offer_declined";
@@ -267,6 +278,13 @@ export interface AssistTurnParams {
  * throw — a failure comes back as `degraded`.
  */
 export type AssistFn = (params: AssistTurnParams) => Promise<AssistTurnResult>;
+
+/**
+ * Why a report is added to an open issue instead of opening one: the SAME
+ * problem (`duplicate`), or a different requirement for the same feature the
+ * reporter chose to keep on that issue (`related`).
+ */
+export type AttachKind = "duplicate" | "related";
 
 /** An already-open issue the plain form's duplicate check matched. */
 export interface SimilarIssue {
