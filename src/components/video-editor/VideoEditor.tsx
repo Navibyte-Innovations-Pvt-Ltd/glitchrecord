@@ -272,6 +272,7 @@ import {
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
+import { isInReportSheet } from "../report/isInReportSheet";
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
 import {
 	buildLoopedCursorTelemetry,
@@ -5386,6 +5387,9 @@ export default function VideoEditor() {
 	// Global Tab prevention
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			// Keys in the Report Bug sheet belong to the sheet — Space on a focused
+			// sheet button must press it, not play the video.
+			if (isInReportSheet(e.target)) return;
 			const target = e.target as HTMLElement | null;
 			const isEditableTarget =
 				target instanceof HTMLInputElement ||
