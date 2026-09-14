@@ -205,11 +205,6 @@ interface AssistSheetProps {
   onSeverityChange: (value: ReportSeverity) => void;
   showSeverity: boolean;
   /**
-   * Ask a bug's severity before the chat (#402, default) — or, when false, open
-   * on the chat and ask it with the draft. The dialog's `severityTiming`.
-   */
-  severityBeforeChat?: boolean;
-  /**
    * The dialog owns submission, so a refused send (no severity, low-quality
    * text) sets an error the reporter cannot see behind this sheet. Rendered
    * above Send.
@@ -275,10 +270,36 @@ const STARTERS = [
  * The check-back chip the prompt offers before the first report
  * (`apps/web/lib/ai-assist/prompt.ts`, pinned in `prompt.test.ts`). Tapping it
  * already confirmed the restatement, so the report it produces files itself
- * after a short countdown instead of asking for a second Send (#402). Typed
- * words never arm it — only the tap, which is unambiguous.
+ * after a short countdown instead of asking for a second Send (#402). A plain
+ * typed yes arms it too (`isAffirmativeReply`): reporters answer "Is that right?"
+ * by typing "yes", and were then made to press Send on top of saying yes.
  */
 const CONFIRM_OPTION = "Yes, that's it";
+
+/**
+ * The assistant saying back what it understood ("So you're saying… Is that
+ * right?"). The prompt pairs it with the "Yes, that's it" chip, but the model
+ * does not always send the chip — and a yes to the question is the same answer
+ * either way.
+ */
+export function isCheckBackQuestion(text: string): boolean {
+  const t = text.trim();
+  return (
+    /^so,? you['’]?re saying\b/i.test(t) ||
+    /\b(is that right|is that correct|did i get (that|it) right|have i got (that|it) right)\s*\??\s*$/i.test(t)
+  );
+}
+
+/**
+ * A reply that is only a yes — "yes", "yeah", "correct", "haan", "👍". Anything
+ * with more in it is a correction and must go back to the model, so the whole
+ * message has to be the yes.
+ */
+export function isAffirmativeReply(text: string): boolean {
+  return /^(y|ya|yah|yes|yess|yeah|yep|yup|ok|okay|sure|correct|right|exactly|confirm(ed)?|that['’]?s (it|right|correct)|yes,? that['’]?s (it|right)|haan|han|ha|ho|hmm yes|👍)[\s.!👍]*$/i.test(
+    text.trim(),
+  );
+}
 
 /**
  * Seconds a confirmed draft stays on screen before it files itself (#402). The
@@ -393,7 +414,6 @@ export function AssistSheet({
   severity,
   onSeverityChange,
   showSeverity,
-  severityBeforeChat = true,
   validationError,
   severityRefused = false,
   onDuplicateChange,
@@ -445,11 +465,8 @@ export function AssistSheet({
   /**
    * A bug is asked how bad it is right after its type, before the chat (#402).
    * Asked once: a severity already picked on the form is not asked again.
-   * A host that opens on the chat (`severityBeforeChat` false) gets it asked
-   * with the draft instead — the draft's own severity picker below.
    */
-  const needsSeverity = (tile: DialogTile) =>
-    showSeverity && severityBeforeChat && tile === "BUG" && !severity;
+  const needsSeverity = (tile: DialogTile) => showSeverity && tile === "BUG" && !severity;
   /**
    * "type" → the picker chips, "severity" → how bad a bug is, "rating" →
    * stars, "chat" → the conversation, "draft" → the model's report, ready to
@@ -713,6 +730,15 @@ export function AssistSheet({
       seedPendingRef.current = false;
       seedFromDescription();
     }
+  }
+
+  /** Typed into the composer: a plain yes to "Is that right?" counts as the tap. */
+  function sendTyped(text: string) {
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    const checkingBack =
+      options.includes(CONFIRM_OPTION) ||
+      (lastAssistant?.kind !== "report" && isCheckBackQuestion(lastAssistant?.content ?? ""));
+    send(text, checkingBack && isAffirmativeReply(text));
   }
 
   function send(text: string, autoFile = false) {
@@ -2083,7 +2109,7 @@ export function AssistSheet({
                       // every chat surface uses, so nobody has to learn it.
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        send(input);
+                        sendTyped(input);
                       }
                     }}
                     placeholder={
@@ -2112,7 +2138,7 @@ export function AssistSheet({
                   <button
                     type="button"
                     data-gg-sheet-send=""
-                    onClick={() => send(input)}
+                    onClick={() => sendTyped(input)}
                     disabled={busy || !input.trim()}
                     aria-label="Send message"
                     data-gg-send-message=""
