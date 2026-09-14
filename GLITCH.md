@@ -38,7 +38,7 @@ GlitchRecord itself.
 - **Editor** — timeline (clips, zoom, speed, split, mute, crop) and export.
 - **GlitchGrab panel** — capture log, Script Writer, refine chat, narration.
 - **Chrome extension** — captures page events; talks to GlitchRecord on port 7337.
-- **Report Bug** — this window.
+- **Report Bug** — the side panel this report is being written in.
 
 ## Guides and fixes
 
