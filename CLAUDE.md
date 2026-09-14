@@ -38,7 +38,7 @@ and re-run `npm run sync:report-ui`. (It's a copy, not a dependency, because
 this app is a standalone submodule — see that package's README.)
 
 It files bugs in GlitchRecord only: fixed repo
-`Navibyte-Innovations-Pvt-Ltd/glitchrecord`, bug type only, as a right-side sheet
+`Navibyte-Innovations-Pvt-Ltd/glitchgrab` (private, labelled `glitchrecord`), same report flow as the SDK, as a right-side sheet
 over the window you're in (`layout="sheet"`), with a screenshot of that window
 (`capturePage`). Open it from Home or ⌘⇧G (File menu); from the recording HUD it
 opens in Home. The AI assistant reads `GLITCH.md` at this
