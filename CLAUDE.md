@@ -37,9 +37,17 @@ hosts the **shared** report dialog from `packages/report-ui` — vendored into
 and re-run `npm run sync:report-ui`. (It's a copy, not a dependency, because
 this app is a standalone submodule — see that package's README.)
 
-Screenshots come from `desktopCapturer` (whole screen, our own windows hidden
-first), so reporting works from any browser or native app. Identity is an
-`ExtensionSession` held in the main process — see the repo-root `CLAUDE.md`.
+It files bugs in GlitchRecord only: fixed repo
+`Navibyte-Innovations-Pvt-Ltd/glitchrecord`, bug type only, `layout="fill"`,
+and a screenshot of the GlitchRecord window that was in front (`capturePage`).
+Open it from Home or ⌘⇧G (File menu). The AI assistant reads `GLITCH.md` at this
+app's root. Identity is an `ExtensionSession` held in the main process — see the
+repo-root `CLAUDE.md`.
+
+## Giving a build to a tester
+
+No Apple Developer ID yet — builds are unsigned. Build, install, permissions and
+extension steps: [docs/TESTER-INSTALL.md](docs/TESTER-INSTALL.md).
 
 ## Gotchas
 
