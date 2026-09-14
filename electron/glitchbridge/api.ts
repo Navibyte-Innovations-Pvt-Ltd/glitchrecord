@@ -1,6 +1,9 @@
 // Glitchgrab API client — called from Electron main process
 import { app } from "electron";
 import type { GlitchRepo, GlitchUser } from "./types";
+// The React-free file, not the vendor index — this runs in the main process.
+import { assistOffline, toAssistTurnResult } from "../../src/vendor/report-ui/assist-response";
+import type { AssistTurnResult } from "../../src/vendor/report-ui/types";
 
 // Dev (unpackaged) → localhost; packaged build → production
 export const BASE =
@@ -360,45 +363,18 @@ export async function assistReportTurn(params: {
 	/** @deprecated Sent beside `screenshots` for older server builds. */
 	screenshot?: string | null;
 	context?: Record<string, unknown> | null;
-}): Promise<{
-	conversationId: string | null;
-	question: string | null;
-	report: string | null;
-	degraded: string | null;
-	/** With `degraded`: an hourly limit that clears on its own — the dialog keeps the assistant. */
-	retryable?: boolean;
-}> {
-	const offline = {
-		conversationId: null,
-		question: null,
-		report: null,
-		degraded: "The assistant is unavailable — write your report below and send it as normal.",
-	};
+}): Promise<AssistTurnResult> {
+	const offline = assistOffline();
 	try {
 		const res = await fetch(`${BASE}/api/v1/ai/report-chat`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(params),
 		});
-		const data = (await res.json().catch(() => null)) as {
-			success?: boolean;
-			error?: string;
-			retryable?: boolean;
-			data?: { conversationId?: string; question?: string | null; report?: string | null };
-		} | null;
-		if (!res.ok || !data?.success) {
-			return {
-				...offline,
-				degraded: data?.error ?? offline.degraded,
-				retryable: data?.retryable === true,
-			};
-		}
-		return {
-			conversationId: data.data?.conversationId ?? null,
-			question: data.data?.question ?? null,
-			report: data.data?.report ?? null,
-			degraded: null,
-		};
+		// One mapping for every host (packages/report-ui/src/assist-response.ts). This
+		// copy used to keep only question/report — no "Yes, that's it" chip, no
+		// "already filed as #N", no answer from the guides.
+		return toAssistTurnResult(res.ok, await res.json().catch(() => null));
 	} catch {
 		return offline;
 	}
