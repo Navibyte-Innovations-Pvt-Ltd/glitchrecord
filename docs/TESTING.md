@@ -46,6 +46,8 @@ clicks real buttons / drags handles:
 | `e2e/clip-speed.e2e.test.ts` | **shift+click two markers** on the timeline → a speed segment is carved (badge appears) |
 
 **Prereqs for lane 3:** the app must be built — `dist-electron/main.cjs` + `dist/index.html`.
+`e2e/report-bug-shortcut.e2e.test.ts` also sends a real ⌘⇧G through System Events, so the
+terminal running it needs macOS Accessibility permission (System Settings → Privacy & Security).
 Run `bun run build` once (or `bunx vite build --config vite.config.ts && bun run normalize:electron-main-cjs` for just the renderer + main). Rebuild after changing renderer code or `data-testid`s — the test launches the BUILT app, not source.
 
 How the launch avoids common traps (in `e2e/helpers/electron.ts`):
