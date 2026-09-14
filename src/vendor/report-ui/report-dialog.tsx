@@ -463,6 +463,15 @@ interface ReportDialogProps {
   types?: ReportType[];
   showSeverity?: boolean;
   /**
+   * When the AI sheet asks a bug how bad it is. `"before-chat"` (default, #402):
+   * right after the type, before the conversation. `"with-draft"`: the sheet
+   * opens straight on the chat and asks with the finished draft — for a host
+   * that already knows it is a bug, where a severity question as the first
+   * screen hid the chat behind a tap (GlitchRecord's Report Bug). Send still
+   * refuses without a severity either way.
+   */
+  severityTiming?: "before-chat" | "with-draft";
+  /**
    * Overrides how the initial/retake screenshot is captured. Defaults to
    * `captureDefaultScreenshot` (correct for the SDK, embedded in the host
    * page): the tab's real pixels on Chromium, html2canvas-pro over
@@ -513,13 +522,12 @@ interface ReportDialogProps {
    */
   reportGlitchgrabProblem?: GlitchgrabProblemFn;
   /**
-   * `"modal"` (default): a centred card over the host page — the SDK and the
-   * extension. `"fill"`: the dialog and its AI sheet ARE the window, edge to
-   * edge with no backdrop — for a host that gives the report a window of its
-   * own (GlitchRecord's Report Bug). A 420px card floating in an otherwise
-   * empty window read as a page that had failed to load.
+   * `"modal"` (default): the form is a centred card over the host page — the
+   * SDK and the extension. `"sheet"`: the form is a right-side panel, like the
+   * AI sheet, so the page being reported stays in view beside it — for a host
+   * that opens the report over its own screen (GlitchRecord's Report Bug).
    */
-  layout?: "modal" | "fill";
+  layout?: "modal" | "sheet";
 }
 
 /**
@@ -596,6 +604,7 @@ export function ReportDialog({
   transcribeAudio,
   types,
   showSeverity = true,
+  severityTiming = "before-chat",
   captureScreenshot = captureDefaultScreenshot,
   reporter,
   onClose,
@@ -603,7 +612,7 @@ export function ReportDialog({
   reportGlitchgrabProblem,
   layout = "modal",
 }: ReportDialogProps) {
-  const fill = layout === "fill";
+  const sheet = layout === "sheet";
   const [isEnhancing, setIsEnhancing] = useState(false);
 
   /**
@@ -1807,9 +1816,9 @@ export function ReportDialog({
               // dialog's state IS the report, and unmounting would drop the
               // screenshots, attachments and step the reporter is on.
               display: sheetUp ? "none" : "flex",
-              alignItems: fill ? "stretch" : "center",
-              justifyContent: "center",
-              backgroundColor: fill ? t.bg : "rgba(0,0,0,0.5)",
+              alignItems: sheet ? "stretch" : "center",
+              justifyContent: sheet ? "flex-end" : "center",
+              backgroundColor: "rgba(0,0,0,0.5)",
               fontFamily:
                 '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             }}
@@ -1831,16 +1840,16 @@ export function ReportDialog({
               style={{
                 position: "relative",
                 zIndex: 2147483647,
-                width: fill ? "100%" : "420px",
-                maxWidth: fill ? "100%" : "calc(100% - 32px)",
-                maxHeight: fill ? "100dvh" : "calc(100dvh - 32px)",
-                ...(fill ? { height: "100dvh" } : {}),
+                width: sheet ? "440px" : "420px",
+                maxWidth: sheet ? "100%" : "calc(100% - 32px)",
+                maxHeight: sheet ? "100dvh" : "calc(100dvh - 32px)",
+                ...(sheet ? { height: "100dvh", borderLeft: `1px solid ${t.inputBorder}` } : {}),
                 display: "flex",
                 flexDirection: "column",
                 backgroundColor: t.bg,
-                borderRadius: fill ? 0 : "12px",
-                boxShadow: fill
-                  ? "none"
+                borderRadius: sheet ? 0 : "12px",
+                boxShadow: sheet
+                  ? "0 20px 60px rgba(0, 0, 0, 0.35)"
                   : "0 20px 60px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.1)",
                 fontFamily:
                   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -3782,7 +3791,6 @@ export function ReportDialog({
       {isOpen && sheetUp && (
         <AssistSheet
           assist={assist}
-          fill={fill}
           theme={layerTheme}
           // Every image, not just the first: the auto page shot arrived at [0],
           // so passing that one meant a pasted picture never reached the model
@@ -3840,6 +3848,7 @@ export function ReportDialog({
             if (validationError) setValidationError(null);
           }}
           showSeverity={showSeverity}
+          severityBeforeChat={severityTiming === "before-chat"}
           validationError={validationError}
           severityRefused={needsSeverity}
           isSubmitting={isSubmitting}
