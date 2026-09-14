@@ -20,6 +20,23 @@ export async function validateToken(token: string): Promise<GlitchUser | null> {
 	}
 }
 
+/**
+ * Is the saved GlitchRecord token still accepted? Separates "the server said
+ * no" from "couldn't reach the server": only the first may sign the user out —
+ * a laptop offline for a minute must not lose its login.
+ */
+export async function checkToken(token: string): Promise<"valid" | "expired" | "unreachable"> {
+	try {
+		const res = await fetch(`${BASE}/api/v1/me`, {
+			headers: { Authorization: `Bearer ${token}` },
+		});
+		if (res.status === 401 || res.status === 403) return "expired";
+		return res.ok ? "valid" : "unreachable";
+	} catch {
+		return "unreachable";
+	}
+}
+
 // Backfills the tester/admin ExtensionSession's repoId once a recording
 // actually starts (#297) — auto-login doesn't know a repo up front (a
 // dashboard owner may have dozens; a QA tester may be assigned several).
