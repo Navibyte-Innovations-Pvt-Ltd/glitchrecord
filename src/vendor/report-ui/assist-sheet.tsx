@@ -127,8 +127,6 @@ function pickAssistFiles(files: SheetFile[]): { index: number; file: AssistFile 
 
 interface AssistSheetProps {
   assist: AssistFn;
-  /** Fill the whole window, no backdrop — the dialog's `layout="fill"`. */
-  fill?: boolean;
   theme: AssistTheme;
   /**
    * Every image attached to the report, oldest first — the auto-captured page
@@ -206,6 +204,11 @@ interface AssistSheetProps {
   severity: ReportSeverity | null;
   onSeverityChange: (value: ReportSeverity) => void;
   showSeverity: boolean;
+  /**
+   * Ask a bug's severity before the chat (#402, default) — or, when false, open
+   * on the chat and ask it with the draft. The dialog's `severityTiming`.
+   */
+  severityBeforeChat?: boolean;
   /**
    * The dialog owns submission, so a refused send (no severity, low-quality
    * text) sets an error the reporter cannot see behind this sheet. Rendered
@@ -390,6 +393,7 @@ export function AssistSheet({
   severity,
   onSeverityChange,
   showSeverity,
+  severityBeforeChat = true,
   validationError,
   severityRefused = false,
   onDuplicateChange,
@@ -401,10 +405,8 @@ export function AssistSheet({
   onClose,
   onFinish,
   onReportGlitchgrabProblem,
-  fill = false,
 }: AssistSheetProps) {
-  // A sheet that owns its window is not a phone layout at any width.
-  const narrow = useIsNarrow() && !fill;
+  const narrow = useIsNarrow();
   /** A send the dialog refused because nothing is picked yet — turns the row red. */
   /**
    * The picker mirrors the dialog's gate exactly — `showSeverity` AND a bug.
@@ -443,8 +445,11 @@ export function AssistSheet({
   /**
    * A bug is asked how bad it is right after its type, before the chat (#402).
    * Asked once: a severity already picked on the form is not asked again.
+   * A host that opens on the chat (`severityBeforeChat` false) gets it asked
+   * with the draft instead — the draft's own severity picker below.
    */
-  const needsSeverity = (tile: DialogTile) => showSeverity && tile === "BUG" && !severity;
+  const needsSeverity = (tile: DialogTile) =>
+    showSeverity && severityBeforeChat && tile === "BUG" && !severity;
   /**
    * "type" → the picker chips, "severity" → how bad a bug is, "rating" →
    * stars, "chat" → the conversation, "draft" → the model's report, ready to
@@ -837,9 +842,7 @@ export function AssistSheet({
     .map((w) => w[0]?.toUpperCase() ?? "")
     .join("");
 
-  const panelStyle: React.CSSProperties = fill
-    ? { width: "100%", height: "100dvh" }
-    : narrow
+  const panelStyle: React.CSSProperties = narrow
     ? {
         width: "100%",
         maxHeight: "88dvh",
@@ -877,7 +880,7 @@ export function AssistSheet({
           display: "flex",
           alignItems: narrow ? "flex-end" : "stretch",
           justifyContent: narrow ? "center" : "flex-end",
-          backgroundColor: fill ? t.bg : "rgba(0,0,0,0.5)",
+          backgroundColor: "rgba(0,0,0,0.5)",
           animation: "gg-sheet-fade .18s ease",
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         }}
@@ -898,7 +901,7 @@ export function AssistSheet({
             boxSizing: "border-box",
             backgroundColor: t.bg,
             color: t.text,
-            boxShadow: fill ? "none" : "0 20px 60px rgba(0,0,0,.35)",
+            boxShadow: "0 20px 60px rgba(0,0,0,.35)",
             overflow: "hidden",
             isolation: "isolate",
           }}
