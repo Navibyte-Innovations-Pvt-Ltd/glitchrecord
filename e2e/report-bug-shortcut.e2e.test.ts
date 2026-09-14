@@ -1,4 +1,5 @@
-// ⌘⇧G inside GlitchRecord opens Report Bug.
+// ⌘⇧G inside GlitchRecord opens Report Bug as a side sheet in the window you
+// are in — not a separate window.
 //
 // The shortcut lives on the native app menu, which synthetic page input never
 // reaches — so the keypress here is a REAL macOS keystroke sent through System
@@ -31,16 +32,17 @@ describe("Report Bug shortcut (real Electron app)", () => {
   });
 
   it.runIf(process.platform === "darwin")(
-    "opens the Report Bug window when ⌘⇧G is pressed with GlitchRecord in front",
+    "opens the Report Bug sheet inside Home when ⌘⇧G is pressed — no new window",
     async () => {
       const pid = home.app.process()?.pid;
       expect(pid).toBeTruthy();
+      await home.window.waitForTimeout(2000);
+      const windowsBefore = home.app.windows().length;
+
       await home.app.evaluate(({ app, BrowserWindow }) => {
         app.focus({ steal: true });
         BrowserWindow.getAllWindows()[0]?.focus();
       });
-
-      const opened = home.app.waitForEvent("window", { timeout: 20_000 });
       execFileSync("osascript", [
         "-e",
         `tell application "System Events" to set frontmost of (first process whose unix id is ${pid}) to true`,
@@ -50,22 +52,25 @@ describe("Report Bug shortcut (real Electron app)", () => {
         'tell application "System Events" to keystroke "g" using {command down, shift down}',
       ]);
 
-      const report = await opened;
-      await report.waitForLoadState("domcontentloaded");
-      expect(report.url()).toContain("windowType=report");
-
-      // A fresh profile is signed out: the window must offer a way forward,
-      // not a bare message on an empty window.
-      await report.getByRole("button", { name: "Connect Glitchgrab" }).waitFor({ state: "visible", timeout: 15_000 });
-      await report.getByRole("button", { name: "Close" }).waitFor({ state: "visible", timeout: 5_000 });
+      // A fresh profile is signed out: the sheet slides in over Home and offers
+      // a way forward. Scoped to the sheet — Home's own header has a
+      // "Connect Glitchgrab" button too when signed out.
+      const sheet = home.window.locator(".gg-inline-report-panel");
+      await sheet
+        .getByRole("button", { name: "Connect Glitchgrab" })
+        .waitFor({ state: "visible", timeout: 15_000 });
+      await sheet.getByRole("button", { name: "Close" }).waitFor({ state: "visible", timeout: 5_000 });
+      expect(home.app.windows().length).toBe(windowsBefore);
 
       // Optional evidence for a human: GG_SHOT_DIR=<dir> saves what opened.
       const shotDir = process.env.GG_SHOT_DIR;
       if (shotDir) {
-        await report.waitForTimeout(2500);
         fs.mkdirSync(shotDir, { recursive: true });
-        await report.screenshot({ path: path.join(shotDir, "report-bug-cmd-shift-g.png") });
+        await home.window.screenshot({ path: path.join(shotDir, "sheet-signed-out-in-home.png") });
       }
+
+      await sheet.getByRole("button", { name: "Close" }).click();
+      await sheet.waitFor({ state: "detached", timeout: 5_000 });
     },
     60_000,
   );
