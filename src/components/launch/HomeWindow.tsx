@@ -10,6 +10,7 @@ import {
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectLibraryEntry } from "../video-editor/ProjectBrowserDialog";
+import { OPEN_REPORT_EVENT } from "../report/InlineReport";
 import { toFileUrl } from "../video-editor/projectPersistence";
 import { bareName } from "./repoName";
 
@@ -30,7 +31,6 @@ interface GlitchgrabAPI {
 	status: () => Promise<AuthStatus>;
 	logout: () => Promise<{ ok: boolean }>;
 	onAuthChanged: (cb: (status: AuthStatus) => void) => () => void;
-	openReport?: () => Promise<{ ok: boolean }>;
 	onReporterChanged?: (cb: (info: unknown) => void) => () => void;
 }
 
@@ -49,13 +49,11 @@ function api() {
 }
 
 /**
- * Files a bug without recording anything — the desktop twin of the SDK's
- * ReportButton. Lives here rather than in the Chrome extension so a tester
- * can report from whichever browser (or native app) they were testing in.
+ * Files a bug in GlitchRecord itself. Opens the Report Bug sheet over this
+ * window (InlineReport) — the same thing ⌘⇧G does from the File menu.
  */
 function ReportBugButton() {
 	const [reporter, setReporter] = useState<string | null>(null);
-	const [opening, setOpening] = useState(false);
 
 	useEffect(() => {
 		const unsub = gg()?.onReporterChanged?.((info) => {
@@ -66,24 +64,19 @@ function ReportBugButton() {
 
 	if (!gg()) return null;
 
+	const shortcut = IS_MAC ? " (⌘⇧G)" : "";
+
 	return (
 		<button
 			type="button"
-			disabled={opening}
-			onClick={() => {
-				setOpening(true);
-				// The main process screenshots the screen BEFORE the window opens,
-				// so this brief disable is the reporter's only "did it work?" signal.
-				void gg()
-					?.openReport?.()
-					?.finally(() => setOpening(false));
-			}}
+			// The sheet's loading panel shows at once, so the click is never silent.
+			onClick={() => window.dispatchEvent(new CustomEvent(OPEN_REPORT_EVENT))}
 			style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-			className="flex items-center gap-2 rounded-xl border border-foreground/15 bg-foreground/5 px-3 py-2 text-[12px] font-semibold text-foreground/80 transition hover:bg-foreground/10 disabled:opacity-50"
-			title={reporter ? `Reporting as ${reporter}` : "Report a bug"}
+			className="flex items-center gap-2 rounded-xl border border-foreground/15 bg-foreground/5 px-3 py-2 text-[12px] font-semibold text-foreground/80 transition hover:bg-foreground/10"
+			title={reporter ? `Reporting as ${reporter}${shortcut}` : `Report a bug in GlitchRecord${shortcut}`}
 		>
 			<BugIcon className="h-4 w-4" />
-			{opening ? "Opening…" : "Report Bug"}
+			Report Bug
 		</button>
 	);
 }
