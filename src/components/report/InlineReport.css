@@ -1,0 +1,115 @@
+/* Report Bug sheet states that come before the shared dialog opens — loading,
+   signed out, no access. Shaped like the dialog's own right-side sheet so the
+   hand-off doesn't jump. The dialog ships its own styles from packages/report-ui. */
+
+.gg-inline-report-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 2147483646;
+	display: flex;
+	justify-content: flex-end;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.gg-inline-report-panel {
+	box-sizing: border-box;
+	width: 440px;
+	max-width: 100%;
+	height: 100vh;
+	padding: 24px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 16px;
+	background: #1c1c1e;
+	border-left: 1px solid #2a2a2a;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+	color: #d4d4d8;
+	font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.gg-inline-report-panel p {
+	margin: 0;
+}
+
+.gg-inline-report-muted {
+	color: #888;
+}
+
+.gg-inline-report-error {
+	color: #f87171;
+}
+
+.gg-inline-report-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.gg-report-btn {
+	height: 32px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border: 1px solid #2a2a2a;
+	background: #141414;
+	color: #e5e5e5;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.gg-report-btn:hover {
+	background: #1c1c1c;
+}
+
+.gg-report-btn--primary {
+	background: #2563eb;
+	border-color: #2563eb;
+	color: #fff;
+}
+
+.gg-report-btn--primary:hover {
+	background: #1d4ed8;
+}
+
+/* The shared dialog follows the system scheme; this panel hands off to it, so
+   it follows too — a dark panel flipping to a white sheet reads as a glitch. */
+@media (prefers-color-scheme: light) {
+	.gg-inline-report-panel {
+		background: #ffffff;
+		border-left-color: #e4e4e7;
+		color: #27272a;
+	}
+
+	.gg-inline-report-muted {
+		color: #71717a;
+	}
+
+	.gg-inline-report-error {
+		color: #dc2626;
+	}
+
+	.gg-report-btn {
+		border-color: #d4d4d8;
+		background: #ffffff;
+		color: #18181b;
+	}
+
+	.gg-report-btn:hover {
+		background: #f4f4f5;
+	}
+
+	.gg-report-btn--primary,
+	.gg-report-btn--primary:hover {
+		border-color: #2563eb;
+		color: #fff;
+	}
+
+	.gg-report-btn--primary {
+		background: #2563eb;
+	}
+
+	.gg-report-btn--primary:hover {
+		background: #1d4ed8;
+	}
+}
