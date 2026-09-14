@@ -58,8 +58,9 @@ There is no auto-update without signing. Send the new DMG each time.
 
 - **In Chrome:** press **⌘⇧G** on the page with the bug.
 - **A bug in GlitchRecord itself:** click **Report Bug** on Home, or press **⌘⇧G**
-  while GlitchRecord is the app in front (File → Report Bug…). It always files
-  into the glitchrecord repo, with a screenshot of the GlitchRecord window. Not
+  while GlitchRecord is the app in front (File → Report Bug…). A side panel
+  slides in over the window you're in and files into the glitchrecord repo, with a
+  screenshot of that window. Not
   system-wide on purpose, so Chrome and Finder keep their own ⌘⇧G.
 
 ⌘⇧G in Chrome attaches the tester's last 50 steps: clicks, field changes and page
