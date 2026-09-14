@@ -13,7 +13,6 @@ import {
 	Menu,
 	Notification,
 	nativeImage,
-	screen,
 	session,
 	shell,
 	systemPreferences,
@@ -28,6 +27,7 @@ import {
 	generateScript,
 	getNoteQuestions,
 	getReporterRepos,
+	checkToken,
 	mintReporterSession,
 	refineScript,
 	resolveReporterSession,
@@ -438,6 +438,10 @@ function sendEditorMenuAction(
 	targetWindow.webContents.send(channel);
 }
 
+// Opens the Report Bug window — set once the IPC handlers exist, so the Home
+// button and the ⌘⇧G menu item run the exact same path.
+let openReportAction: (() => Promise<unknown>) | null = null;
+
 function setupApplicationMenu() {
 	const isMac = process.platform === "darwin";
 	if (!isMac) {
@@ -465,6 +469,15 @@ function setupApplicationMenu() {
 		{
 			label: "File",
 			submenu: [
+				{
+					id: "report-bug",
+					label: "Report Bug…",
+					// App-scoped on purpose: a global shortcut would take ⌘⇧G away
+					// from Chrome (extension + SDK dialogs) and Finder's Go to Folder.
+					accelerator: "CmdOrCtrl+Shift+G",
+					click: () => void openReportAction?.(),
+				},
+				{ type: "separator" },
 				{
 					label: "Open Projects…",
 					accelerator: "CmdOrCtrl+O",
@@ -971,12 +984,37 @@ app.on("activate", () => {
 let reporterSession: { sessionId: string; name: string; isTester: boolean } | null = null;
 
 /** Owner fallback — mints a session from the app's own login, once. */
+// Set when the saved GlitchRecord token was rejected, so Report Bug can say
+// "sign-in expired" instead of a bare "not signed in".
+let reporterAuthExpired = false;
+
+/**
+ * Sign out a token the server no longer accepts. Home decides "signed in" from
+ * the auth file alone, so a dead token (they last 90 days) kept showing the
+ * user's name while Report Bug said "Not signed in" — with nothing to click.
+ */
+async function dropAuthIfExpired(token: string): Promise<boolean> {
+	if ((await checkToken(token)) !== "expired") return false;
+	appendDebugLog("rec", "auth: GlitchRecord sign-in expired — cleared, user must reconnect");
+	clearAuth();
+	refreshCurrentUserFromStorage();
+	for (const w of BrowserWindow.getAllWindows()) {
+		w.webContents.send("glitchgrab:auth-changed", getAuthStatus());
+	}
+	return true;
+}
+
 async function ensureReporterSession(): Promise<{ sessionId: string; name: string } | null> {
 	if (reporterSession) return reporterSession;
 	const auth = loadAuth();
 	if (!auth?.token) return null;
 	const minted = await mintReporterSession(auth.token);
-	if (!minted) return null;
+	if (!minted) {
+		reporterAuthExpired = await dropAuthIfExpired(auth.token);
+		if (!reporterAuthExpired) appendDebugLog("rec", "report: could not start a reporter session (server unreachable?)");
+		return null;
+	}
+	reporterAuthExpired = false;
 	reporterSession = { sessionId: minted.sessionId, name: minted.testerName, isTester: false };
 	return reporterSession;
 }
@@ -1022,7 +1060,7 @@ async function handleGlitchgrabDeepLink(url: string) {
 				message: `Report bugs as ${resolved.testerName}?`,
 				detail:
 					`${resolved.testerEmail ? `${resolved.testerEmail}\n\n` : ""}` +
-					`Bug reports — including full-screen screenshots — will be filed to:\n${repoList}\n\n` +
+					`GlitchRecord bug reports — with a screenshot of the GlitchRecord window — will be filed under this name. This account can file to:\n${repoList}\n\n` +
 					"Only continue if you just pressed “Open in GlitchRecord” yourself.",
 				buttons: ["Cancel", `Report as ${resolved.testerName}`],
 				defaultId: 0,
@@ -1054,9 +1092,10 @@ async function handleGlitchgrabDeepLink(url: string) {
 		saveAuth({ token, userId, name: user?.name ?? "Glitchgrab User" });
 		refreshCurrentUserFromStorage();
 
-		const win = BrowserWindow.getAllWindows()[0];
-		win?.webContents.send("glitchgrab:auth-changed", getAuthStatus());
-		win?.focus();
+		// Every window: an open Report Bug window reloads itself on this.
+		const status = getAuthStatus();
+		for (const w of BrowserWindow.getAllWindows()) w.webContents.send("glitchgrab:auth-changed", status);
+		BrowserWindow.getAllWindows()[0]?.focus();
 		console.log("[GlitchBridge] Logged in:", user?.name ?? userId);
 	} catch (err) {
 		console.error("[GlitchBridge] Deep link parse failed:", err);
@@ -1101,6 +1140,13 @@ app.whenReady().then(async () => {
 	}
 
 	// Start GlitchBridge WebSocket server — Chrome extension connects here
+	// A token past its 90 days must not keep showing the user as signed in.
+	// Home re-renders from the auth-changed event if this clears it.
+	void (async () => {
+		const saved = loadAuth();
+		if (saved?.token) await dropAuthIfExpired(saved.token);
+	})();
+
 	startBridgeServer({
 		onScriptReady: (sessionId, script) => {
 			BrowserWindow.getAllWindows()[0]?.webContents.send("glitchbridge:script-ready", {
@@ -1644,52 +1690,51 @@ app.whenReady().then(async () => {
 	});
 
 	// ── Report Bug (desktop) ─────────────────────────────────
-	// Captures the whole screen, not a browser tab: the reporter may have been
-	// testing in Firefox, Safari, a native app or a terminal. That's the entire
-	// reason this lives in the desktop app rather than the Chrome extension.
-	async function captureScreen(): Promise<string | null> {
-		try {
-			const display = screen.getPrimaryDisplay();
-			const { width, height } = display.size;
-			const scale = display.scaleFactor || 1;
-			const sources = await desktopCapturer.getSources({
-				types: ["screen"],
-				thumbnailSize: {
-					width: Math.round(width * scale),
-					height: Math.round(height * scale),
-				},
-			});
-			const shot = sources[0]?.thumbnail;
-			if (!shot || shot.isEmpty()) return null;
-			return shot.toDataURL();
-		} catch (err) {
-			appendDebugLog("rec", `report: screen capture failed — ${String(err)}`);
-			return null;
-		}
+	// Report Bug files bugs about GlitchRecord itself, so the screenshot is the
+	// GlitchRecord window the reporter was in — not the desktop behind it, which
+	// is what a whole-screen capture with our own windows hidden produced.
+	let reportSourceWindow: BrowserWindow | null = null;
+
+	function pickReportSourceWindow(): BrowserWindow | null {
+		const usable = (w: BrowserWindow | null | undefined): w is BrowserWindow =>
+			!!w && !w.isDestroyed() && w.isVisible() && w !== getReportWindow();
+		const focused = BrowserWindow.getFocusedWindow();
+		if (usable(focused)) return focused;
+		const editor = BrowserWindow.getAllWindows().find((w) => usable(w) && isEditorWindow(w));
+		if (editor) return editor;
+		const home = getHomeWindow();
+		if (usable(home)) return home;
+		const hud = getHudOverlayWindow();
+		return usable(hud) ? hud : null;
 	}
 
-	/** Hides our own windows so they don't photobomb the screenshot. */
-	async function captureScreenWithoutSelf(): Promise<string | null> {
-		const hidden = [getReportWindow(), getHomeWindow()].filter(
-			(w): w is BrowserWindow => !!w && !w.isDestroyed() && w.isVisible(),
-		);
-		for (const w of hidden) w.hide();
-		// One frame for the compositor to actually drop them off-screen.
-		await new Promise((r) => setTimeout(r, 180));
+	async function captureReportSource(): Promise<string | null> {
+		const win = reportSourceWindow;
+		if (!win || win.isDestroyed()) return null;
 		try {
-			return await captureScreen();
-		} finally {
-			for (const w of hidden) w.show();
+			const image = await win.webContents.capturePage();
+			return image.isEmpty() ? null : image.toDataURL();
+		} catch (err) {
+			appendDebugLog("rec", `report: window capture failed — ${String(err)}`);
+			return null;
 		}
 	}
 
 	let pendingScreenshot: string | null = null;
 
-	ipcMain.handle("glitchgrab:open-report", async () => {
-		pendingScreenshot = await captureScreenWithoutSelf();
+	const openReport = async () => {
+		// A second ⌘⇧G while the report is open keeps the window it is about.
+		if (!getReportWindow()) reportSourceWindow = pickReportSourceWindow();
+		pendingScreenshot = await captureReportSource();
 		createReportWindow();
+		appendDebugLog(
+			"rec",
+			`report: window opened — screenshot of "${reportSourceWindow?.getTitle() || "no window"}"`,
+		);
 		return { ok: true };
-	});
+	};
+	openReportAction = openReport;
+	ipcMain.handle("glitchgrab:open-report", openReport);
 
 	// Everything the report window needs to render, in one round trip.
 	ipcMain.handle("glitchgrab:report-payload", async () => {
@@ -1698,8 +1743,10 @@ app.whenReady().then(async () => {
 			return {
 				sessionId: null,
 				reporterName: null,
+				authExpired: reporterAuthExpired,
 				repos: [],
 				screenshotDataUrl: pendingScreenshot,
+				app: reportAppContext(),
 			};
 		}
 		return {
@@ -1709,10 +1756,20 @@ app.whenReady().then(async () => {
 			// an owner gets the ones they own. Never derived on this side.
 			repos: await getReporterRepos(session.sessionId),
 			screenshotDataUrl: pendingScreenshot,
+			app: reportAppContext(),
 		};
 	});
 
-	ipcMain.handle("glitchgrab:recapture-screen", () => captureScreenWithoutSelf());
+	/** What the AI assistant should know about the app the bug is in. */
+	function reportAppContext() {
+		return {
+			version: app.getVersion(),
+			platform: process.platform,
+			window: reportSourceWindow && !reportSourceWindow.isDestroyed() ? reportSourceWindow.getTitle() : null,
+		};
+	}
+
+	ipcMain.handle("glitchgrab:recapture-screen", () => captureReportSource());
 
 	ipcMain.handle(
 		"glitchgrab:submit-report",
