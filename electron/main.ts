@@ -95,11 +95,9 @@ import {
 	createEditorWindow,
 	createHomeWindow,
 	createHudOverlayWindow,
-	createReportWindow,
 	createSourceSelectorWindow,
 	getHomeWindow,
 	getHudOverlayWindow,
-	getReportWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
@@ -438,8 +436,8 @@ function sendEditorMenuAction(
 	targetWindow.webContents.send(channel);
 }
 
-// Opens the Report Bug window — set once the IPC handlers exist, so the Home
-// button and the ⌘⇧G menu item run the exact same path.
+// ⌘⇧G: opens Report Bug as a sheet in the GlitchRecord window in front. Set once
+// the IPC handlers exist.
 let openReportAction: (() => Promise<unknown>) | null = null;
 
 function setupApplicationMenu() {
@@ -1690,27 +1688,12 @@ app.whenReady().then(async () => {
 	});
 
 	// ── Report Bug (desktop) ─────────────────────────────────
-	// Report Bug files bugs about GlitchRecord itself, so the screenshot is the
-	// GlitchRecord window the reporter was in — not the desktop behind it, which
-	// is what a whole-screen capture with our own windows hidden produced.
-	let reportSourceWindow: BrowserWindow | null = null;
+	// Files bugs about GlitchRecord itself, as a side sheet INSIDE the window the
+	// reporter is in (InlineReport, mounted in Home and the editor). It used to
+	// open a window of its own, which took them away from the screen they were
+	// describing.
 
-	function pickReportSourceWindow(): BrowserWindow | null {
-		const usable = (w: BrowserWindow | null | undefined): w is BrowserWindow =>
-			!!w && !w.isDestroyed() && w.isVisible() && w !== getReportWindow();
-		const focused = BrowserWindow.getFocusedWindow();
-		if (usable(focused)) return focused;
-		const editor = BrowserWindow.getAllWindows().find((w) => usable(w) && isEditorWindow(w));
-		if (editor) return editor;
-		const home = getHomeWindow();
-		if (usable(home)) return home;
-		const hud = getHudOverlayWindow();
-		return usable(hud) ? hud : null;
-	}
-
-	async function captureReportSource(): Promise<string | null> {
-		const win = reportSourceWindow;
-		if (!win || win.isDestroyed()) return null;
+	async function captureWindow(win: BrowserWindow): Promise<string | null> {
 		try {
 			const image = await win.webContents.capturePage();
 			return image.isEmpty() ? null : image.toDataURL();
@@ -1720,24 +1703,52 @@ app.whenReady().then(async () => {
 		}
 	}
 
-	let pendingScreenshot: string | null = null;
+	// ⌘⇧G in a window that can't hold a sheet (the recording HUD): Home opens it
+	// with that window's screenshot. Held here until Home asks, because a Home
+	// window created just now has not registered its listener yet.
+	let pendingInlineReport: { screenshot: string | null; source: string } | null = null;
 
 	const openReport = async () => {
-		// A second ⌘⇧G while the report is open keeps the window it is about.
-		if (!getReportWindow()) reportSourceWindow = pickReportSourceWindow();
-		pendingScreenshot = await captureReportSource();
-		createReportWindow();
-		appendDebugLog(
-			"rec",
-			`report: window opened — screenshot of "${reportSourceWindow?.getTitle() || "no window"}"`,
-		);
+		const focused = BrowserWindow.getFocusedWindow();
+		const inFront = focused && !focused.isDestroyed() && focused.isVisible() ? focused : null;
+		if (inFront && (isEditorWindow(inFront) || inFront === getHomeWindow())) {
+			inFront.webContents.send("glitchgrab:open-report-inline", {});
+			appendDebugLog("rec", `report: sheet opened in "${inFront.getTitle()}"`);
+			return { ok: true };
+		}
+
+		const source = inFront === getHudOverlayWindow() ? "Recorder HUD" : inFront?.getTitle() || "GlitchRecord";
+		pendingInlineReport = { screenshot: inFront ? await captureWindow(inFront) : null, source };
+		const existing = getHomeWindow();
+		const home = existing ?? createHomeWindow();
+		if (home.isMinimized()) home.restore();
+		home.show();
+		home.focus();
+		if (existing && !existing.webContents.isLoading()) {
+			existing.webContents.send("glitchgrab:open-report-inline", pendingInlineReport);
+			pendingInlineReport = null;
+		}
+		appendDebugLog("rec", `report: sheet opened in Home, from "${source}"`);
 		return { ok: true };
 	};
 	openReportAction = openReport;
-	ipcMain.handle("glitchgrab:open-report", openReport);
 
-	// Everything the report window needs to render, in one round trip.
-	ipcMain.handle("glitchgrab:report-payload", async () => {
+	ipcMain.handle("glitchgrab:take-pending-report", (e) => {
+		if (!pendingInlineReport || BrowserWindow.fromWebContents(e.sender) !== getHomeWindow()) return null;
+		const request = pendingInlineReport;
+		pendingInlineReport = null;
+		return request;
+	});
+
+	// The sheet's screenshot: the window that asked, never another one.
+	ipcMain.handle("glitchgrab:capture-self", (e) => {
+		const win = BrowserWindow.fromWebContents(e.sender);
+		return win ? captureWindow(win) : null;
+	});
+
+	// Everything the report sheet needs before it opens, in one round trip.
+	ipcMain.handle("glitchgrab:report-payload", async (e) => {
+		const context = reportAppContext(BrowserWindow.fromWebContents(e.sender));
 		const session = reporterSession ?? (await ensureReporterSession());
 		if (!session) {
 			return {
@@ -1745,8 +1756,7 @@ app.whenReady().then(async () => {
 				reporterName: null,
 				authExpired: reporterAuthExpired,
 				repos: [],
-				screenshotDataUrl: pendingScreenshot,
-				app: reportAppContext(),
+				app: context,
 			};
 		}
 		return {
@@ -1755,21 +1765,18 @@ app.whenReady().then(async () => {
 			// Server-authoritative: a QA tester gets only their assigned repos,
 			// an owner gets the ones they own. Never derived on this side.
 			repos: await getReporterRepos(session.sessionId),
-			screenshotDataUrl: pendingScreenshot,
-			app: reportAppContext(),
+			app: context,
 		};
 	});
 
 	/** What the AI assistant should know about the app the bug is in. */
-	function reportAppContext() {
+	function reportAppContext(win: BrowserWindow | null) {
 		return {
 			version: app.getVersion(),
 			platform: process.platform,
-			window: reportSourceWindow && !reportSourceWindow.isDestroyed() ? reportSourceWindow.getTitle() : null,
+			window: win && !win.isDestroyed() ? win.getTitle() : null,
 		};
 	}
-
-	ipcMain.handle("glitchgrab:recapture-screen", () => captureReportSource());
 
 	ipcMain.handle(
 		"glitchgrab:submit-report",
@@ -1831,11 +1838,6 @@ app.whenReady().then(async () => {
 		},
 	);
 
-	ipcMain.handle("glitchgrab:close-report", () => {
-		getReportWindow()?.close();
-		pendingScreenshot = null;
-		return { ok: true };
-	});
 
 	ipcMain.handle("glitchgrab:logout", () => {
 		clearAuth();
