@@ -7,7 +7,7 @@ import type {
 	ReportResult,
 	ReportType,
 } from "../../vendor/report-ui";
-import { ReportDialog } from "../../vendor/report-ui";
+import { assistOffline, ReportDialog } from "../../vendor/report-ui";
 
 /**
  * Report Bug inside the GlitchRecord window you are in — for bugs in GlitchRecord itself.
@@ -75,6 +75,11 @@ interface GlitchgrabReportAPI {
 		report: string | null;
 		degraded: string | null;
 		retryable?: boolean;
+		options?: string[];
+		duplicate?: { number: number; title: string; url: string; status?: string } | null;
+		related?: { number: number; title: string; url: string; status?: string } | null;
+		solved?: string | null;
+		aboutGlitchgrab?: boolean;
 	}>;
 	findSimilarIssues: (payload: {
 		repoId: string;
@@ -88,8 +93,13 @@ function gg(): GlitchgrabReportAPI | null {
 	return (window as unknown as { glitchgrab?: GlitchgrabReportAPI }).glitchgrab ?? null;
 }
 
-/** Where every GlitchRecord bug goes. Matched case-insensitively against the session's repos. */
-const GLITCHRECORD_REPO = "Navibyte-Innovations-Pvt-Ltd/glitchrecord";
+/**
+ * Where every GlitchRecord bug goes, matched case-insensitively against the
+ * session's repos. The team's private repo, not the public glitchrecord one:
+ * issues carry the reporter's name and a screenshot, and glitchrecord has Issues
+ * switched off. The server labels them `glitchrecord` (`metadata.product`).
+ */
+const GLITCHRECORD_REPO = "Navibyte-Innovations-Pvt-Ltd/glitchgrab";
 
 /** Home's Report Bug button dispatches this; ⌘⇧G arrives over IPC instead. */
 export const OPEN_REPORT_EVENT = "gg:report-bug";
@@ -227,7 +237,22 @@ export function InlineReport() {
 			if (!api) return { success: false, message: "Bridge unavailable" };
 			if (!repo) return { success: false, message: "GlitchRecord's repo isn't available" };
 
-			const result = await api.submitReport({ repoId: repo.id, type, description, metadata });
+			// Which app, build and window — the repo holds more than GlitchRecord.
+			const appInfo = payload?.app;
+			const result = await api.submitReport({
+				repoId: repo.id,
+				type,
+				description,
+				metadata: {
+					...metadata,
+					product: "glitchrecord",
+					...(appInfo?.version ? { appVersion: appInfo.version } : {}),
+					...(appInfo?.platform ? { platform: appInfo.platform } : {}),
+					...((request.current.source ?? appInfo?.window)
+						? { appWindow: String(request.current.source ?? appInfo?.window) }
+						: {}),
+				},
+			});
 			if (!result.ok) return { success: false, message: result.error };
 			// Give the success state a beat to render before the sheet goes away.
 			setTimeout(close, 2500);
@@ -239,7 +264,7 @@ export function InlineReport() {
 				intent: "create",
 			};
 		},
-		[repo, close],
+		[repo, close, payload],
 	);
 
 	/**
@@ -250,12 +275,7 @@ export function InlineReport() {
 	const assist: AssistFn = useCallback(
 		async (params) => {
 			const api = gg();
-			const offline = {
-				conversationId: null,
-				question: null,
-				report: null,
-				degraded: "The assistant is unavailable — write your report below and send it as normal.",
-			};
+			const offline = assistOffline();
 			if (!api || !repo) return offline;
 			try {
 				return await api.assistReport({ repoId: repo.id, ...params });
@@ -322,10 +342,9 @@ export function InlineReport() {
 
 	return (
 		<ReportDialog
+			// Same flow as the SDK and the extension — type, how bad, chat, yes, filed.
+			// Defined once in packages/report-ui; no GlitchRecord-only settings.
 			layout="sheet"
-			types={["BUG"]}
-			// Already a bug — open on the chat; "how bad is it?" comes with the draft.
-			severityTiming="with-draft"
 			report={report}
 			assist={repo.aiAssistEnabled ? assist : undefined}
 			findSimilarIssues={repo.aiAssistEnabled ? findSimilarIssues : undefined}
