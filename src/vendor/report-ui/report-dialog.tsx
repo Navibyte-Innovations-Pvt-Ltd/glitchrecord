@@ -30,6 +30,7 @@ import type {
   AssistFn,
   FindSimilarIssuesFn,
   SimilarIssue,
+  AttachKind,
   ReportReporter,
   GlitchgrabProblemFn,
 } from "./types";
@@ -470,8 +471,8 @@ interface ReportDialogProps {
    * Standalone hosts must inject their own — the current tab / `document.body`
    * there is the host's OWN tiny window, not the thing being reported:
    *   - Chrome extension → `chrome.tabs.captureVisibleTab`
-   *   - GlitchRecord desktop → Electron `desktopCapturer` (whole screen, so it
-   *     works for any browser or native app, not just Chrome)
+   *   - GlitchRecord desktop → `webContents.capturePage` of the GlitchRecord
+   *     window the reporter was in (its Report Bug files GlitchRecord's own bugs)
    * Return `null` to open without a screenshot. The dialog opens when this
    * resolves, or earlier if it calls `options.onRedraw` — the default does on
    * its html2canvas path, then fills the strip when the re-draw lands (#363).
@@ -511,6 +512,14 @@ interface ReportDialogProps {
    * extension always does, because its reporters are Glitchgrab testers.
    */
   reportGlitchgrabProblem?: GlitchgrabProblemFn;
+  /**
+   * `"modal"` (default): a centred card over the host page — the SDK and the
+   * extension. `"fill"`: the dialog and its AI sheet ARE the window, edge to
+   * edge with no backdrop — for a host that gives the report a window of its
+   * own (GlitchRecord's Report Bug). A 420px card floating in an otherwise
+   * empty window read as a page that had failed to load.
+   */
+  layout?: "modal" | "fill";
 }
 
 /**
@@ -592,7 +601,9 @@ export function ReportDialog({
   onClose,
   headerSlot,
   reportGlitchgrabProblem,
+  layout = "modal",
 }: ReportDialogProps) {
+  const fill = layout === "fill";
   const [isEnhancing, setIsEnhancing] = useState(false);
 
   /**
@@ -624,6 +635,15 @@ export function ReportDialog({
    * re-validates it, so a comment replaces the second identical issue.
    */
   const [duplicateIssueNumber, setDuplicateIssueNumber] = useState<number | null>(null);
+  /**
+   * Why it goes onto that issue: the SAME problem, or a different requirement
+   * for the same feature the reporter chose to keep there (practise_stack #1868
+   * beside #1867). Only `related` is sent — the server's comment then says it is
+   * new work that closing the issue does not cover.
+   */
+  const [duplicateKind, setDuplicateKind] = useState<AttachKind>("duplicate");
+  /** The last report went on as a related request — the success line says so. */
+  const [addedAsRelated, setAddedAsRelated] = useState(false);
   /**
    * What the plain form's duplicate check matched when Send was pressed.
    * Non-null swaps the Send button for the "Our team may already have this" card. `attachingTo` is
@@ -659,6 +679,9 @@ export function ReportDialog({
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // Set when the server saved the report but could not file it yet — GitHub
+  // refused access (status QUEUED). "Bug sent" would be a lie about an issue.
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
   const [screenshots, setScreenshots] = useState<string[]>([]);
   /**
    * Which entry of `screenshots` this dialog captured itself on open. Anything
@@ -1282,6 +1305,7 @@ export function ReportDialog({
     setReportType("BUG");
     setTypeChosen(false);
     setDuplicateIssueNumber(null);
+    setDuplicateKind("duplicate");
     setSimilarIssues(null);
     setPickedSimilar(null);
     setCheckingSimilar(false);
@@ -1569,7 +1593,12 @@ export function ReportDialog({
     }
   };
 
-  const handleSubmit = async (opts?: { duplicateOf?: number; skipSimilar?: boolean }) => {
+  const handleSubmit = async (opts?: {
+    duplicateOf?: number;
+    /** With `duplicateOf`: same problem, or a related request on that issue. */
+    kind?: AttachKind;
+    skipSimilar?: boolean;
+  }) => {
     try {
       if (isSubmitting) return;
 
@@ -1622,6 +1651,7 @@ export function ReportDialog({
       // Read now, not off state after a setter: "Add to #N" picks the issue
       // and submits in the same click, before a re-render could deliver it.
       const duplicateOf = opts?.duplicateOf ?? duplicateIssueNumber;
+      const attachKind: AttachKind = opts?.duplicateOf ? (opts.kind ?? "duplicate") : duplicateKind;
 
       // "Is this already filed?" — once, on the plain form. Not after the
       // assistant ran (it already walked the reporter through open issues), and
@@ -1667,6 +1697,8 @@ export function ReportDialog({
       }
       if (duplicateOf) {
         metadata.duplicateIssueNumber = String(duplicateOf);
+        // Absent means the same problem — what every older server assumes.
+        if (attachKind === "related") metadata.duplicateKind = "related";
       }
       if (aiConversationId) {
         metadata.aiConversationId = aiConversationId;
@@ -1684,6 +1716,9 @@ export function ReportDialog({
         // Only when the server really attached. A pick it refused (issue closed
         // since) is filed as a new issue, and saying "added to #N" would be a lie.
         setAddedToIssue(duplicateOf && result.issueNumber === duplicateOf ? duplicateOf : null);
+        setAddedAsRelated(!!duplicateOf && result.issueNumber === duplicateOf && attachKind === "related");
+        const queued = result.status === "QUEUED" && !!result.message;
+        setQueuedMessage(queued ? (result.message ?? null) : null);
         setSubmitted(true);
         setDescription("");
         setScreenshots([]);
@@ -1694,13 +1729,16 @@ export function ReportDialog({
         // wrote none of it.
         setAiConversationId(null);
         setDuplicateIssueNumber(null);
+        setDuplicateKind("duplicate");
         setSimilarIssues(null);
         setPickedSimilar(null);
 
+        // A queued report carries a sentence worth reading; "sent" is a glance.
         setTimeout(() => {
           setSubmitted(false);
+          setQueuedMessage(null);
           handleClose();
-        }, 2000);
+        }, queued ? 6000 : 2000);
       }
       setIsSubmitting(false);
       setAttachingTo(null);
@@ -1769,9 +1807,9 @@ export function ReportDialog({
               // dialog's state IS the report, and unmounting would drop the
               // screenshots, attachments and step the reporter is on.
               display: sheetUp ? "none" : "flex",
-              alignItems: "center",
+              alignItems: fill ? "stretch" : "center",
               justifyContent: "center",
-              backgroundColor: "rgba(0,0,0,0.5)",
+              backgroundColor: fill ? t.bg : "rgba(0,0,0,0.5)",
               fontFamily:
                 '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             }}
@@ -1793,15 +1831,17 @@ export function ReportDialog({
               style={{
                 position: "relative",
                 zIndex: 2147483647,
-                width: "420px",
-                maxWidth: "calc(100% - 32px)",
-                maxHeight: "calc(100dvh - 32px)",
+                width: fill ? "100%" : "420px",
+                maxWidth: fill ? "100%" : "calc(100% - 32px)",
+                maxHeight: fill ? "100dvh" : "calc(100dvh - 32px)",
+                ...(fill ? { height: "100dvh" } : {}),
                 display: "flex",
                 flexDirection: "column",
                 backgroundColor: t.bg,
-                borderRadius: "12px",
-                boxShadow:
-                  "0 20px 60px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.1)",
+                borderRadius: fill ? 0 : "12px",
+                boxShadow: fill
+                  ? "none"
+                  : "0 20px 60px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.1)",
                 fontFamily:
                   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 overflow: "hidden",
@@ -1831,7 +1871,8 @@ export function ReportDialog({
                       gap: "8px",
                     }}
                   >
-                    {step > 1 && (
+                    {/* Back leads to the type grid — nowhere to go with one type. */}
+                    {step > 1 && availableTypes.length > 1 && (
                       <button
                         type="button"
                         onClick={() => setStep((s) => (s - 1) as 1 | 2)}
@@ -1927,6 +1968,8 @@ export function ReportDialog({
                     </button>
                   </div>
                 </div>
+                {/* Two steps only exist when there is a type to pick. */}
+                {availableTypes.length > 1 && (
                 <div
                   style={{
                     display: "flex",
@@ -1964,6 +2007,7 @@ export function ReportDialog({
                     </div>
                   ))}
                 </div>
+                )}
               </div>
 
               {/* Body */}
@@ -1985,8 +2029,19 @@ export function ReportDialog({
                       fontWeight: 500,
                     }}
                   >
-                    {addedToIssue
-                      ? `Added to #${addedToIssue}. Thank you!`
+                    {queuedMessage ? (
+                      <span
+                        style={{
+                          // amber-500 reads on the dark panel, amber-700 on the light one
+                          color: isDark ? "#f59e0b" : "#b45309",
+                          fontWeight: 400,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {queuedMessage}
+                      </span>
+                    ) : addedToIssue
+                      ? `Added to #${addedToIssue}${addedAsRelated ? " as a related request" : ""}. Thank you!`
                       : `${getTypeLabel(reportType)} sent. Thank you!`}
                   </div>
                 ) : (
@@ -2199,6 +2254,8 @@ export function ReportDialog({
                             only way to check or switch type was the Back arrow. */}
                         <button
                           type="button"
+                          // One type means nothing to change it to — the chip is a label then.
+                          disabled={availableTypes.length === 1}
                           onClick={() => setStep(1)}
                           style={{
                             display: "inline-flex",
@@ -2213,12 +2270,14 @@ export function ReportDialog({
                             fontSize: "11px",
                             fontWeight: 600,
                             fontFamily: "inherit",
-                            cursor: "pointer",
+                            cursor: availableTypes.length === 1 ? "default" : "pointer",
                           }}
                         >
                           {getTypeIcon(reportType, isRating ? "#f59e0b" : t.accent, 13)}
                           {getTypeLabel(reportType)}
-                          <span style={{ color: t.textMuted, fontWeight: 400 }}>· change</span>
+                          {availableTypes.length > 1 && (
+                            <span style={{ color: t.textMuted, fontWeight: 400 }}>· change</span>
+                          )}
                         </button>
 
                         {/* Stars carry the payload for a rating; the words below
@@ -3216,12 +3275,12 @@ export function ReportDialog({
                             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                               {/* Theme text, not amber: amber on the tint is ~2:1 in light mode. */}
                               <span style={{ color: t.text, fontWeight: 600, fontSize: "13px" }}>
-                                Our team may already have this
+                                Our team may already have this, or something close
                               </span>
                               <span style={{ color: t.textMuted, fontSize: "12px", lineHeight: 1.5 }}>
                                 {similarIssues.length > 1
-                                  ? "Pick the one that matches — your report is added to it, so the team sees everyone hitting it in one place."
-                                  : "If it's the same problem, pick it — your report is added to it, so the team sees everyone hitting it in one place."}
+                                  ? "Pick the one that matches. Same problem, or a different request for the same feature — it's added to that issue, so the team has it in one place."
+                                  : "Same problem, or a different request for the same feature? Pick it — it's added to that issue, so the team has it in one place."}
                               </span>
                             </div>
                             {/* Title only, no link: an SDK reporter is a stranger to a
@@ -3314,7 +3373,8 @@ export function ReportDialog({
                                 if (!pickedSimilar) return;
                                 setAttachingTo(pickedSimilar);
                                 setDuplicateIssueNumber(pickedSimilar);
-                                void handleSubmit({ duplicateOf: pickedSimilar });
+                                setDuplicateKind("duplicate");
+                                void handleSubmit({ duplicateOf: pickedSimilar, kind: "duplicate" });
                               }}
                               style={{
                                 width: "100%",
@@ -3331,7 +3391,7 @@ export function ReportDialog({
                                 fontFamily: "inherit",
                               }}
                             >
-                              {typeof attachingTo === "number" ? (
+                              {typeof attachingTo === "number" && duplicateKind !== "related" ? (
                                 <>
                                   <ButtonSpinner />
                                   Adding to #{attachingTo}…
@@ -3340,6 +3400,44 @@ export function ReportDialog({
                                 pickedSimilar ? `Add to #${pickedSimilar}` : "Pick the matching issue"
                               )}
                             </button>
+                            {/* Not the same problem, but the same feature (practise_stack
+                                #1868 beside #1867). Only once a row is picked, so it always
+                                names the issue it writes to. */}
+                            {pickedSimilar && (
+                              <button
+                                type="button"
+                                disabled={isSubmitting}
+                                onClick={() => {
+                                  setAttachingTo(pickedSimilar);
+                                  setDuplicateIssueNumber(pickedSimilar);
+                                  setDuplicateKind("related");
+                                  void handleSubmit({ duplicateOf: pickedSimilar, kind: "related" });
+                                }}
+                                style={{
+                                  width: "100%",
+                                  minHeight: "40px",
+                                  marginTop: "-4px",
+                                  padding: "9px 10px",
+                                  borderRadius: "8px",
+                                  border: "1px solid rgba(245,158,11,0.4)",
+                                  backgroundColor: "transparent",
+                                  color: isSubmitting ? t.textMuted : t.text,
+                                  fontSize: "13px",
+                                  fontWeight: 600,
+                                  cursor: isSubmitting ? "not-allowed" : "pointer",
+                                  fontFamily: "inherit",
+                                }}
+                              >
+                                {typeof attachingTo === "number" && duplicateKind === "related" ? (
+                                  <>
+                                    <ButtonSpinner />
+                                    Adding to #{attachingTo}…
+                                  </>
+                                ) : (
+                                  `Related request — add to #${pickedSimilar}`
+                                )}
+                              </button>
+                            )}
                             <button
                               type="button"
                               disabled={isSubmitting}
@@ -3684,6 +3782,7 @@ export function ReportDialog({
       {isOpen && sheetUp && (
         <AssistSheet
           assist={assist}
+          fill={fill}
           theme={layerTheme}
           // Every image, not just the first: the auto page shot arrived at [0],
           // so passing that one meant a pasted picture never reached the model
@@ -3715,7 +3814,10 @@ export function ReportDialog({
             // rather than back on the grid.
             setStep(2);
           }}
-          onDuplicateChange={setDuplicateIssueNumber}
+          onDuplicateChange={(issueNumber, kind) => {
+            setDuplicateIssueNumber(issueNumber);
+            setDuplicateKind(issueNumber && kind === "related" ? "related" : "duplicate");
+          }}
           onConversationChange={setAiConversationId}
           // The brief answered it: close everything rather than dropping them
           // back onto an empty form, which reads as "file it anyway".
