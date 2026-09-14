@@ -463,15 +463,6 @@ interface ReportDialogProps {
   types?: ReportType[];
   showSeverity?: boolean;
   /**
-   * When the AI sheet asks a bug how bad it is. `"before-chat"` (default, #402):
-   * right after the type, before the conversation. `"with-draft"`: the sheet
-   * opens straight on the chat and asks with the finished draft — for a host
-   * that already knows it is a bug, where a severity question as the first
-   * screen hid the chat behind a tap (GlitchRecord's Report Bug). Send still
-   * refuses without a severity either way.
-   */
-  severityTiming?: "before-chat" | "with-draft";
-  /**
    * Overrides how the initial/retake screenshot is captured. Defaults to
    * `captureDefaultScreenshot` (correct for the SDK, embedded in the host
    * page): the tab's real pixels on Chromium, html2canvas-pro over
@@ -604,7 +595,6 @@ export function ReportDialog({
   transcribeAudio,
   types,
   showSeverity = true,
-  severityTiming = "before-chat",
   captureScreenshot = captureDefaultScreenshot,
   reporter,
   onClose,
@@ -3848,7 +3838,6 @@ export function ReportDialog({
             if (validationError) setValidationError(null);
           }}
           showSeverity={showSeverity}
-          severityBeforeChat={severityTiming === "before-chat"}
           validationError={validationError}
           severityRefused={needsSeverity}
           isSubmitting={isSubmitting}
