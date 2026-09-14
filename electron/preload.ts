@@ -171,10 +171,15 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 	setRepo: (repoId: string, repoName: string) =>
 		ipcRenderer.invoke("glitchgrab:set-repo", repoId, repoName),
 	logout: () => ipcRenderer.invoke("glitchgrab:logout"),
-	// Report Bug — desktop-hosted twin of the SDK's report dialog.
-	openReport: () => ipcRenderer.invoke("glitchgrab:open-report"),
+	// Report Bug — the SDK's report dialog as a sheet inside Home / the editor.
 	reportPayload: () => ipcRenderer.invoke("glitchgrab:report-payload"),
-	recaptureScreen: () => ipcRenderer.invoke("glitchgrab:recapture-screen"),
+	captureSelf: () => ipcRenderer.invoke("glitchgrab:capture-self"),
+	takePendingReport: () => ipcRenderer.invoke("glitchgrab:take-pending-report"),
+	onOpenReport: (cb: (request: unknown) => void) => {
+		const handler = (_e: unknown, request: unknown) => cb(request);
+		ipcRenderer.on("glitchgrab:open-report-inline", handler);
+		return () => ipcRenderer.removeListener("glitchgrab:open-report-inline", handler);
+	},
 	submitReport: (payload: {
 		repoId: string;
 		type: string;
@@ -190,7 +195,6 @@ contextBridge.exposeInMainWorld("glitchgrab", {
 	}) => ipcRenderer.invoke("glitchgrab:assist-report", payload),
 	findSimilarIssues: (payload: { repoId: string; text: string }) =>
 		ipcRenderer.invoke("glitchgrab:find-similar-issues", payload),
-	closeReport: () => ipcRenderer.invoke("glitchgrab:close-report"),
 	onReporterChanged: (cb: (info: unknown) => void) => {
 		const handler = (_e: unknown, info: unknown) => cb(info);
 		ipcRenderer.on("glitchgrab:reporter-changed", handler);
