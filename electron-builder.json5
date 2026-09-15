@@ -40,15 +40,11 @@
   ],
   "publish": [
     {
-      "provider": "github",
-      // Drives the in-app AUTO-UPDATER (publishAutoUpdate below) — release.yml
-      // builds with `--publish never` and uploads assets itself, so this block
-      // is not what ships a release. It must still point at the repo releases
-      // are cut in, or every installed app checks a repo that doesn't exist:
-      // "webadderall/GlitchRecord" is the upstream fork and 404s.
-      "owner": "Navibyte-Innovations-Pvt-Ltd",
-      "repo": "glitchrecord",
-      "tagNamePrefix": "v",
+      "provider": "generic",
+      // Drives the in-app AUTO-UPDATER only — builds run with
+      // `--publish never` and scripts/release-cdn.mjs uploads the files.
+      // latest*.yml live here; installers under <version>/ (see RELEASING.md).
+      "url": "https://cdn.glitchgrab.dev/glitchrecord",
       "publishAutoUpdate": true
     }
   ],

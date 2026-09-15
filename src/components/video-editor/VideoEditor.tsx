@@ -200,10 +200,8 @@ import { getDevOpenRecordingConfig, getSmokeExportConfig } from "./smokeExportCo
 import { createSmokeExportProgressSampler } from "./smokeExportProgress";
 import {
 	APP_HEADER_ICON_BUTTON_CLASS,
-	DiscordLinkButton,
-	FeedbackDialog,
-	openExternalLink,
-	RECORDLY_ISSUES_URL,
+	openReportSheet,
+	ReportBugButton,
 } from "./TutorialHelp";
 import {
 	classifyCompositeMs,
@@ -6377,12 +6375,9 @@ export default function VideoEditor() {
 		}
 	}, [exportedFilePath]);
 
-	const openLightningIssues = useCallback(async () => {
-		await openExternalLink(
-			RECORDLY_ISSUES_URL,
-			t("editor.feedback.openFailed", "Failed to open link."),
-		);
-	}, [t]);
+	const openLightningIssues = useCallback(() => {
+		openReportSheet();
+	}, []);
 
 	const {
 		isExportSaving,
@@ -6749,8 +6744,7 @@ export default function VideoEditor() {
 					>
 						<FolderOpen className="h-4 w-4" />
 					</Button>
-					<DiscordLinkButton />
-					<FeedbackDialog />
+					<ReportBugButton />
 					<div className="ml-1 h-5 w-px bg-foreground/10" />
 					<Button
 						type="button"

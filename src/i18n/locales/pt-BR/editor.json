@@ -44,7 +44,6 @@
 		"solidColor": "Cor sólida (censura)",
 		"borderRadius": "Raio da borda"
 	},
-
 	"fontStyles": {
 		"classic": "Classic",
 		"editor": "Editor",
@@ -87,13 +86,7 @@
 		"adjustDesc": "Arraste as bordas da região vermelha para cobrir exatamente o que você quer remover."
 	},
 	"feedback": {
-		"trigger": "Feedback",
-		"title": "Feedback e contato",
-		"description": "Fale diretamente conosco ou abra uma issue se algo estiver com problema ou faltando.",
-		"emailLabel": "E-mail",
-		"xLabel": "X",
-		"reportIssue": "Reportar problema / enviar feedback",
-		"openFailed": "Falha ao abrir link."
+		"reportIssue": "Reportar problema / enviar feedback"
 	},
 	"keyboardShortcuts": {
 		"trigger": "Atalhos",

@@ -8,10 +8,10 @@ import { USER_DATA_PATH } from "./appPaths";
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const UPDATE_REMINDER_DELAY_MS = 3 * 60 * 60 * 1000;
 const DISMISSED_READY_REMINDER_DELAY_MS = 5 * 60 * 1000;
-const AUTO_UPDATES_DISABLED = process.env.RECORDLY_DISABLE_AUTO_UPDATES === "1";
-const UPDATE_FEED_URL_OVERRIDE = process.env.RECORDLY_UPDATE_FEED_URL?.trim() ?? "";
+const AUTO_UPDATES_DISABLED = process.env.GLITCHRECORD_DISABLE_AUTO_UPDATES === "1";
+const UPDATE_FEED_URL_OVERRIDE = process.env.GLITCHRECORD_UPDATE_FEED_URL?.trim() ?? "";
 const UPDATER_LOG_PATH =
-	process.env.RECORDLY_UPDATER_LOG_PATH?.trim() || path.join(USER_DATA_PATH, "updater.log");
+	process.env.GLITCHRECORD_UPDATER_LOG_PATH?.trim() || path.join(USER_DATA_PATH, "updater.log");
 const DEV_UPDATE_PREVIEW_VERSION = "9.9.9";
 const DEV_UPDATE_PREVIEW_PROGRESS_STEP_MS = 300;
 const DEV_UPDATE_PREVIEW_PROGRESS_INCREMENT = 20;
@@ -112,7 +112,7 @@ function writeUpdaterLog(message: string, detail?: unknown) {
 
 function configureUpdateFeed() {
 	if (!UPDATE_FEED_URL_OVERRIDE) {
-		writeUpdaterLog("Using published GitHub update feed.");
+		writeUpdaterLog("Using published CDN update feed.");
 		return;
 	}
 
@@ -602,7 +602,7 @@ export async function checkForAppUpdates(
 				title: "Updates Not Enabled",
 				message: "Auto-updates are only available in packaged releases.",
 				detail: AUTO_UPDATES_DISABLED
-					? "This build disabled auto-updates through RECORDLY_DISABLE_AUTO_UPDATES=1."
+					? "This build disabled auto-updates through GLITCHRECORD_DISABLE_AUTO_UPDATES=1."
 					: "Development builds do not ship the packaged update metadata required by electron-updater.",
 			});
 		}

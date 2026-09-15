@@ -31,7 +31,7 @@ const cudaProbe: NvidiaCudaExportCapabilityProbe = {
 const d3d11Probe: WindowsD3D11ExportCapabilityProbe = {
 	platform: "win32",
 	windowsGpuCompositorEnabled: true,
-	helperPath: "C:\\GlitchRecord\\recordly-gpu-export.exe",
+	helperPath: "C:\\GlitchRecord\\glitchrecord-gpu-export.exe",
 	adapterIndexOverride: null,
 	preferHighPerformanceAdapter: true,
 	nvencSdkRequested: false,

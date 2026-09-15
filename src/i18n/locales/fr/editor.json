@@ -44,7 +44,6 @@
 		"solidColor": "Couleur unie (censure)",
 		"borderRadius": "Rayon de bordure"
 	},
-
 	"fontStyles": {
 		"classic": "Classique",
 		"editor": "Éditeur",
@@ -87,13 +86,7 @@
 		"adjustDesc": "Faites glisser les bords de la zone rouge pour couvrir exactement ce que vous souhaitez retirer."
 	},
 	"feedback": {
-		"trigger": "Retour",
-		"title": "Retour et contact",
-		"description": "Contactez-nous directement ou ouvrez un ticket si quelque chose ne fonctionne pas ou manque.",
-		"emailLabel": "Email",
-		"xLabel": "X",
-		"reportIssue": "Signaler un problème / envoyer un retour",
-		"openFailed": "Échec de l’ouverture du lien."
+		"reportIssue": "Signaler un problème / envoyer un retour"
 	},
 	"keyboardShortcuts": {
 		"trigger": "Raccourcis",

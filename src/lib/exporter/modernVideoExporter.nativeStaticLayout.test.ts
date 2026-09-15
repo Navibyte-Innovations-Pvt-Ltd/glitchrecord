@@ -126,7 +126,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		];
 		const exporter = createExporter({
 			speedRegions,
-			sourceAudioFallbackPaths: ["C:\\recordly\\recording.system.wav"],
+			sourceAudioFallbackPaths: ["C:\\glitchrecord\\recording.system.wav"],
 		});
 
 		expect(
@@ -139,7 +139,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toMatchObject({
 			audioMode: "edited-track",
 			strategy: "filtergraph-fast-path",
-			audioSourcePath: "C:\\recordly\\recording.system.wav",
+			audioSourcePath: "C:\\glitchrecord\\recording.system.wav",
 			audioSourceSampleRate: 48_000,
 			editedTrackSegments: [
 				{ startMs: 0, endMs: 1_000, speed: 1 },
@@ -150,8 +150,8 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 	});
 
 	it("mixes companion sidecar audio when the source MP4 also has an audio track", () => {
-		const videoPath = "C:\\recordly\\recording.mp4";
-		const micPath = "C:\\recordly\\recording.mic.wav";
+		const videoPath = "C:\\glitchrecord\\recording.mp4";
+		const micPath = "C:\\glitchrecord\\recording.mic.wav";
 		const exporter = createExporter({
 			videoUrl: `file:///${videoPath.replace(/\\/g, "/")}`,
 			sourceAudioFallbackPaths: [micPath],
@@ -165,7 +165,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 	});
 
 	it("keeps timed companion audio on the offline render path", () => {
-		const audioPath = "C:\\recordly\\recording.system.wav";
+		const audioPath = "C:\\glitchrecord\\recording.system.wav";
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -427,14 +427,14 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		electronAPI.writeExportStreamChunk = vi.fn(async () => ({ success: true }));
 		electronAPI.closeExportStream = vi.fn(async () => ({
 			success: true,
-			tempPath: "C:/Temp/recordly-background.jpg",
+			tempPath: "C:/Temp/glitchrecord-background.jpg",
 			bytesWritten: jpegBytes.byteLength,
 		}));
 
 		await expect(exporter.resolveNativeStaticLayoutBackground()).resolves.toEqual({
 			backgroundColor: "#101010",
-			backgroundImagePath: "C:/Temp/recordly-background.jpg",
-			temporaryPath: "C:/Temp/recordly-background.jpg",
+			backgroundImagePath: "C:/Temp/glitchrecord-background.jpg",
+			temporaryPath: "C:/Temp/glitchrecord-background.jpg",
 		});
 		expect(electronAPI.openExportStream).toHaveBeenCalledWith({ extension: "jpg" });
 		expect(electronAPI.writeExportStreamChunk).toHaveBeenCalledTimes(1);
@@ -693,7 +693,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			speedRegions,
 			webcam: {
 				enabled: true,
-				sourcePath: "C:\\recordly\\webcam.mp4",
+				sourcePath: "C:\\glitchrecord\\webcam.mp4",
 			},
 		});
 
@@ -717,7 +717,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			speedRegions,
 			webcam: {
 				enabled: true,
-				sourcePath: "C:\\recordly\\webcam.mp4",
+				sourcePath: "C:\\glitchrecord\\webcam.mp4",
 			},
 		});
 

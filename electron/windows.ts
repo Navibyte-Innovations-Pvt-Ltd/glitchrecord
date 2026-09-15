@@ -20,7 +20,7 @@ const APP_ROOT = path.join(electronWindowsDir, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const RENDERER_DIST = path.join(APP_ROOT, "dist");
 const WINDOW_ICON_FILENAME =
-	process.platform === "darwin" ? "recordlymac-512.png" : "recordly-512.png";
+	process.platform === "darwin" ? "glitchrecordmac-512.png" : "glitchrecord-512.png";
 const WINDOW_ICON_PATH = path.join(
 	process.env.VITE_PUBLIC || RENDERER_DIST,
 	"app-icons",
@@ -50,65 +50,65 @@ function getEditorWindowQuery(): Record<string, string> {
 		windowType: "editor",
 	};
 
-	if (process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
-		query.devOpenInput = process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT;
+	if (process.env.GLITCHRECORD_DEV_OPEN_RECORDING_INPUT) {
+		query.devOpenInput = process.env.GLITCHRECORD_DEV_OPEN_RECORDING_INPUT;
 	}
-	if (process.env.RECORDLY_DEV_OPEN_RECORDING_WEBCAM) {
-		query.devOpenWebcam = process.env.RECORDLY_DEV_OPEN_RECORDING_WEBCAM;
+	if (process.env.GLITCHRECORD_DEV_OPEN_RECORDING_WEBCAM) {
+		query.devOpenWebcam = process.env.GLITCHRECORD_DEV_OPEN_RECORDING_WEBCAM;
 	}
 
-	if (process.env.RECORDLY_SMOKE_EXPORT === "1") {
+	if (process.env.GLITCHRECORD_SMOKE_EXPORT === "1") {
 		query.smokeExport = "1";
-		if (process.env.RECORDLY_SMOKE_EXPORT_INPUT) {
-			query.smokeInput = process.env.RECORDLY_SMOKE_EXPORT_INPUT;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_INPUT) {
+			query.smokeInput = process.env.GLITCHRECORD_SMOKE_EXPORT_INPUT;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_OUTPUT) {
-			query.smokeOutput = process.env.RECORDLY_SMOKE_EXPORT_OUTPUT;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_OUTPUT) {
+			query.smokeOutput = process.env.GLITCHRECORD_SMOKE_EXPORT_OUTPUT;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_USE_NATIVE === "1") {
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_USE_NATIVE === "1") {
 			query.smokeUseNativeExport = "1";
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_ENCODING_MODE) {
-			query.smokeEncodingMode = process.env.RECORDLY_SMOKE_EXPORT_ENCODING_MODE;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_ENCODING_MODE) {
+			query.smokeEncodingMode = process.env.GLITCHRECORD_SMOKE_EXPORT_ENCODING_MODE;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_SHADOW_INTENSITY) {
-			query.smokeShadowIntensity = process.env.RECORDLY_SMOKE_EXPORT_SHADOW_INTENSITY;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_SHADOW_INTENSITY) {
+			query.smokeShadowIntensity = process.env.GLITCHRECORD_SMOKE_EXPORT_SHADOW_INTENSITY;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_INPUT) {
-			query.smokeWebcamInput = process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_INPUT;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_WEBCAM_INPUT) {
+			query.smokeWebcamInput = process.env.GLITCHRECORD_SMOKE_EXPORT_WEBCAM_INPUT;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_SHADOW) {
-			query.smokeWebcamShadow = process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_SHADOW;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_WEBCAM_SHADOW) {
+			query.smokeWebcamShadow = process.env.GLITCHRECORD_SMOKE_EXPORT_WEBCAM_SHADOW;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_SIZE) {
-			query.smokeWebcamSize = process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_SIZE;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_WEBCAM_SIZE) {
+			query.smokeWebcamSize = process.env.GLITCHRECORD_SMOKE_EXPORT_WEBCAM_SIZE;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_PIPELINE) {
-			query.smokePipelineModel = process.env.RECORDLY_SMOKE_EXPORT_PIPELINE;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_PIPELINE) {
+			query.smokePipelineModel = process.env.GLITCHRECORD_SMOKE_EXPORT_PIPELINE;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_BACKEND) {
-			query.smokeBackendPreference = process.env.RECORDLY_SMOKE_EXPORT_BACKEND;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_BACKEND) {
+			query.smokeBackendPreference = process.env.GLITCHRECORD_SMOKE_EXPORT_BACKEND;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_RENDER_BACKEND) {
-			query.smokeRenderBackend = process.env.RECORDLY_SMOKE_EXPORT_RENDER_BACKEND;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_RENDER_BACKEND) {
+			query.smokeRenderBackend = process.env.GLITCHRECORD_SMOKE_EXPORT_RENDER_BACKEND;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_MAX_ENCODE_QUEUE) {
-			query.smokeMaxEncodeQueue = process.env.RECORDLY_SMOKE_EXPORT_MAX_ENCODE_QUEUE;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_MAX_ENCODE_QUEUE) {
+			query.smokeMaxEncodeQueue = process.env.GLITCHRECORD_SMOKE_EXPORT_MAX_ENCODE_QUEUE;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_MAX_DECODE_QUEUE) {
-			query.smokeMaxDecodeQueue = process.env.RECORDLY_SMOKE_EXPORT_MAX_DECODE_QUEUE;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_MAX_DECODE_QUEUE) {
+			query.smokeMaxDecodeQueue = process.env.GLITCHRECORD_SMOKE_EXPORT_MAX_DECODE_QUEUE;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_MAX_PENDING_FRAMES) {
-			query.smokeMaxPendingFrames = process.env.RECORDLY_SMOKE_EXPORT_MAX_PENDING_FRAMES;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_MAX_PENDING_FRAMES) {
+			query.smokeMaxPendingFrames = process.env.GLITCHRECORD_SMOKE_EXPORT_MAX_PENDING_FRAMES;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_PROJECT) {
-			query.smokeProject = process.env.RECORDLY_SMOKE_EXPORT_PROJECT;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_PROJECT) {
+			query.smokeProject = process.env.GLITCHRECORD_SMOKE_EXPORT_PROJECT;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_QUALITY) {
-			query.smokeQuality = process.env.RECORDLY_SMOKE_EXPORT_QUALITY;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_QUALITY) {
+			query.smokeQuality = process.env.GLITCHRECORD_SMOKE_EXPORT_QUALITY;
 		}
-		if (process.env.RECORDLY_SMOKE_EXPORT_FPS) {
-			query.smokeFps = process.env.RECORDLY_SMOKE_EXPORT_FPS;
+		if (process.env.GLITCHRECORD_SMOKE_EXPORT_FPS) {
+			query.smokeFps = process.env.GLITCHRECORD_SMOKE_EXPORT_FPS;
 		}
 	}
 

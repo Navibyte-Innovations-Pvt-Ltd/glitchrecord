@@ -1,5 +1,5 @@
 const WINDOWS_MIC_CAPTURE_INIT_WARNING = "WARNING: Failed to initialize WASAPI mic capture";
-export const WINDOWS_MIC_CAPTURE_MODE_ENV = "RECORDLY_WINDOWS_MIC_CAPTURE";
+export const WINDOWS_MIC_CAPTURE_MODE_ENV = "GLITCHRECORD_WINDOWS_MIC_CAPTURE";
 
 export function shouldStartWindowsBrowserMicrophoneFallback(
 	options?: { capturesMicrophone?: boolean },

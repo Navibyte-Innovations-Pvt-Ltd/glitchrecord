@@ -89,7 +89,7 @@ const electronAppMock = app as unknown as {
 };
 
 function withNvidiaCudaAudioOverride<T>(value: string | undefined, callback: () => T) {
-	const envName = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
+	const envName = "GLITCHRECORD_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
 	const originalValue = process.env[envName];
 	if (value === undefined) {
 		delete process.env[envName];
@@ -136,7 +136,7 @@ function createNvidiaCudaSkipOptions(
 }
 
 async function withPackagedCudaCandidate<T>(gpuInfo: unknown, callback: () => Promise<T>) {
-	const envName = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
+	const envName = "GLITCHRECORD_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
 	const originalEnv = process.env[envName];
 	const originalIsPackaged = electronAppMock.isPackaged;
 	electronAppMock.isPackaged = true;
@@ -174,7 +174,7 @@ describe("normalizeNativeStaticLayoutBackground", () => {
 			offsetX: 160,
 			offsetY: 90,
 			backgroundColor: "#101010",
-			backgroundImagePath: "Z:\\recordly-missing-wallpaper\\midnight-8.jpg",
+			backgroundImagePath: "Z:\\glitchrecord-missing-wallpaper\\midnight-8.jpg",
 		});
 
 		expect(normalized.backgroundImagePath).toBeNull();
@@ -314,7 +314,7 @@ describe("getNvidiaCudaAutoStallTimeoutMs", () => {
 	});
 
 	it("allows the CUDA auto stall guard to be disabled or tuned", () => {
-		const envName = "RECORDLY_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS";
+		const envName = "GLITCHRECORD_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS";
 		const originalValue = process.env[envName];
 
 		try {
@@ -342,7 +342,7 @@ describe("getNativeGpuCompositorStallTimeoutMs", () => {
 	});
 
 	it("allows the Windows GPU stall guard to be disabled or tuned", () => {
-		const envName = "RECORDLY_NATIVE_GPU_STALL_TIMEOUT_MS";
+		const envName = "GLITCHRECORD_NATIVE_GPU_STALL_TIMEOUT_MS";
 		const originalValue = process.env[envName];
 
 		try {
@@ -443,9 +443,9 @@ describe("getExperimentalNvidiaCudaExportSkipReason", () => {
 	});
 
 	it("allows explicit lab CUDA audio exports when forced onto the shared mux path", async () => {
-		const exportEnvName = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
-		const forceEnvName = "RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
-		const allowAudioEnvName = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
+		const exportEnvName = "GLITCHRECORD_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
+		const forceEnvName = "GLITCHRECORD_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
+		const allowAudioEnvName = "GLITCHRECORD_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
 		const originalExportEnv = process.env[exportEnvName];
 		const originalForceEnv = process.env[forceEnvName];
 		const originalAllowAudioEnv = process.env[allowAudioEnvName];
@@ -481,9 +481,9 @@ describe("getExperimentalNvidiaCudaExportSkipReason", () => {
 	});
 
 	it("does not use packaged auto-candidate audio bypass when CUDA is explicitly enabled", async () => {
-		const exportEnvName = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
-		const forceEnvName = "RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
-		const allowAudioEnvName = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
+		const exportEnvName = "GLITCHRECORD_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
+		const forceEnvName = "GLITCHRECORD_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
+		const allowAudioEnvName = "GLITCHRECORD_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
 		const originalExportEnv = process.env[exportEnvName];
 		const originalForceEnv = process.env[forceEnvName];
 		const originalAllowAudioEnv = process.env[allowAudioEnvName];
@@ -541,7 +541,7 @@ describe("getExperimentalNvidiaCudaExportSkipReason", () => {
 		const reason = await withPackagedCudaCandidate(
 			{ gpuDevice: [{ vendorId: 0x10de, deviceString: "NVIDIA GeForce GTX 1650" }] },
 			async () => {
-				process.env.RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT = "0";
+				process.env.GLITCHRECORD_EXPERIMENTAL_NVIDIA_CUDA_EXPORT = "0";
 				return getExperimentalNvidiaCudaExportSkipReason(
 					createNvidiaCudaSkipOptions({ experimentalNvidiaCudaExport: true }),
 				);
@@ -554,7 +554,7 @@ describe("getExperimentalNvidiaCudaExportSkipReason", () => {
 
 describe("resolveExperimentalNvidiaCudaExportScriptPath", () => {
 	it("prefers the packaged app.asar.unpacked CUDA wrapper over the virtual app.asar copy", async () => {
-		const envName = "RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT";
+		const envName = "GLITCHRECORD_NVIDIA_CUDA_EXPORT_SCRIPT";
 		const originalEnv = process.env[envName];
 		const originalResourcesPath = Object.getOwnPropertyDescriptor(process, "resourcesPath");
 		delete process.env[envName];
@@ -852,7 +852,7 @@ describe("muxExportedVideoAudioBuffer", () => {
 		const videoData = new ArrayBuffer(32);
 		const result = await muxExportedVideoAudioBuffer(videoData, { audioMode: "none" });
 
-		expect(result.outputPath).toMatch(/recordly-export-video-/);
+		expect(result.outputPath).toMatch(/glitchrecord-export-video-/);
 	});
 });
 

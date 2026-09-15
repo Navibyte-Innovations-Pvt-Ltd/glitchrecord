@@ -44,7 +44,6 @@
 		"solidColor": "Colore pieno (Censura)",
 		"borderRadius": "Raggio bordo"
 	},
-
 	"fontStyles": {
 		"classic": "Classico",
 		"editor": "Editor",
@@ -87,13 +86,7 @@
 		"adjustDesc": "Trascina i bordi della regione rossa per coprire esattamente ciò che vuoi tagliare."
 	},
 	"feedback": {
-		"trigger": "Feedback",
-		"title": "Feedback e contatti",
-		"description": "Contattaci direttamente o apri una segnalazione se qualcosa non funziona o manca.",
-		"emailLabel": "Email",
-		"xLabel": "X",
-		"reportIssue": "Segnala problema / invia feedback",
-		"openFailed": "Apertura del link non riuscita."
+		"reportIssue": "Segnala problema / invia feedback"
 	},
 	"keyboardShortcuts": {
 		"trigger": "Scorciatoie",

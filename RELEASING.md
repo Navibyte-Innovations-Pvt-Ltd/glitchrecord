@@ -1,103 +1,79 @@
-# Releasing Recordly
+# Releasing GlitchRecord
 
-This repository now uses `electron-builder` + `electron-updater` for macOS, Windows, and Linux auto-updates.
+GlitchRecord is a team-only tool. Builds are unsigned and published to
+`cdn.glitchgrab.dev/glitchrecord/` — never to GitHub Releases, never to a
+public page.
 
-For this Electron app, that is the right path instead of wiring Sparkle.framework directly. On macOS, `electron-updater` handles the release metadata and update flow that Sparkle would otherwise cover in a native app, while still sharing the same GitHub Releases pipeline used by Windows and Linux.
+## One-time setup
 
-## What the release workflow does
+- A Mac with Xcode Command Line Tools and Node 22, `npm install` done in
+  `apps/glitchrecord`.
+- `gh auth login` with access to `Navibyte-Innovations-Pvt-Ltd/glitchgrab` — the
+  script dispatches the Windows/Linux build there.
+- The monorepo root `.env` has the S3 keys the web app already uses:
+  `NEXT_AWS_ACCESS_KEY_ID`, `NEXT_AWS_SECRET_ACCESS_KEY`, `NEXT_AWS_BUCKET_NAME`,
+  `NEXT_AWS_S3_REGION`. Nothing AWS-related is stored in GitHub.
+- `.github/workflows/glitchrecord-build.yml` is pushed on the branch you release
+  from (GitHub only runs a dispatched workflow that exists on that branch).
 
-When you publish a GitHub release tagged like `v1.2.3`, `.github/workflows/release.yml` will:
+## Cut a release
 
-- validate that `package.json` is also `1.2.3`
-- build signed macOS x64 and arm64 artifacts
-- notarize the macOS builds
-- merge the dual-architecture `latest-mac.yml` metadata into one release asset
-- build and sign the Windows NSIS installer
-- build the Linux AppImage
-- publish installer artifacts and auto-update metadata files to the GitHub release
-- dispatch the Homebrew tap workflow after the release assets are available
+1. Bump `version` in `apps/glitchrecord/package.json`.
+2. Commit and push — CI builds Windows and Linux from the pushed branch.
+3. From `apps/glitchrecord`:
 
-The packaged app then checks GitHub Releases for:
+   ```bash
+   bun run release:cdn                  # Mac here + Windows/Linux on CI
+   bun run release:cdn -- --mac-only    # Mac only
+   bun run release:cdn -- --skip-build  # re-upload what is already in release/
+   ```
 
-- `latest-mac.yml`
-- `latest.yml`
-- `latest-linux.yml`
+The script (`scripts/release-cdn.mjs`):
 
-## Required GitHub secrets
+1. checks the S3 keys are loaded, before any build starts;
+2. dispatches `glitchrecord-build.yml` (Windows NSIS + Linux AppImage);
+3. builds the Mac DMG and zip for arm64 and x64 locally (unsigned);
+4. waits for CI and downloads its artifacts into `release/ci/`;
+5. refuses to upload if any `latest*.yml` has a different version than `package.json`;
+6. uploads installers, then the stable `latest/` copies, then the feed files;
+7. fetches `latest-mac.yml` back through the CDN and fails if it is not served.
 
-### macOS signing and notarization
+## CDN layout
 
-Set these repository secrets:
+| Key | Cache | Purpose |
+|---|---|---|
+| `glitchrecord/<version>/*` | immutable | installers + blockmaps the feed points at |
+| `glitchrecord/latest/*` | no-cache | stable download links for the team |
+| `glitchrecord/latest-mac.yml`, `latest.yml`, `latest-linux.yml` | no-cache | auto-update feed (`electron-builder.json5` → `publish`) |
 
-- `APPLE_SIGNING_CERTIFICATE_P12_BASE64`
-- `APPLE_SIGNING_CERTIFICATE_PASSWORD`
-- `APPLE_ID`
-- `APPLE_APP_SPECIFIC_PASSWORD`
-- `APPLE_TEAM_ID`
+Team download links:
 
-`APPLE_SIGNING_CERTIFICATE_P12_BASE64` must be a base64-encoded `.p12` export of a `Developer ID Application` certificate.
+- `https://cdn.glitchgrab.dev/glitchrecord/latest/GlitchRecord-arm64.dmg` (Apple Silicon)
+- `https://cdn.glitchgrab.dev/glitchrecord/latest/GlitchRecord-x64.dmg` (Intel Mac)
+- `https://cdn.glitchgrab.dev/glitchrecord/latest/GlitchRecord-windows-x64.exe`
+- `https://cdn.glitchgrab.dev/glitchrecord/latest/GlitchRecord-linux-x64.AppImage`
 
-If the certificate you currently have is only `Apple Development`, that is not enough for public notarized releases and auto-update distribution. You need `Developer ID Application`.
+## First release: the CDN must serve `glitchrecord/`
 
-To export and encode the certificate:
+Before this, `cdn.glitchgrab.dev` was only proven to serve `screenshots/`
+(`agent_docs/mcp-http-server.md`). A new prefix can land in the bucket and still
+be refused by the CDN — step 7 exists to catch that. If it fails, allow
+`glitchrecord/*` the same way `screenshots/*` is allowed (bucket policy or
+CloudFront behavior), then run `bun run release:cdn -- --skip-build`.
 
-```bash
-security export -k ~/Library/Keychains/login.keychain-db -t identities -f pkcs12 -P "YOUR_P12_PASSWORD" -o recordly-mac-signing.p12
-base64 < recordly-mac-signing.p12 | pbcopy
-```
+## Auto-update
 
-Paste the copied base64 into `APPLE_SIGNING_CERTIFICATE_P12_BASE64` and the export password into `APPLE_SIGNING_CERTIFICATE_PASSWORD`.
+- **Windows / Linux** — the installed app reads `latest.yml` / `latest-linux.yml`
+  from the feed and updates itself.
+- **macOS** — Squirrel.Mac only installs updates into a signed app. Unsigned Mac
+  builds cannot update themselves: download the new DMG from the `latest/` link.
+  macOS also forgets Screen Recording / Accessibility for every new unsigned
+  build (see `docs/TESTER-INSTALL.md`). An Apple Developer ID fixes both.
+- `GLITCHRECORD_UPDATE_FEED_URL` overrides the feed for testing;
+  `GLITCHRECORD_DISABLE_AUTO_UPDATES=1` turns updates off.
 
-### Windows signing
-
-Set these repository secrets:
-
-- `WINDOWS_SIGNING_CERTIFICATE_P12_BASE64`
-- `WINDOWS_SIGNING_CERTIFICATE_PASSWORD`
-
-These should point to an Authenticode code-signing certificate exported as `.p12` and then base64-encoded.
-
-### Homebrew tap automation
-
-Set this repository secret if you want the cask PR to open automatically:
-
-- `HOMEBREW_TAP_TOKEN`
-
-Optional repository variables:
-
-- `HOMEBREW_TAP_REPO`
-- `HOMEBREW_TAP_AUTO_MERGE`
-
-## Release flow
-
-1. Bump `package.json` to the version you want to ship.
-2. Commit and push that version.
-3. Create a Git tag in the form `vX.Y.Z`.
-4. Create and publish a GitHub release for that tag. Prefer the helper so custom notes are prepended while GitHub still generates the contributor section:
-
-```bash
-npm run release:create -- --tag v1.2.3 --title "v1.2.3" --notes-file ./release-notes.md
-```
-
-For prereleases:
+## Local build without publishing
 
 ```bash
-npm run release:create -- --tag v1.2.0-beta.2 --title "v1.2.0 beta-2" --prerelease --notes-file ./release-notes.md
+CSC_IDENTITY_AUTO_DISCOVERY=false bun run build:mac   # → release/
 ```
-
-This uses `gh release create --generate-notes`, which keeps GitHub's generated change summary and contributor list instead of replacing it with a fully manual release body.
-
-5. The `Publish Release` workflow builds, signs, notarizes, uploads, and publishes update metadata.
-
-That is the normal path if you want “click new release and let CI do the rest.”
-
-## Rebuilding an existing release
-
-If you need to rerun publishing for an existing tag, use the manual dispatch for `.github/workflows/release.yml` and provide the existing tag.
-
-## Notes
-
-- macOS auto-updates require the `zip` target in addition to `dmg`, because `latest-mac.yml` is generated from the zipped build.
-- macOS arm64 and x64 builds both publish updater zips, and the release workflow merges them into one `latest-mac.yml` so `electron-updater` can choose the correct architecture automatically.
-- The release workflow publishes versioned artifact names so the generated update metadata matches the uploaded files.
-- `build.yml` is intentionally forced to `--publish never` so ad hoc CI builds do not accidentally upload to a draft release.

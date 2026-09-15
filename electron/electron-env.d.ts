@@ -65,12 +65,6 @@ interface UpdateStatusSummary {
 }
 
 type RendererExtensionInfo = import("./extensions/extensionTypes").ExtensionInfo;
-type RendererExtensionReview = import("./extensions/extensionTypes").ExtensionReview;
-type RendererMarketplaceExtension = import("./extensions/extensionTypes").MarketplaceExtension;
-type RendererMarketplaceReviewStatus =
-	import("./extensions/extensionTypes").MarketplaceReviewStatus;
-type RendererMarketplaceSearchResult =
-	import("./extensions/extensionTypes").MarketplaceSearchResult;
 type RendererRecordingSessionData = import("./ipc/types").RecordingSessionData;
 
 interface RendererFfmpegAudioMuxMetrics {
@@ -942,31 +936,6 @@ interface Window {
 		extensionsUninstall: (id: string) => Promise<{ success: boolean; error?: string }>;
 		extensionsGetDirectory: () => Promise<{ success: boolean; path?: string; error?: string }>;
 		extensionsOpenDirectory: () => Promise<{ success: boolean; path?: string; error?: string }>;
-		extensionsMarketplaceSearch: (params: {
-			query?: string;
-			tags?: string[];
-			sort?: string;
-			page?: number;
-			pageSize?: number;
-		}) => Promise<RendererMarketplaceSearchResult & { error?: string }>;
-		extensionsMarketplaceGet: (id: string) => Promise<RendererMarketplaceExtension | null>;
-		extensionsMarketplaceInstall: (
-			extensionId: string,
-			downloadUrl: string,
-		) => Promise<{ success: boolean; error?: string }>;
-		extensionsMarketplaceSubmit: (
-			extensionId: string,
-		) => Promise<{ success: boolean; reviewId?: string; error?: string }>;
-		extensionsReviewsList: (params: {
-			status?: RendererMarketplaceReviewStatus;
-			page?: number;
-			pageSize?: number;
-		}) => Promise<{ reviews: RendererExtensionReview[]; total: number; error?: string }>;
-		extensionsReviewUpdate: (
-			reviewId: string,
-			status: RendererMarketplaceReviewStatus,
-			notes?: string,
-		) => Promise<{ success: boolean; error?: string }>;
 	};
 }
 

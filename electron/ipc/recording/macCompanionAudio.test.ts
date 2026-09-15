@@ -17,7 +17,7 @@ describe("mac companion audio paths", () => {
 		expect(
 			getFinalMacCompanionAudioPath(
 				"/Users/egg/GlitchRecord/recording-1.mp4",
-				"/tmp/recordly-native.system.webm",
+				"/tmp/glitchrecord-native.system.webm",
 				"system",
 			),
 		).toBe("/Users/egg/GlitchRecord/recording-1.system.webm");
@@ -27,7 +27,7 @@ describe("mac companion audio paths", () => {
 		expect(
 			getFinalMacCompanionAudioPath(
 				"/Users/egg/GlitchRecord.videos/recording-1",
-				"/tmp/recordly-native.mic.m4a",
+				"/tmp/glitchrecord-native.mic.m4a",
 				"mic",
 			),
 		).toBe("/Users/egg/GlitchRecord.videos/recording-1.mic.m4a");

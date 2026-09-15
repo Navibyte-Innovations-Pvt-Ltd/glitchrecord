@@ -1,18 +1,12 @@
 /**
  * useExtensions — React hook for managing extensions in the editor.
  *
- * Handles discovery, activation/deactivation, marketplace browsing,
- * downloading, and provides the extension host instance to components
- * that need render hooks.
+ * Handles discovery, activation/deactivation, local install/uninstall, and
+ * provides the extension host instance to components that need render hooks.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-	ExtensionInfo,
-	ExtensionReview,
-	MarketplaceReviewStatus,
-	MarketplaceSearchResult,
-} from "@/lib/extensions";
+import type { ExtensionInfo } from "@/lib/extensions";
 import { extensionHost } from "@/lib/extensions";
 import { createExtensionModuleUrl } from "@/lib/extensions/fileUrls";
 
@@ -35,33 +29,6 @@ export interface UseExtensionsResult {
 	uninstall: (id: string) => Promise<boolean>;
 	/** Open the extensions directory in Finder/Explorer */
 	openDirectory: () => Promise<void>;
-	/** Search the marketplace */
-	marketplaceSearch: (params: {
-		query?: string;
-		tags?: string[];
-		sort?: "popular" | "recent" | "rating";
-		page?: number;
-		pageSize?: number;
-	}) => Promise<MarketplaceSearchResult>;
-	/** Download and install from marketplace */
-	marketplaceInstall: (
-		extensionId: string,
-		downloadUrl: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	/** Submit extension for review */
-	marketplaceSubmit: (extensionId: string) => Promise<{ success: boolean; error?: string }>;
-	/** Fetch pending reviews (admin) */
-	fetchReviews: (params: {
-		status?: MarketplaceReviewStatus;
-		page?: number;
-		pageSize?: number;
-	}) => Promise<{ reviews: ExtensionReview[]; total: number }>;
-	/** Update review status (admin) */
-	updateReview: (
-		reviewId: string,
-		status: MarketplaceReviewStatus,
-		notes?: string,
-	) => Promise<{ success: boolean }>;
 }
 
 export function useExtensions(): UseExtensionsResult {
@@ -196,86 +163,6 @@ export function useExtensions(): UseExtensionsResult {
 		await electronAPI?.extensionsOpenDirectory();
 	}, []);
 
-	const marketplaceSearch = useCallback(
-		async (params: {
-			query?: string;
-			tags?: string[];
-			sort?: "popular" | "recent" | "rating";
-			page?: number;
-			pageSize?: number;
-		}): Promise<MarketplaceSearchResult> => {
-			if (!electronAPI?.extensionsMarketplaceSearch) {
-				return { extensions: [], total: 0, page: 1, pageSize: 20 };
-			}
-
-			const result = (await electronAPI.extensionsMarketplaceSearch(
-				params,
-			)) as MarketplaceSearchResult & {
-				error?: string;
-			};
-
-			if (result?.error) {
-				throw new Error(result.error);
-			}
-
-			return result;
-		},
-		[],
-	);
-
-	const marketplaceInstall = useCallback(
-		async (extensionId: string, downloadUrl: string) => {
-			if (!electronAPI?.extensionsMarketplaceInstall) {
-				return { success: false, error: "Not available" };
-			}
-			const result = await electronAPI.extensionsMarketplaceInstall(extensionId, downloadUrl);
-			if (result.success) {
-				await electronAPI?.extensionsEnable(extensionId);
-				await discoverAndSync();
-			}
-			return result;
-		},
-		[discoverAndSync],
-	);
-
-	const marketplaceSubmit = useCallback(async (extensionId: string) => {
-		if (!electronAPI?.extensionsMarketplaceSubmit) {
-			return { success: false, error: "Not available" };
-		}
-		return electronAPI.extensionsMarketplaceSubmit(extensionId);
-	}, []);
-
-	const fetchReviews = useCallback(
-		async (params: { status?: MarketplaceReviewStatus; page?: number; pageSize?: number }) => {
-			if (!electronAPI?.extensionsReviewsList) {
-				return { reviews: [] as ExtensionReview[], total: 0 };
-			}
-
-			const result = (await electronAPI.extensionsReviewsList(params)) as {
-				reviews: ExtensionReview[];
-				total: number;
-				error?: string;
-			};
-
-			if (result?.error) {
-				throw new Error(result.error);
-			}
-
-			return result;
-		},
-		[],
-	);
-
-	const updateReview = useCallback(
-		async (reviewId: string, status: MarketplaceReviewStatus, notes?: string) => {
-			if (!electronAPI?.extensionsReviewUpdate) {
-				return { success: false };
-			}
-			return electronAPI.extensionsReviewUpdate(reviewId, status, notes);
-		},
-		[],
-	);
-
 	return {
 		extensions,
 		activeIds,
@@ -285,10 +172,5 @@ export function useExtensions(): UseExtensionsResult {
 		installFromFolder,
 		uninstall,
 		openDirectory,
-		marketplaceSearch,
-		marketplaceInstall,
-		marketplaceSubmit,
-		fetchReviews,
-		updateReview,
 	};
 }

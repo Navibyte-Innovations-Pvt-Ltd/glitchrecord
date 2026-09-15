@@ -1,5 +1,4 @@
-// Friendly reminder: GlitchRecord is licensed under AGPL-3.0, author @webadderall, repo-> https://github.com/webadderall/GlitchRecord
-// Please use this code with the right attribution.
+// Derived from Recordly (AGPL-3.0, @webadderall). See LICENSE.md for attribution terms.
 
 export interface SpringState {
 	value: number;

@@ -325,7 +325,7 @@ async function getSystemCursorAssets() {
 		sourcePath,
 		getSystemCursorHelperBinaryPath(),
 		"system cursor helper",
-		"recordly-system-cursors",
+		"glitchrecord-system-cursors",
 	);
 	const { stdout } = await execFileAsync(binaryPath, [], {
 		timeout: 15000,
@@ -433,7 +433,7 @@ export function registerRecordingHandlers(
 					const recordingsDir = await getRecordingsDir();
 					const timestamp = Date.now();
 					const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`);
-					tempVideoPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mp4`);
+					tempVideoPath = path.join(app.getPath("temp"), `glitchrecord-native-${timestamp}.mp4`);
 					
 					let captureOutput = "";
 					let systemAudioPath: string | null = null;
@@ -496,7 +496,7 @@ export function registerRecordingHandlers(
 						);
 						tempSystemAudioPath = path.join(
 							app.getPath("temp"),
-							`recordly-native-${timestamp}.system.wav`,
+							`glitchrecord-native-${timestamp}.system.wav`,
 						);
 						config.captureSystemAudio = true;
 						config.audioOutputPath = tempSystemAudioPath;
@@ -507,7 +507,7 @@ export function registerRecordingHandlers(
 
 					if (options?.capturesMicrophone && !browserMicFallbackRequested) {
 						microphonePath = path.join(recordingsDir, `recording-${timestamp}.mic.wav`);
-						tempMicPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mic.wav`);
+						tempMicPath = path.join(app.getPath("temp"), `glitchrecord-native-${timestamp}.mic.wav`);
 						config.captureMic = true;
 						config.micOutputPath = tempMicPath;
 						if (options.microphoneLabel) {

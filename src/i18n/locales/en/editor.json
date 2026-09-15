@@ -44,7 +44,6 @@
 		"solidColor": "Solid Color (Censorship)",
 		"borderRadius": "Border Radius"
 	},
-
 	"fontStyles": {
 		"classic": "Classic",
 		"editor": "Editor",
@@ -87,13 +86,7 @@
 		"adjustDesc": "Drag the edges of the red region to cover exactly what you want to cut out."
 	},
 	"feedback": {
-		"trigger": "Feedback",
-		"title": "Feedback & contact",
-		"description": "Reach out directly or open an issue if something is broken or missing.",
-		"emailLabel": "Email",
-		"xLabel": "X",
-		"reportIssue": "Report issue / send feedback",
-		"openFailed": "Failed to open link."
+		"reportIssue": "Report issue / send feedback"
 	},
 	"keyboardShortcuts": {
 		"trigger": "Shortcuts",

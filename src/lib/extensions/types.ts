@@ -6,7 +6,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// Extension Manifest (recordly-extension.json)
+// Extension Manifest (glitchrecord-extension.json)
 // ---------------------------------------------------------------------------
 
 export interface ExtensionManifest {
@@ -148,67 +148,6 @@ export interface ExtensionInfo {
 	error?: string;
 	/** Whether this is a built-in extension */
 	builtin?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Marketplace Types
-// ---------------------------------------------------------------------------
-
-export type MarketplaceReviewStatus = "pending" | "approved" | "rejected" | "flagged";
-
-export interface MarketplaceExtension {
-	/** Same as ExtensionManifest.id */
-	id: string;
-	name: string;
-	version: string;
-	description: string;
-	author: string;
-	/** Download URL for the extension archive (.zip) */
-	downloadUrl: string;
-	/** Icon URL */
-	iconUrl?: string;
-	/** Screenshots */
-	screenshots?: string[];
-	/** Number of downloads */
-	downloads: number;
-	/** Average rating (0-5) */
-	rating: number;
-	/** Number of ratings */
-	ratingCount: number;
-	/** Category tags */
-	tags: string[];
-	/** Permissions required */
-	permissions: ExtensionPermission[];
-	/** Whether this extension has been reviewed and approved */
-	reviewStatus: MarketplaceReviewStatus;
-	/** When the extension was published */
-	publishedAt: string;
-	/** When last updated */
-	updatedAt: string;
-	/** Author homepage URL */
-	homepage?: string;
-	/** Whether this version is already installed locally */
-	installed?: boolean;
-}
-
-export interface MarketplaceSearchResult {
-	extensions: MarketplaceExtension[];
-	total: number;
-	page: number;
-	pageSize: number;
-}
-
-export interface ExtensionReview {
-	id: string;
-	extensionId: string;
-	extensionName: string;
-	version: string;
-	author: string;
-	submittedAt: string;
-	status: MarketplaceReviewStatus;
-	reviewNotes?: string;
-	manifest: ExtensionManifest;
-	downloadUrl: string;
 }
 
 // ---------------------------------------------------------------------------

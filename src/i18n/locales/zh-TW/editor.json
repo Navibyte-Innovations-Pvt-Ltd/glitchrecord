@@ -44,7 +44,6 @@
 		"solidColor": "純色 (審查)",
 		"borderRadius": "邊框半徑"
 	},
-
 	"fontStyles": {
 		"classic": "經典",
 		"editor": "編輯器",
@@ -87,13 +86,7 @@
 		"adjustDesc": "拖動紅色區域的邊緣，精確覆蓋要剪掉的部分。"
 	},
 	"feedback": {
-		"trigger": "反饋",
-		"title": "反饋與聯絡",
-		"description": "如果有問題或缺失功能，可以直接聯絡或提交 issue。",
-		"emailLabel": "信箱",
-		"xLabel": "X",
-		"reportIssue": "報告問題 / 提交反饋",
-		"openFailed": "打開連結失敗。"
+		"reportIssue": "報告問題 / 提交反饋"
 	},
 	"keyboardShortcuts": {
 		"trigger": "快速鍵",

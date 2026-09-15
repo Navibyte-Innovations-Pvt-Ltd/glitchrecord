@@ -44,7 +44,6 @@
 		"solidColor": "纯色 (审查)",
 		"borderRadius": "边框半径"
 	},
-
 	"fontStyles": {
 		"classic": "经典",
 		"editor": "编辑器",
@@ -87,13 +86,7 @@
 		"adjustDesc": "拖动红色区域的边缘，精确覆盖要剪掉的部分。"
 	},
 	"feedback": {
-		"trigger": "反馈",
-		"title": "反馈与联系",
-		"description": "如果有问题或缺失功能，可以直接联系或提交 issue。",
-		"emailLabel": "邮箱",
-		"xLabel": "X",
-		"reportIssue": "报告问题 / 提交反馈",
-		"openFailed": "打开链接失败。"
+		"reportIssue": "报告问题 / 提交反馈"
 	},
 	"keyboardShortcuts": {
 		"trigger": "快捷键",

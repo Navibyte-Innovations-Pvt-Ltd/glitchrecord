@@ -8,9 +8,5 @@ export type {
 	ExtensionInfo,
 	ExtensionManifest,
 	ExtensionPermission,
-	ExtensionReview,
 	ExtensionStatus,
-	MarketplaceExtension,
-	MarketplaceReviewStatus,
-	MarketplaceSearchResult,
 } from "../../src/lib/extensions/types";

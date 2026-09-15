@@ -7,7 +7,7 @@ the model.
 
 ## What this product is
 
-GlitchRecord is a desktop screen recorder and video editor (a fork of Recordly)
+GlitchRecord is a desktop screen recorder and video editor (derived from Recordly, AGPLv3 — see LICENSE.md)
 made by the Glitchgrab team. With the Glitchgrab Chrome extension it records a
 product walkthrough, logs every click on the page, and writes a narrated
 tutorial script from those clicks. File → Report Bug… (⌘⇧G) files a bug about

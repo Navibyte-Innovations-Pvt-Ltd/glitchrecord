@@ -74,7 +74,7 @@ async function kill(app: Awaited<ReturnType<typeof launchEditor>>["app"], udd: s
 // .project.json persists, return the parsed project.
 async function editAndSave(drive: (win: Page) => Promise<void>) {
 	fs.rmSync(PROJECT, { force: true });
-	const { app, udd } = await launchEditor({ RECORDLY_DEV_OPEN_RECORDING_INPUT: VIDEO });
+	const { app, udd } = await launchEditor({ GLITCHRECORD_DEV_OPEN_RECORDING_INPUT: VIDEO });
 	const win = await app.firstWindow({ timeout: 30_000 });
 	await win.waitForLoadState("domcontentloaded");
 	await win
@@ -105,11 +105,11 @@ describe("Edit scenarios", () => {
 		// AND on a real display. With WebCodecs encode/decode already in workers,
 		// this exercises the FULL render→encode→mux pipeline headlessly.
 		const { app, udd } = await launchEditor({
-			RECORDLY_SMOKE_EXPORT: "1",
-			RECORDLY_SMOKE_EXPORT_INPUT: VIDEO,
-			RECORDLY_SMOKE_EXPORT_OUTPUT: out,
-			RECORDLY_SMOKE_EXPORT_ENCODING_MODE: "fast",
-			RECORDLY_SMOKE_EXPORT_RENDER_BACKEND: "webgl",
+			GLITCHRECORD_SMOKE_EXPORT: "1",
+			GLITCHRECORD_SMOKE_EXPORT_INPUT: VIDEO,
+			GLITCHRECORD_SMOKE_EXPORT_OUTPUT: out,
+			GLITCHRECORD_SMOKE_EXPORT_ENCODING_MODE: "fast",
+			GLITCHRECORD_SMOKE_EXPORT_RENDER_BACKEND: "webgl",
 		});
 		const deadline = Date.now() + 150_000;
 		while (Date.now() < deadline) {
@@ -159,7 +159,7 @@ describe("Edit scenarios", () => {
 	it("PROXIES: worker decode→encode passthrough yields a valid h264 mp4", async () => {
 		const out = path.join(os.tmpdir(), "proxy-passthrough.mp4");
 		fs.rmSync(out, { force: true });
-		const { app, udd } = await launchEditor({ RECORDLY_DEV_OPEN_RECORDING_INPUT: VIDEO });
+		const { app, udd } = await launchEditor({ GLITCHRECORD_DEV_OPEN_RECORDING_INPUT: VIDEO });
 		try {
 			const win = await app.firstWindow({ timeout: 30_000 });
 			await win.waitForLoadState("domcontentloaded");

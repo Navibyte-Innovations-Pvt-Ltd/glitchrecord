@@ -1,6 +1,6 @@
 # CLAUDE.md — GlitchRecord (apps/glitchrecord)
 
-Electron screen recorder/editor (a fork of Recordly) that records the screen,
+Electron screen recorder/editor (derived from Recordly, AGPLv3; team-only) that records the screen,
 edits clips/zooms, and hosts the **GlitchGrab bridge** pairing with the Chrome
 extension (`packages/extension`) to turn a recording into a narrated tutorial.
 
@@ -45,15 +45,20 @@ opens in Home. The AI assistant reads `GLITCH.md` at this
 app's root. Identity is an `ExtensionSession` held in the main process — see the
 repo-root `CLAUDE.md`.
 
-## Giving a build to a tester
+## Releasing and installing
 
-No Apple Developer ID yet — builds are unsigned. Build, install, permissions and
+Team-only, unsigned builds on `cdn.glitchgrab.dev/glitchrecord/` via
+`bun run release:cdn`: [RELEASING.md](RELEASING.md). Install, permissions and
 extension steps: [docs/TESTER-INSTALL.md](docs/TESTER-INSTALL.md).
 
 ## Gotchas
 
+- Recordly names were renamed to GlitchRecord everywhere (`GLITCHRECORD_*` env,
+  `glitchrecord-*` helpers, `glitchrecord-extension.json`). The only `recordly`
+  left reads old `.recordly` projects and old `recordly-extension.json`
+  manifests — keep both. Extensions are local only.
 - Dev userData + unified debug log:
-  `~/Library/Application Support/GlitchRecord-dev/` (not `Recordly-dev`).
+  `~/Library/Application Support/GlitchRecord-dev/`.
 - `GLITCHBRIDGE_PORT` overrides the fixed 7337 for isolated unit tests.
 - See the repo-root `CLAUDE.md` for the full GlitchRecord ↔ extension capture
   pipeline, event model, and capture-chain gotchas.

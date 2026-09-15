@@ -14,7 +14,6 @@
 		"arrow": "Pijl",
 		"blur": "Vervagen",
 		"textContent": "Tekstinhoud",
-
 		"textPlaceholder": "Voer je tekst in...",
 		"fontStyle": "Lettertype",
 		"selectStyle": "Selecteer stijl",
@@ -45,7 +44,6 @@
 		"solidColor": "Effen Kleur (Censuur)",
 		"borderRadius": "Hoekradius"
 	},
-
 	"fontStyles": {
 		"classic": "Klassiek",
 		"editor": "Editor",
@@ -88,13 +86,7 @@
 		"adjustDesc": "Sleep de randen van het rode gebied om precies te bepalen wat je wilt wegknippen."
 	},
 	"feedback": {
-		"trigger": "Feedback",
-		"title": "Feedback & contact",
-		"description": "Neem rechtstreeks contact op of maak een issue aan als er iets kapot of ontbrekend is.",
-		"emailLabel": "E-mail",
-		"xLabel": "X",
-		"reportIssue": "Issue melden / feedback sturen",
-		"openFailed": "Kan link niet openen."
+		"reportIssue": "Issue melden / feedback sturen"
 	},
 	"keyboardShortcuts": {
 		"trigger": "Sneltoetsen",

@@ -36,7 +36,7 @@ Headed only (MV3 service workers need a display). Files: `e2e/helpers/harness.ts
 ### 3. Electron UI e2e — click the real app (headed, local)
 `bun run test:e2e:ui` (vitest, `vitest.e2e.config.ts`). Launches the **real
 GlitchRecord app** via Playwright `_electron` with the dev-open-recording hook
-(`RECORDLY_DEV_OPEN_RECORDING_INPUT`) so it lands straight in the editor, then
+(`GLITCHRECORD_DEV_OPEN_RECORDING_INPUT`) so it lands straight in the editor, then
 clicks real buttons / drags handles:
 
 | File | Covers |

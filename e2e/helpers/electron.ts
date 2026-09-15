@@ -1,7 +1,7 @@
 // Launches the REAL GlitchRecord Electron app and returns its editor window so
 // e2e tests can click actual buttons (script panel, clip handles, markers).
 //
-// Uses the dev-open-recording hook (RECORDLY_DEV_OPEN_RECORDING_INPUT) to land
+// Uses the dev-open-recording hook (GLITCHRECORD_DEV_OPEN_RECORDING_INPUT) to land
 // straight in the editor with a video on the timeline — no manual recording.
 //
 // CONSTRAINT: GlitchRecord takes requestSingleInstanceLock() and the bridge
@@ -81,7 +81,7 @@ export async function launchEditor(opts?: { videoPath?: string }): Promise<Edito
       args: [MAIN, "--no-sandbox", `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        RECORDLY_DEV_OPEN_RECORDING_INPUT: video,
+        GLITCHRECORD_DEV_OPEN_RECORDING_INPUT: video,
         // Mark the run so the app/bridge can stay offline (no login/AI required).
         GG_E2E: "1",
       },
@@ -119,7 +119,7 @@ export interface HomeApp extends EditorApp {
 }
 
 // Launch the app on its HOME screen (the projects/recordings launcher), NOT the
-// editor — so we omit RECORDLY_DEV_OPEN_RECORDING_INPUT. Seeds project files into
+// editor — so we omit GLITCHRECORD_DEV_OPEN_RECORDING_INPUT. Seeds project files into
 // the private user-data-dir's Projects directory BEFORE launch so the launcher's
 // list-project-files finds them. Returns the dirs so the test can assert on disk.
 export async function launchHome(opts?: {
@@ -145,7 +145,7 @@ export async function launchHome(opts?: {
     .launch({
       executablePath: electronPath as unknown as string,
       args: [MAIN, "--no-sandbox", `--user-data-dir=${userDataDir}`],
-      // NO RECORDLY_DEV_OPEN_RECORDING_INPUT → the app stays on the home launcher.
+      // NO GLITCHRECORD_DEV_OPEN_RECORDING_INPUT → the app stays on the home launcher.
       env: { ...process.env, GG_E2E: "1" },
     })
     .catch((err) => {

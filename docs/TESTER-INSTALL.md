@@ -1,10 +1,16 @@
 # Giving GlitchRecord to a tester (unsigned build)
 
-GlitchRecord has no Apple Developer ID yet, so builds are **ad-hoc signed and
-not notarized**. macOS blocks them on first open. This is the path until the
-signed release pipeline in `RELEASING.md` gets its `APPLE_*` secrets.
+GlitchRecord is team-only and has no Apple Developer ID yet, so builds are
+**ad-hoc signed and not notarized**. macOS blocks them on first open.
 
-## 1. Build (on the developer's Mac)
+## 1. Get the build
+
+Releases are published to the CDN with `bun run release:cdn` (`RELEASING.md`):
+
+- Apple Silicon (M1–M4): https://cdn.glitchgrab.dev/glitchrecord/latest/GlitchRecord-arm64.dmg
+- Intel Mac: https://cdn.glitchgrab.dev/glitchrecord/latest/GlitchRecord-x64.dmg
+
+For a one-off build on the developer's Mac without publishing:
 
 ```bash
 cd apps/glitchrecord
@@ -39,7 +45,8 @@ permissions after each update**. The tester has to remove GlitchRecord from
 Screen Recording and Accessibility and add it again. This is the most common
 "recording is blank" report on unsigned builds.
 
-There is no auto-update without signing. Send the new DMG each time.
+There is no auto-update on Mac without signing. Download the new DMG from the
+`latest/` link each time.
 
 ## 3. Install the Chrome extension
 

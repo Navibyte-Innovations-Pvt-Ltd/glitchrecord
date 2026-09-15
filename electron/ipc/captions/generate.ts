@@ -174,7 +174,7 @@ export async function generateAutoCaptionsFromVideo(options: {
 
 	const tempBase = path.join(
 		app.getPath("temp"),
-		`recordly-captions-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		`glitchrecord-captions-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 	);
 	const wavPath = `${tempBase}.wav`;
 	const outputBase = `${tempBase}-whisper`;

@@ -312,7 +312,7 @@ async function recordEdits(events, sessionId) {
   const app = await electron.launch({
     executablePath: electronPath,
     args: [path.join(APP, "dist-electron/main.cjs"), "--no-sandbox", `--user-data-dir=${udd}`],
-    env: { ...process.env, RECORDLY_DEV_OPEN_RECORDING_INPUT: FOOTAGE, GG_E2E: "1" },
+    env: { ...process.env, GLITCHRECORD_DEV_OPEN_RECORDING_INPUT: FOOTAGE, GG_E2E: "1" },
     recordVideo: { dir: vdir, size: SIZE },
   });
   const win = await app.firstWindow({ timeout: 30000 });
@@ -568,14 +568,14 @@ async function exportEdited() {
   const udd = fs.mkdtempSync(path.join(os.tmpdir(), "demo-exp-"));
   const env = {
     ...process.env, GG_E2E: "1",
-    RECORDLY_SMOKE_EXPORT: "1",
-    RECORDLY_SMOKE_EXPORT_INPUT: FOOTAGE,
-    RECORDLY_SMOKE_EXPORT_OUTPUT: EXPORTED,
-    RECORDLY_SMOKE_EXPORT_ENCODING_MODE: "fast",
+    GLITCHRECORD_SMOKE_EXPORT: "1",
+    GLITCHRECORD_SMOKE_EXPORT_INPUT: FOOTAGE,
+    GLITCHRECORD_SMOKE_EXPORT_OUTPUT: EXPORTED,
+    GLITCHRECORD_SMOKE_EXPORT_ENCODING_MODE: "fast",
     // WebGL renders headlessly (WebGPU can't configure a canvas without a display).
-    RECORDLY_SMOKE_EXPORT_RENDER_BACKEND: "webgl",
+    GLITCHRECORD_SMOKE_EXPORT_RENDER_BACKEND: "webgl",
   };
-  if (fs.existsSync(PROJECT)) env.RECORDLY_SMOKE_EXPORT_PROJECT = PROJECT; // bake the edits in
+  if (fs.existsSync(PROJECT)) env.GLITCHRECORD_SMOKE_EXPORT_PROJECT = PROJECT; // bake the edits in
   const app = await electron.launch({
     executablePath: electronPath,
     args: [path.join(APP, "dist-electron/main.cjs"), "--no-sandbox", `--user-data-dir=${udd}`],

@@ -2,15 +2,8 @@
 	"name": "glitchrecord",
 	"productName": "GlitchRecord",
 	"description": "A free, creator-focused screen recorder with auto-zoom, cursor effects, backgrounds, annotations, and more - built for polished videos out of the box.",
-	"author": "webadderall",
-	"homepage": "https://github.com/webadderallorg/GlitchRecord",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/webadderallorg/GlitchRecord.git"
-	},
-	"bugs": {
-		"url": "https://github.com/webadderallorg/GlitchRecord/issues"
-	},
+	"author": "Navibyte Innovations",
+	"homepage": "https://glitchgrab.dev",
 	"private": true,
 	"version": "1.3.3",
 	"type": "module",
@@ -41,7 +34,7 @@
 		"smoke:electron-main-cjs": "node scripts/smoke-electron-main-cjs.mjs",
 		"smoke:packaged-binaries": "node scripts/smoke-packaged-binaries.mjs",
 		"checksums:release": "node scripts/write-release-checksums.mjs",
-		"release:create": "node scripts/create-release.mjs",
+		"release:cdn": "dotenvx run -f ../../.env -- node scripts/release-cdn.mjs",
 		"test": "vitest --run",
 		"test:watch": "vitest",
 		"test:e2e": "vitest run --config vitest.e2e.config.ts",

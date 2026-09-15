@@ -107,7 +107,7 @@ import {
 } from "./windows";
 
 const electronMainDir = path.dirname(fileURLToPath(import.meta.url));
-const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
+const IS_SMOKE_EXPORT = process.env.GLITCHRECORD_SMOKE_EXPORT === "1";
 
 function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
 	stream?.on("error", (error: NodeJS.ErrnoException) => {
@@ -273,7 +273,7 @@ let defaultTrayIcon: ReturnType<typeof getTrayIcon> | null = null;
 let recordingTrayIcon: ReturnType<typeof getTrayIcon> | null = null;
 
 function getPlatformAppIconFilename(size: 32 | 128 | 512) {
-	const baseName = process.platform === "darwin" ? "recordlymac" : "recordly";
+	const baseName = process.platform === "darwin" ? "glitchrecordmac" : "glitchrecord";
 	return `app-icons/${baseName}-${size}.png`;
 }
 
@@ -1957,17 +1957,17 @@ app.whenReady().then(async () => {
 
 	registerExtensionIpcHandlers();
 
-	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
+	if (IS_SMOKE_EXPORT || process.env.GLITCHRECORD_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();
 		if (IS_SMOKE_EXPORT) {
 			const smokeSource =
-				process.env.RECORDLY_SMOKE_EXPORT_PROJECT ??
-				process.env.RECORDLY_SMOKE_EXPORT_INPUT ??
+				process.env.GLITCHRECORD_SMOKE_EXPORT_PROJECT ??
+				process.env.GLITCHRECORD_SMOKE_EXPORT_INPUT ??
 				"<missing input>";
 			console.log(`[smoke-export] Starting editor smoke export for ${smokeSource}`);
 		} else {
 			console.log(
-				`[dev-open-recording] Starting editor for ${process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT}`,
+				`[dev-open-recording] Starting editor for ${process.env.GLITCHRECORD_DEV_OPEN_RECORDING_INPUT}`,
 			);
 		}
 		createEditorWindowWrapper();
